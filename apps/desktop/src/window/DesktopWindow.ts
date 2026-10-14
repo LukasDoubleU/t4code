@@ -11,6 +11,7 @@ import * as Electron from "electron";
 import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
+import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as ElectronMenu from "../electron/ElectronMenu.ts";
@@ -322,6 +323,7 @@ function bindFirstRevealTrigger(
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
+  const state = yield* DesktopState.DesktopState;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const assets = yield* DesktopAssets.DesktopAssets;
   const electronMenu = yield* ElectronMenu.ElectronMenu;
@@ -903,7 +905,7 @@ export const make = Effect.gen(function* () {
   });
 
   const createMainIfBackendReady = Effect.gen(function* () {
-    if (!windowRequested) return;
+    if (!windowRequested || (yield* Ref.get(state.quitting))) return;
     if (yield* waitingForBackend) return;
     const existingWindow = yield* currentMainWindow;
     if (Option.isSome(existingWindow)) return;
@@ -1000,6 +1002,7 @@ export const make = Effect.gen(function* () {
       }
     }),
     activate: Effect.gen(function* () {
+      if (yield* Ref.get(state.quitting)) return;
       windowRequested = true;
       const existingWindow = yield* currentMainWindow;
       if (Option.isSome(existingWindow)) {

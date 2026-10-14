@@ -233,6 +233,7 @@ function layerTest(input: {
   readonly previewZoomReapplies?: number[];
   readonly onReveal?: (window: Electron.BrowserWindow) => void;
   readonly focusedWindow?: Electron.BrowserWindow;
+  readonly state?: DesktopState.DesktopState["Service"];
 }) {
   let desktopSettings = input.desktopSettings ?? DesktopAppSettings.DEFAULT_DESKTOP_SETTINGS;
   const layerDesktopAppSettings = Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
@@ -305,7 +306,7 @@ function layerTest(input: {
         layerDesktopAppSettings,
         layerDesktopClientSettings,
         layerDesktopServerExposure,
-        DesktopState.layer,
+        input.state ? Layer.succeed(DesktopState.DesktopState, input.state) : DesktopState.layer,
         layerElectronApp,
         Layer.succeed(ElectronMenu.ElectronMenu, {
           setApplicationMenu: () => Effect.void,
@@ -423,6 +424,7 @@ const makeSplashScenario = (
     const layer = DesktopWindow.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          DesktopState.layer,
           layerDesktopAssets,
           Layer.succeed(DesktopRendererHistory.DesktopRendererHistory, {
             register: () => Effect.void,
@@ -648,6 +650,36 @@ describe("DesktopWindow", () => {
       }),
     );
   });
+
+  it.effect.each([false, true])(
+    "ignores activation and backend readiness while quitting (existing window: %s)",
+    (existing) =>
+      Effect.gen(function* () {
+        const fakeWindow = makeFakeBrowserWindow();
+        const createCount = yield* Ref.make(0);
+        const mainWindow = yield* Ref.make(
+          existing ? Option.some(fakeWindow.window) : Option.none<Electron.BrowserWindow>(),
+        );
+        const state = { quitting: yield* Ref.make(true), backendReady: yield* Ref.make(false) };
+        let reveals = 0;
+        const layer = layerTest({
+          window: fakeWindow.window,
+          createCount,
+          mainWindow,
+          state,
+          onReveal: () => {
+            reveals += 1;
+          },
+        });
+        yield* Effect.gen(function* () {
+          const desktopWindow = yield* DesktopWindow.DesktopWindow;
+          yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+          yield* desktopWindow.activate;
+          assert.equal(yield* Ref.get(createCount), 0);
+          assert.equal(reveals, 0);
+        }).pipe(Effect.provide(layer));
+      }),
+  );
 
   it.effect("does not open a development window until the backend is ready", () =>
     Effect.gen(function* () {

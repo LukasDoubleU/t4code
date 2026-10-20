@@ -194,6 +194,8 @@ import {
   applySidebarThreadDrop,
   filterSidebarV2VisibleThreads,
   groupSidebarThreadsByProject,
+  isSidebarFolderCollapsed,
+  sidebarFolderExpansionKeys,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   deleteSelectedThreadEntries,
@@ -572,7 +574,10 @@ function useSidebarThreads(input: {
           settled: settledThreads,
         }).map((folder) => {
           const projectKey = folder.group.projectKey;
-          const collapsed = projectExpandedById[projectKey] === false;
+          const collapsed = isSidebarFolderCollapsed(
+            projectExpandedById,
+            sidebarFolderExpansionKeys(folder.group),
+          );
           const settledCount = folderSettledCounts.get(projectKey);
           const shownSettled =
             collapsed || settledCount === undefined
@@ -591,7 +596,7 @@ function useSidebarThreads(input: {
             settledExpanded: !collapsed && settledCount !== undefined,
             settledTotal: folder.settled.length,
             hiddenSettledCount:
-              settledCount === undefined ? 0 : Math.max(folder.settled.length - settledCount, 0),
+              settledCount === undefined ? 0 : folder.settled.length - shownSettled.length,
           };
         });
   const orderedThreads =
@@ -644,8 +649,10 @@ function useSidebarThreads(input: {
     workingShelfExpanded,
     toggleWorkingShelf: () => setWorkingShelfExpanded((value) => !value),
     projectFolders,
-    toggleProjectFolder: (projectKey: string) =>
-      setProjectExpanded(projectKey, projectExpandedById[projectKey] === false),
+    toggleProjectFolder: (group: SidebarProjectSnapshot) => {
+      const keys = sidebarFolderExpansionKeys(group);
+      setProjectExpanded(keys, isSidebarFolderCollapsed(projectExpandedById, keys));
+    },
     toggleFolderSettled: (projectKey: string) =>
       setFolderSettledCounts((counts) => {
         const next = new Map(counts);
@@ -1408,7 +1415,7 @@ const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHeader(prop
   group: SidebarProjectSnapshot;
   collapsed: boolean;
   hiddenInbox: readonly EnvironmentThreadShell[];
-  onToggle: (projectKey: string) => void;
+  onToggle: (group: SidebarProjectSnapshot) => void;
   onNewThread: (group: SidebarProjectSnapshot) => void;
   onContextMenu: (group: SidebarProjectSnapshot, position: { x: number; y: number }) => void;
 }) {
@@ -1431,7 +1438,7 @@ const SidebarProjectFolderHeader = memo(function SidebarProjectFolderHeader(prop
         type="button"
         aria-expanded={!collapsed}
         data-testid="sidebar-project-folder"
-        onClick={() => props.onToggle(group.projectKey)}
+        onClick={() => props.onToggle(group)}
         onContextMenu={(event) => {
           event.preventDefault();
           props.onContextMenu(group, { x: event.clientX, y: event.clientY });

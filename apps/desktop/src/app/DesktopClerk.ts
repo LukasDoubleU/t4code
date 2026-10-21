@@ -25,6 +25,11 @@ import * as DesktopWebLinks from "./DesktopWebLinks.ts";
 
 declare const __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: string | undefined;
 
+// Fork-only, for scripts/t4/install-t4.ps1: a build that hides in the tray has
+// no window to close, so a launch with this quits the running instance the way
+// the tray's Quit does. It never starts the app.
+const QUIT_ARGUMENT = "--quit";
+
 export class DesktopClerkBridgeInitializationError extends Schema.TaggedError<DesktopClerkBridgeInitializationError>()(
   "DesktopClerkBridgeInitializationError",
   {
@@ -109,7 +114,9 @@ export const make = Effect.gen(function* () {
 
   // T3 owns the profile-scoped lock on every platform; Clerk skips it on macOS.
   // Quit is asynchronous, so interrupt before the application runtime is built.
-  if (!(yield* electronApp.requestSingleInstanceLock)) {
+  // Requesting the lock hands a quit request to the running instance.
+  const quitRequested = (yield* HostProcess.Arguments).includes(QUIT_ARGUMENT);
+  if (!(yield* electronApp.requestSingleInstanceLock) || quitRequested) {
     yield* electronApp.quit;
     return yield* Effect.interrupt;
   }
@@ -226,6 +233,10 @@ export const make = Effect.gen(function* () {
         void runPromise(webLinks.receive(NodeURL.pathToFileURL(path).href));
       });
       handleSecondInstance = (argv) => {
+        if (argv?.includes(QUIT_ARGUMENT)) {
+          void runPromise(electronApp.quit);
+          return;
+        }
         if (argv?.some((value) => startProviderAuthHandoff(value) || resumeProviderAuth(value)))
           return;
         // An app link waits for a renderer, which a window closed to the tray no longer has.

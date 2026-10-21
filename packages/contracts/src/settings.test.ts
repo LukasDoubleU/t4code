@@ -1319,3 +1319,15 @@ describe("sidebar Background section switch", () => {
     expect(decodeClientSettingsPatch({})).not.toHaveProperty("sidebarBackgroundSection");
   });
 });
+
+describe("always show message times", () => {
+  it("is on for clients that never chose and keeps a device's choice", () => {
+    expect(decodeClientSettings({}).alwaysShowMessageTimes).toBe(true);
+    const settings = decodeClientSettings({ alwaysShowMessageTimes: false });
+    expect(encodeClientSettings(settings)).toMatchObject({ alwaysShowMessageTimes: false });
+    expect(decodeClientSettingsPatch({ alwaysShowMessageTimes: false })).toEqual({
+      alwaysShowMessageTimes: false,
+    });
+    expect(decodeClientSettingsPatch({})).not.toHaveProperty("alwaysShowMessageTimes");
+  });
+});

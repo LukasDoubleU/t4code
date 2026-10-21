@@ -6,6 +6,7 @@ import {
   EventId,
   MessageId,
   NodeId,
+  type OrchestratorMcpEnvironmentLinkInput,
   OrchestratorMcpFailure,
   ProjectId,
   ProviderDriverKind,
@@ -66,9 +67,10 @@ import {
 } from "./PeerLinks.testkit.ts";
 import * as RemoteDelegation from "./RemoteDelegation.ts";
 
-// The laptop's agent asks the user to link the box. The laptop is its real
+// The laptop asks the user to link the box. The laptop is its real
 // orchestrator and toolkit; the box is its real descriptor and MCP OAuth on a
-// socket. The user's answer goes through PeerLinkRequests, as the card's does.
+// socket. The toolkit offers agents no t3_environment_link, so the ask goes
+// through PeerLinkRequests as that tool's did, and so does the user's answer.
 
 const laptop = descriptorOf("environment-laptop", "Laptop");
 const box = descriptorOf("environment-box", "Box");
@@ -176,18 +178,22 @@ const makeLaptop = Effect.gen(function* () {
   );
   const here = yield* Layer.build(layerHere);
   const server = Context.get(here, McpServer.McpServer);
+  const requests = Context.get(here, PeerLinkRequests.PeerLinkRequests);
   return {
     links: Context.get(linking, PeerLinks.PeerLinks),
-    requests: Context.get(here, PeerLinkRequests.PeerLinkRequests),
+    requests,
     orchestrator: Context.get(here, Orchestrator.OrchestratorV2),
     sink: Context.get(here, EventSink.EventSinkV2),
     projections: Context.get(here, ProjectionStore.ProjectionStoreV2),
     sql: Context.get(database, SqlClient.SqlClient),
-    call: (args: Record<string, unknown>, callScope = scope) =>
+    call: (input: OrchestratorMcpEnvironmentLinkInput, callScope = scope) =>
+      requests.request(callScope, input),
+    toolNames: () => server.tools.map(({ tool }) => tool.name),
+    callTool: (name: string, args: Record<string, unknown>) =>
       server
-        .callTool({ name: "t3_environment_link", arguments: args })
+        .callTool({ name, arguments: args })
         .pipe(
-          Effect.provideService(McpInvocationContext.McpInvocationContext, callScope),
+          Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
           Effect.provideService(McpSchema.McpServerClient, mcpClient),
         ),
   };
@@ -420,11 +426,6 @@ const storedText = (a: Laptop) =>
     return text;
   });
 
-const errorOf = (result: McpSchema.CallToolResult) => {
-  const text = result.content[0];
-  return result.isError === true && text?.type === "text" ? JSON.parse(text.text) : undefined;
-};
-
 /** Runs `effect` a year from now, when every link made today has expired. */
 const afterLinksExpire = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
@@ -466,8 +467,7 @@ it.live("the agent asks without waiting, and the user links the box after its tu
       });
       const card = yield* pendingCard(a);
       // The call returns at once: no tool call outlives a provider's timeout.
-      expect(asked.isError).toBe(false);
-      expect(asked.structuredContent).toEqual({ status: "pending", turnItemId: card.id });
+      expect(asked).toEqual({ status: "pending", turnItemId: card.id });
       // The card names the box, found by asking its address.
       expect(card).toMatchObject({
         url: b.url,
@@ -539,7 +539,7 @@ it.live("the agent asks without waiting, and the user links the box after its tu
       // A retry that lost the first result gets the card's outcome, and records nothing.
       const before = (yield* a.orchestrator.getThreadProjection(threadId)).turnItems.length;
       const retried = yield* a.call({ url: b.url, clientRequestId: "link-box" });
-      expect(retried.structuredContent).toEqual({
+      expect(retried).toEqual({
         status: "linked",
         environmentId: box.environmentId,
         label: "Box",
@@ -557,7 +557,7 @@ it.live("a retry of a pending request returns pending and shows no second card",
       yield* seedThread(a);
       const first = yield* a.call({ url: b.url, clientRequestId: "link-box" });
       const retried = yield* a.call({ url: b.url, clientRequestId: "link-box" });
-      expect(retried.structuredContent).toEqual(first.structuredContent);
+      expect(retried).toEqual(first);
       const cards = (yield* a.orchestrator.getThreadProjection(threadId)).turnItems.filter(
         (item) => item.type === "link_request",
       );
@@ -579,8 +579,8 @@ it.live("a later provider session reusing a clientRequestId gets a card of its o
           thread: { ...scope.thread!, providerSessionId: "provider-session:laptop-2" },
         },
       );
-      expect(later.structuredContent).toMatchObject({ status: "pending" });
-      expect(later.structuredContent).not.toEqual(first.structuredContent);
+      expect(later).toMatchObject({ status: "pending" });
+      expect(later).not.toEqual(first);
       const cards = (yield* a.orchestrator.getThreadProjection(threadId)).turnItems.filter(
         (item) => item.type === "link_request",
       );
@@ -830,24 +830,14 @@ it.live("a code the box refuses fails the request with its reason, and links not
   ),
 );
 
-it.live("an agent below full access may not ask, and no card is shown", () =>
+it.live("an agent cannot ask: /mcp has no t3_environment_link, and no card is shown", () =>
   withBoth((a, b) =>
     Effect.gen(function* () {
-      yield* seedThread(a, "auto");
-      const refused = yield* a.call({ url: b.url });
-      expect(errorOf(refused)).toMatchObject({ code: "capability_denied" });
-      expect(yield* cardOf(a)).toBeUndefined();
-    }),
-  ),
-);
-
-it.live("work another environment's link started may not ask, and no card is shown", () =>
-  withBoth((a, b) =>
-    Effect.gen(function* () {
-      yield* seedThread(a, "full-access", { sessionId: "session:desk", label: "T3 Code · Desk" });
-      const refused = yield* a.call({ url: b.url });
-      expect(errorOf(refused)).toMatchObject({ code: "capability_denied" });
-      expect(errorOf(refused).message).toContain("T3 Code · Desk");
+      yield* seedThread(a);
+      expect(a.toolNames()).toContain("t3_environment_links");
+      expect(a.toolNames()).not.toContain("t3_environment_link");
+      const refused = yield* a.callTool("t3_environment_link", { url: b.url }).pipe(Effect.flip);
+      expect(refused.message).toContain("not found");
       expect(yield* cardOf(a)).toBeUndefined();
     }),
   ),
@@ -860,7 +850,7 @@ it.live(
       Effect.gen(function* () {
         yield* seedThread(a);
         const asked = yield* a.call({ reason: "Delegate the build to the vps.", hint: "vps" });
-        expect(asked.structuredContent).toMatchObject({ status: "pending" });
+        expect(asked).toMatchObject({ status: "pending" });
         const card = yield* pendingCard(a);
         expect(card).toMatchObject({ reason: "Delegate the build to the vps.", hint: "vps" });
         expect(card.url).toBeUndefined();
@@ -900,7 +890,7 @@ it.live("naming a machine that is already linked returns the link at once, with 
       const pairing = yield* b.auth.issuePairingCredential();
       yield* a.links.link({ url: b.url, pairingCode: pairing.credential, access: "auto" });
       const asked = yield* a.call({ environmentId: box.environmentId });
-      expect(asked.structuredContent).toEqual({
+      expect(asked).toEqual({
         status: "linked",
         environmentId: box.environmentId,
         label: "Box",
@@ -909,8 +899,10 @@ it.live("naming a machine that is already linked returns the link at once, with 
       expect(yield* cardOf(a)).toBeUndefined();
 
       // Not both: the address could name another machine than the id.
-      const both = yield* a.call({ environmentId: box.environmentId, url: b.url });
-      expect(errorOf(both)).toMatchObject({ code: "invalid_request" });
+      const both = yield* a
+        .call({ environmentId: box.environmentId, url: b.url })
+        .pipe(Effect.flip);
+      expect(both).toMatchObject({ code: "invalid_request" });
     }),
   ),
 );
@@ -921,7 +913,7 @@ it.live("a link that expired goes through the card, so the user can link it agai
       yield* seedThread(a);
       yield* linkTo(a.links, b, "read-only");
       const asked = yield* a.call({ environmentId: box.environmentId }).pipe(afterLinksExpire);
-      expect(asked.structuredContent).toMatchObject({ status: "pending" });
+      expect(asked).toMatchObject({ status: "pending" });
       const card = yield* pendingCard(a);
 
       // Keeping the expired link is no answer: the card fails and says why.

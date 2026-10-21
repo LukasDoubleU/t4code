@@ -219,7 +219,7 @@ const make = Effect.gen(function* () {
    * empty list reads as a dead end and agents go looking elsewhere.
    */
   const NOT_LISTED =
-    "A machine the user means that is not listed here is not linked yet: call t3_environment_link with a hint from their words (or the environmentId of a machine they mentioned), and the user picks it and its access in a card.";
+    "A machine the user means that is not listed here is not linked yet: ask the user to link it in Settings → Connections.";
 
   const listLinks: PeerForwarding["Service"]["links"] = Effect.fn("PeerForwarding.listLinks")(
     function* (scope) {

@@ -73,7 +73,8 @@ time. Dragging a pinned thread out of the pinned section does not ask for unpin 
 Pinned and active boundary labels appear only while dragging, without moving the rows. The
 other rows slide aside to show where the thread will land. When you cross into another section,
 the dragged thread shows the action the drop performs, with its icon: **Pin**, **Unpin**,
-**Settle**, **Un-settle**, or **Wake**. Its status and hover actions hide during the drag. A pinned
+**Settle**, **Un-settle**, **Wake**, **Background**, or **Bring to front**. Its status and hover
+actions hide during the drag. A pinned
 thread keeps its pin only while it stays in the pinned section; once it leaves, the badge takes
 over. Reordering within the same section shows no badge. When there are no pins, drag to the top
 edge to pin a thread. Section labels stay readable for the whole drag, and the section the
@@ -143,6 +144,24 @@ above the folders and snoozed threads below them. Project and machine folders ke
 threads hidden until you show them; with status folders, settled threads stay in the **Settled**
 section. Grouped threads cannot be dragged, and the Working section is off. **None** returns to
 one list.
+
+### Keep agents' threads in the background
+
+On web and desktop, threads that an agent starts on its own, here or from a linked machine, wait
+in a collapsed **Background** section near the bottom of the sidebar until you write in them.
+Threads you start yourself stay in the main list, even when you
+[start them in the background](#start-in-the-background). Expanded, the section lists its
+threads in the current sort, as one list whatever the grouping. A thread there
+comes back to the main list while it needs you: a question or approval is waiting, a snooze
+ended, or its run failed, the first two groups of the **Status** sort. Once you have dealt with
+it, it returns to Background. Settling still moves a finished thread to **Settled**, and
+subagents stay with their parent thread.
+
+To move any thread yourself, choose **Move to background** or **Bring to front** from its menu,
+or drag it between the active list and the **Background** header. A thread you moved to
+Background comes back when you write in it again; one you brought to front stays in the main
+list. Pinned, snoozed, and settled threads keep their own sections. Each device keeps its own
+choices. To show every thread as before, turn off **Background section** in the sort menu.
 
 ### Fold working threads (beta)
 

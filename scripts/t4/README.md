@@ -72,3 +72,21 @@ vp run icons:export:t4
 The fork's T4 icon is drawn in `assets/prod/t4`: `icon.svg` for 48 px and up, and `icon-16.svg`, `icon-24.svg` and `icon-32.svg`, fitted to the pixel grid so the tray and the favicon stay sharp. The script renders them over the production Windows, web and Linux icons in `assets/prod` that the builds package; macOS and iOS keep upstream's. It needs only Node and the repository's dependencies.
 
 Upstream's `vp run icons:export` renders the T3 mark over the same files, so don't run it here. When an upstream merge conflicts on one of them, keep the fork's version and run this script again.
+
+## Upstream watch: `upstream.json`
+
+The workflow `t4-upstream-watch.yml` runs daily and can be started by hand. It comments on the upkeep issue named in `upstream.json` when upstream publishes a stable release newer than `base`, or when a carried upstream PR's state differs from the one last reported, or from the one recorded here if none was. Each change is reported once. A release comment lists which carried PRs the release contains.
+
+Keep `upstream.json` current as part of the upkeep:
+
+- After merging a release, set `base` to its tag and remove the PRs that shipped in it.
+- When the fork starts or stops carrying an upstream PR, add or remove it with its current state: `open`, `closed` or `merged`.
+
+The logic is in `.github/scripts/t4-upstream-watch.cjs`, which needs only Node. `--dry-run` prints the comment instead of posting it, and `--config <file>` tries another config, for example one with an older `base`:
+
+```sh
+node --test .github/scripts/t4-upstream-watch.test.cjs
+node .github/scripts/t4-upstream-watch.cjs --dry-run --repo <owner>/t4code
+```
+
+Without `--dry-run` it posts with `GITHUB_TOKEN`; leave that to the workflow. A dry run uses `GITHUB_TOKEN` for its reads when it is set, and reads anonymously otherwise.

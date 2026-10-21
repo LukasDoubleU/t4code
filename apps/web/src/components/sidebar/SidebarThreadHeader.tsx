@@ -1,4 +1,4 @@
-import { ArrowUpDownIcon, FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -7,17 +7,11 @@ import {
   type RefObject,
 } from "react";
 
-import {
-  useBoringSidebarEnabled,
-  useClientSettings,
-  updateClientSettings,
-} from "~/hooks/useSettings";
-import { Menu, MenuTrigger, MenuPopup, MenuRadioGroup, MenuRadioItem } from "../ui/menu";
-
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SidebarViewOptionsMenu } from "./SidebarViewOptionsMenu";
 
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
@@ -111,7 +105,9 @@ export function SidebarThreadHeader({
         ) : null}
       </div>
       <div className="flex shrink-0 items-center">
-        <SidebarThreadSortMenu />
+        <SidebarViewOptionsMenu
+          trigger={<SidebarHeaderIconButton label="Sort and group threads" />}
+        />
         {hasProjects ? (
           <>
             {projectScope}
@@ -181,47 +177,5 @@ export function SidebarHeaderIconButton({
       </TooltipTrigger>
       <TooltipPopup side="top">{tooltip}</TooltipPopup>
     </Tooltip>
-  );
-}
-
-function SidebarThreadSortMenu() {
-  const sortByLastMessage = useClientSettings((s) => s.sidebarSortByLastMessage);
-  const boringSidebarEnabled = useBoringSidebarEnabled();
-  // Project folders replace the Working section, so the sort applies inside them.
-  const workingShelfEnabled =
-    useClientSettings((s) => s.sidebarWorkingShelfEnabled) && !boringSidebarEnabled;
-  return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <SidebarHeaderIconButton
-            label="Sort active threads"
-            disabled={workingShelfEnabled}
-            tooltip={
-              workingShelfEnabled
-                ? "Working section orders active threads by return time"
-                : "Sort active threads"
-            }
-          />
-        }
-      >
-        <ArrowUpDownIcon />
-      </MenuTrigger>
-      <MenuPopup align="end">
-        <MenuRadioGroup
-          value={sortByLastMessage ? "last_message" : "manual"}
-          onValueChange={(value) =>
-            updateClientSettings({ sidebarSortByLastMessage: value === "last_message" })
-          }
-        >
-          <MenuRadioItem value="manual" closeOnClick>
-            Configured order
-          </MenuRadioItem>
-          <MenuRadioItem value="last_message" closeOnClick>
-            Last message
-          </MenuRadioItem>
-        </MenuRadioGroup>
-      </MenuPopup>
-    </Menu>
   );
 }

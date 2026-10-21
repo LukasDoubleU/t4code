@@ -1286,3 +1286,24 @@ describe("active thread sort preference", () => {
     expect(decodeClientSettingsPatch({})).not.toHaveProperty("sidebarSortByLastMessage");
   });
 });
+
+describe("sidebar sort and group menu preferences", () => {
+  it("keeps today's sidebar for existing clients and accepts the menu's patches", () => {
+    const defaults = decodeClientSettings({});
+    expect(defaults.sidebarSortByStatus).toBe(false);
+    expect(defaults.sidebarThreadGrouping).toBe("none");
+
+    const settings = decodeClientSettings({
+      sidebarSortByStatus: true,
+      sidebarThreadGrouping: "machine",
+    });
+    expect(encodeClientSettings(settings)).toMatchObject({
+      sidebarSortByStatus: true,
+      sidebarThreadGrouping: "machine",
+    });
+    expect(
+      decodeClientSettingsPatch({ sidebarSortByStatus: false, sidebarThreadGrouping: "status" }),
+    ).toEqual({ sidebarSortByStatus: false, sidebarThreadGrouping: "status" });
+    expect(decodeClientSettingsPatch({})).not.toHaveProperty("sidebarThreadGrouping");
+  });
+});

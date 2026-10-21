@@ -1,0 +1,46 @@
+# Fork-only: comments on the fork's upkeep issue when upstream publishes a
+# stable release newer than the fork's base, or when a carried upstream PR
+# changes state. .github/scripts/t4-upstream-watch.cjs does the work and reads
+# scripts/t4/upstream.json, which the upkeep keeps current.
+name: t4 upstream watch
+
+on:
+  schedule:
+    - cron: "37 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+# Two runs at once could both post the same change.
+concurrency:
+  group: t4-upstream-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Check upstream
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # The repository is public, so Git needs no credentials. actions/checkout
+      # fails cleaning up on the vendored .repos gitlinks (see t4-release.yml),
+      # and the watch needs only its script and config.
+      - name: Checkout
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 --filter=blob:none origin "$GITHUB_SHA"
+          git sparse-checkout set .github/scripts scripts/t4
+          git checkout --detach FETCH_HEAD
+
+      - name: Test the watch
+        run: node --test .github/scripts/t4-upstream-watch.test.cjs
+
+      - name: Comment on changes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/t4-upstream-watch.cjs

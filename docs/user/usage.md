@@ -109,11 +109,13 @@ choose the model you use next.
 New threads start on that account by themselves, with the same model and options where it offers
 them. Only accounts signed in on the thread's environment count, and the model picker marks the
 recommended one. A new thread follows new readings only while its prompt is empty; once you type,
-it keeps its account until you send or clear the prompt. Choosing an account by hand keeps it for
-that thread, threads that already exist never switch, and an account without limit readings, such
-as one billing an API key, stays as it is. Turn off **Start new threads on the recommended
-account** next to **Use next** to keep your usual default; like the session room, the choice is
-remembered per device. Agents see the same ranking at the default 25% session room:
+it keeps its account until you send or clear the prompt. An account you choose by hand stays while
+the new thread is open; the next time you open an empty new thread, it starts on the recommended
+account again with the model you chose. Threads that already exist never switch, and an account
+without limit readings, such as one billing an API key, stays as it is. Turn off **Start new
+threads on the recommended account** next to **Use next** to keep your usual default; like the
+session room, the choice is remembered per device. Agents see the same ranking at the default 25%
+session room:
 `orchestrator_capabilities` gives each account its place, whether it is recommended, and why.
 
 When a Claude or Codex account has no overall weekly quota left, its pooled session contribution

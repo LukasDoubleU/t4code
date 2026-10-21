@@ -2515,11 +2515,6 @@ export default function ChatView(props: ChatViewProps) {
       activeProject?.id ?? null,
     ),
   );
-  useStartOnRecommendedAccount({
-    draftId: isServerThread ? null : draftId,
-    environmentId: providerEnvironmentId ?? null,
-    entries: providerInstanceEntries,
-  });
   const activeThreadModelInstanceId = activeThread?.modelSelection.instanceId;
   const { selectedProviderEntry, requestedDriverKind } = resolveComposerProviderSelection({
     entries: providerInstanceEntries,
@@ -2534,6 +2529,13 @@ export default function ChatView(props: ChatViewProps) {
   });
   const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
   const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
+  useStartOnRecommendedAccount({
+    draftId: isServerThread ? null : draftId,
+    environmentId: providerEnvironmentId ?? null,
+    entries: providerInstanceEntries,
+    composerInstanceId: activeProviderInstanceId,
+    fallbackSelection: activeThread?.modelSelection ?? null,
+  });
   const activeProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const { enabled: interactionModeEnabled, interactionMode } = resolveComposerInteractionMode({
     planModeEnabled: settings.planModeEnabled,

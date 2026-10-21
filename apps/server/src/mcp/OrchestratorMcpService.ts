@@ -114,6 +114,8 @@ import { isLiveCallerShell } from "./threadAccess.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
+import { loadNextAccounts } from "../usage/nextAccountInstances.ts";
+import * as UsageLimitSources from "../usage/UsageLimitSources.ts";
 
 const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
 const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1_000;
@@ -901,6 +903,7 @@ const make = Effect.gen(function* () {
   const gitDriver = yield* GitVcsDriver.GitVcsDriver;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const remoteDelegation = yield* RemoteDelegation.RemoteDelegation;
+  const usageLimitSources = yield* Effect.serviceOption(UsageLimitSources.UsageLimitSources);
 
   const requireProject = (projectId: ProjectId) =>
     projects.getById(projectId).pipe(
@@ -2025,6 +2028,11 @@ const make = Effect.gen(function* () {
         Effect.map((settings) => settings.providerModelPreferences ?? {}),
         Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
       );
+      const nextAccounts = yield* loadNextAccounts(
+        scope.environmentId,
+        providers,
+        usageLimitSources,
+      );
       return {
         parentThreadId: parent?.thread.id ?? null,
         inheritedProviderInstanceId: parent?.thread.modelSelection.instanceId ?? null,
@@ -2037,6 +2045,7 @@ const make = Effect.gen(function* () {
             provider,
             orchestrationCapableInstanceIds.has(provider.instanceId),
           );
+          const nextAccount = nextAccounts.get(provider.instanceId);
           return {
             providerInstanceId: provider.instanceId,
             driverKind: provider.driver,
@@ -2062,6 +2071,7 @@ const make = Effect.gen(function* () {
             canRunChildTask: constraints.length === 0,
             canRunCrossProviderChildTask: constraints.length === 0,
             constraints: [...constraints],
+            ...(nextAccount === undefined ? {} : { nextAccount }),
           };
         }),
         features: {

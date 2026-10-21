@@ -572,6 +572,13 @@ export const OrchestratorMcpProviderCapability = Schema.Struct({
   canRunChildTask: Schema.Boolean,
   canRunCrossProviderChildTask: Schema.Boolean,
   constraints: Schema.Array(Schema.String),
+  /**
+   * Where the instance's subscription account stands in Usage → Limits → Use next, among this
+   * environment's accounts of its driver. Absent without a usage reading.
+   */
+  nextAccount: Schema.optional(
+    Schema.Struct({ place: Schema.Number, recommended: Schema.Boolean, reason: Schema.String }),
+  ),
 });
 export type OrchestratorMcpProviderCapability = typeof OrchestratorMcpProviderCapability.Type;
 

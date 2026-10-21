@@ -3234,6 +3234,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   harness: "OpenCode",
                   model: turnInput.modelSelection.model,
                 }),
+                turnInput.threadMemory?.instructions,
               ]
                 .filter(Boolean)
                 .join("\n\n");

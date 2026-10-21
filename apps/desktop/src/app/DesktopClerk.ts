@@ -226,13 +226,10 @@ export const make = Effect.gen(function* () {
         void runPromise(webLinks.receive(NodeURL.pathToFileURL(path).href));
       });
       handleSecondInstance = (argv) => {
-        if (
-          argv?.some(
-            (value) =>
-              startProviderAuthHandoff(value) || resumeProviderAuth(value) || openAppLink(value),
-          )
-        )
+        if (argv?.some((value) => startProviderAuthHandoff(value) || resumeProviderAuth(value)))
           return;
+        // An app link waits for a renderer, which a window closed to the tray no longer has.
+        argv?.some(openAppLink);
         void runPromise(
           Effect.gen(function* () {
             const desktopWindow = yield* DesktopWindow.DesktopWindow;

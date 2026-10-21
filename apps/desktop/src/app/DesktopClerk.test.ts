@@ -345,6 +345,53 @@ describe("DesktopClerk", () => {
     );
   });
 
+  it.effect("opens the window for an app link from a second instance", () => {
+    storageMock.mockReturnValue(storageAdapter);
+    createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
+    const listeners = new Map<string, (...args: unknown[]) => void>();
+    const link = "t3code://threads/env-1/thread-1";
+    const delivered = Promise.withResolvers<string>();
+    const activated = Promise.withResolvers<void>();
+    const electronApp = {
+      on: (name: string, listener: (...args: unknown[]) => void) =>
+        Effect.sync(() => {
+          listeners.set(name, listener);
+        }),
+    } as unknown as ElectronApp.ElectronApp["Service"];
+
+    return Effect.gen(function* () {
+      const clerk = yield* DesktopClerk.DesktopClerk;
+      yield* clerk.configure;
+      listeners.get("second-instance")!({}, ["t3", link]);
+      const [received] = yield* Effect.promise(() =>
+        Promise.all([delivered.promise, activated.promise]),
+      );
+      assert.strictEqual(received, link);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.mock(DesktopWindow.DesktopWindow)({
+            activate: Effect.sync(() => activated.resolve()),
+          }),
+          layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners),
+        ),
+      ),
+      Effect.provideService(ElectronApp.ElectronApp, electronApp),
+      Effect.provideService(
+        ElectronWindow.ElectronWindow,
+        {} as ElectronWindow.ElectronWindow["Service"],
+      ),
+      Effect.provideService(
+        DesktopWebLinks.DesktopWebLinks,
+        DesktopWebLinks.DesktopWebLinks.of({
+          receive: (url) => Effect.sync(() => delivered.resolve(url)),
+          setRendererReady: () => Effect.void,
+        }),
+      ),
+    );
+  });
+
   it.effect.each(["darwin", "win32", "linux"] as const)(
     "quits a second launch before initializing Clerk or the application runtime on %s",
     (platform) =>

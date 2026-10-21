@@ -11,6 +11,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { NextAccountPreferences } from "./components/usage/nextAccountPreferences";
 import {
+  draftModelState,
   rankDraftInstances,
   recommendedDraftSelection,
   recommendedInstanceIds,
@@ -103,6 +104,7 @@ function choose(input: {
   readonly instanceId: string;
   readonly explicit?: boolean;
   readonly enabled?: boolean;
+  readonly prompt?: string;
   readonly environments?: ReadonlyArray<readonly [EnvironmentId, ReadonlyArray<ServerProvider>]>;
 }) {
   const entries = deriveProviderInstanceEntries(hereProviders);
@@ -122,11 +124,12 @@ function choose(input: {
   });
   return recommendedDraftSelection({
     enabled: input.enabled ?? true,
-    draft: {
+    draft: draftModelState({
+      prompt: input.prompt ?? "",
       activeProvider: id(input.instanceId),
       modelSelectionByProvider: { [id(input.instanceId)]: selection(input.instanceId) },
       ...(input.explicit ? { modelSelectionExplicit: true } : {}),
-    },
+    }),
     entries,
     ranks,
   });
@@ -139,6 +142,15 @@ describe("recommendedDraftSelection", () => {
 
   it("leaves a draft already on the recommended account", () => {
     expect(choose({ instanceId: "claude_urgent" })).toBeNull();
+  });
+
+  it("follows the recommendation only while the prompt is empty", () => {
+    expect(choose({ instanceId: "claudeAgent", prompt: "" })).toEqual(selection("claude_urgent"));
+    expect(choose({ instanceId: "claudeAgent", prompt: "Fix the flaky test" })).toBeNull();
+    // Clearing the prompt, down to stray whitespace, lets the draft follow again.
+    expect(choose({ instanceId: "claudeAgent", prompt: " \n" })).toEqual(
+      selection("claude_urgent"),
+    );
   });
 
   it("keeps an account chosen by hand", () => {

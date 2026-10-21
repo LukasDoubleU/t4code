@@ -27,7 +27,29 @@ import { environmentPresentations } from "./state/presentation";
 type DraftModelState = Pick<
   ComposerThreadDraftState,
   "activeProvider" | "modelSelectionByProvider" | "modelSelectionExplicit"
->;
+> & {
+  readonly hasPrompt: boolean;
+};
+
+/**
+ * What the recommendation reads of a draft. The prompt counts only as whether it has text, so
+ * typing does not re-render the chat view that holds the draft.
+ */
+export function draftModelState(
+  draft: Pick<
+    ComposerThreadDraftState,
+    "prompt" | "activeProvider" | "modelSelectionByProvider" | "modelSelectionExplicit"
+  >,
+): DraftModelState {
+  return {
+    activeProvider: draft.activeProvider,
+    modelSelectionByProvider: draft.modelSelectionByProvider,
+    ...(draft.modelSelectionExplicit === undefined
+      ? {}
+      : { modelSelectionExplicit: draft.modelSelectionExplicit }),
+    hasPrompt: draft.prompt.trim().length > 0,
+  };
+}
 
 const NO_RANKS: ReadonlyMap<ProviderInstanceId, NextInstanceRank> = new Map();
 
@@ -62,8 +84,9 @@ export function rankDraftInstances(input: {
 
 /**
  * The selection that moves a draft to the recommended account of its provider, with the same
- * model and options, or null to leave it. A choice made by hand stays, and so does an instance
- * without a reading, such as one that bills an API key.
+ * model and options, or null to leave it. A draft moves only while its prompt is empty, so the
+ * account never changes under a prompt being written. A choice made by hand stays, and so does
+ * an instance without a reading, such as one that bills an API key.
  */
 export function recommendedDraftSelection(input: {
   readonly enabled: boolean;
@@ -73,7 +96,7 @@ export function recommendedDraftSelection(input: {
 }): ModelSelection | null {
   const { draft } = input;
   if (!input.enabled || draft === null || draft.modelSelectionExplicit === true) return null;
-  if (draft.activeProvider === null) return null;
+  if (draft.hasPrompt || draft.activeProvider === null) return null;
   const selection = draft.modelSelectionByProvider[draft.activeProvider];
   const current = input.ranks.get(draft.activeProvider);
   if (selection === undefined || current === undefined || current.recommended) return null;
@@ -127,7 +150,7 @@ export function useRecommendedInstanceIds(
 
 /**
  * Keeps a draft on its provider's recommended account until the user picks an account by hand.
- * Readings that change while the draft waits move it along; threads that exist never move.
+ * Readings that change while its prompt is empty move it along; threads that exist never move.
  */
 export function useStartOnRecommendedAccount(input: {
   readonly draftId: DraftId | null;
@@ -140,15 +163,7 @@ export function useStartOnRecommendedAccount(input: {
   const draft = useComposerDraftStore(
     useShallow((state): DraftModelState | null => {
       const current = draftId === null ? null : state.getComposerDraft(draftId);
-      return current === null
-        ? null
-        : {
-            activeProvider: current.activeProvider,
-            modelSelectionByProvider: current.modelSelectionByProvider,
-            ...(current.modelSelectionExplicit === undefined
-              ? {}
-              : { modelSelectionExplicit: current.modelSelectionExplicit }),
-          };
+      return current === null ? null : draftModelState(current);
     }),
   );
   const setModelSelection = useComposerDraftStore((state) => state.setModelSelection);

@@ -1331,3 +1331,15 @@ describe("always show message times", () => {
     expect(decodeClientSettingsPatch({})).not.toHaveProperty("alwaysShowMessageTimes");
   });
 });
+
+describe("message time style", () => {
+  it("reads relative for clients that never chose and keeps a device's choice", () => {
+    expect(decodeClientSettings({}).messageTimeStyle).toBe("relative");
+    const settings = decodeClientSettings({ messageTimeStyle: "clock" });
+    expect(encodeClientSettings(settings)).toMatchObject({ messageTimeStyle: "clock" });
+    expect(decodeClientSettingsPatch({ messageTimeStyle: "clock" })).toEqual({
+      messageTimeStyle: "clock",
+    });
+    expect(decodeClientSettingsPatch({})).not.toHaveProperty("messageTimeStyle");
+  });
+});

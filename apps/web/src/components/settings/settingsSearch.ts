@@ -395,6 +395,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["timestamp time chat message hover visible"],
   },
   {
+    id: "message-time-style",
+    title: "Message times",
+    to: "/settings/general",
+    searchTerms: ["timestamp relative ago clock time of day chat message"],
+  },
+  {
     id: "response-streaming",
     title: "Response streaming",
     to: "/settings/general",

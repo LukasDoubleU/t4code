@@ -204,6 +204,11 @@ const TIMESTAMP_FORMAT_LABELS = {
   "24-hour": "24-hour",
 } as const;
 
+const MESSAGE_TIME_STYLE_LABELS = {
+  relative: "Relative",
+  clock: "Clock time",
+} as const;
+
 const CHAT_WIDTH_LABELS: Record<ChatWidth, string> = {
   comfortable: "Comfortable",
   wide: "Wide",
@@ -560,6 +565,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.alwaysShowMessageTimes !== DEFAULT_UNIFIED_SETTINGS.alwaysShowMessageTimes
       ? ["Always show message times"]
       : []),
+    ...(settings.messageTimeStyle !== DEFAULT_UNIFIED_SETTINGS.messageTimeStyle
+      ? ["Message times"]
+      : []),
     ...(settings.notificationMode !== DEFAULT_UNIFIED_SETTINGS.notificationMode
       ? ["Thread notifications"]
       : []),
@@ -724,6 +732,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       mathRenderingEnabled: DEFAULT_UNIFIED_SETTINGS.mathRenderingEnabled,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       alwaysShowMessageTimes: DEFAULT_UNIFIED_SETTINGS.alwaysShowMessageTimes,
+      messageTimeStyle: DEFAULT_UNIFIED_SETTINGS.messageTimeStyle,
       notificationMode: DEFAULT_UNIFIED_SETTINGS.notificationMode,
       inAppNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
@@ -2438,6 +2447,43 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) => updateSettings({ alwaysShowMessageTimes: checked })}
               aria-label="Always show message times"
             />
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("message-time-style")}
+          description="How always-shown message times read: relative, like “10m ago”, or the time of day."
+          resetAction={
+            settings.messageTimeStyle !== DEFAULT_UNIFIED_SETTINGS.messageTimeStyle ? (
+              <SettingResetButton
+                label="message times"
+                onClick={() =>
+                  updateSettings({ messageTimeStyle: DEFAULT_UNIFIED_SETTINGS.messageTimeStyle })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.messageTimeStyle}
+              disabled={!settings.alwaysShowMessageTimes}
+              onValueChange={(value) => {
+                if (value === "relative" || value === "clock") {
+                  updateSettings({ messageTimeStyle: value });
+                }
+              }}
+            >
+              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Message times">
+                <SelectValue>{MESSAGE_TIME_STYLE_LABELS[settings.messageTimeStyle]}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="relative">
+                  {MESSAGE_TIME_STYLE_LABELS.relative}
+                </SelectItem>
+                <SelectItem hideIndicator value="clock">
+                  {MESSAGE_TIME_STYLE_LABELS.clock}
+                </SelectItem>
+              </SelectPopup>
+            </Select>
           }
         />
         <SettingsRow

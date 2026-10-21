@@ -6,7 +6,8 @@
 .DESCRIPTION
   Finds a release of the fork, downloads its Windows installer and checks it
   against the release's SHA256SUMS, quits T3 Code, backs up the files in the
-  T3 home's userdata, runs the installer silently and starts the app again.
+  T3 home's userdata, runs the installer silently, removes all but the newest
+  install backups and starts the app again.
 
 .EXAMPLE
   pwsh -File scripts/t4/install-t4.ps1
@@ -20,6 +21,9 @@ param(
   [string] $Version,
   # Don't back up userdata before installing.
   [switch] $SkipBackup,
+  # Install backups to keep after a successful install; older ones are removed.
+  [ValidateRange(1, [int]::MaxValue)]
+  [int] $KeepBackups = 3,
   # Quit T3 Code without asking, even while agents or terminals run in it.
   [switch] $Force
 )
@@ -154,6 +158,28 @@ function Backup-Userdata([string] $installedVersion) {
   $target
 }
 
+# Backup-Userdata names its folders <time>-<installed version>, or <time> when
+# no version was installed. Other folders in backups are left alone, such as
+# the <time>-undo-peer-links backups of undo-peer-link-migrations.ps1.
+function Remove-OldBackups([int] $keep) {
+  $old = Get-ChildItem -LiteralPath (Join-Path $t3Home 'backups') -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^\d{8}-\d{6}(-\d+\.\d+\.\d+\S*)?$' -and $_.Name -notlike '*-undo-peer-links' } |
+    Sort-Object Name -Descending | Select-Object -Skip $keep
+  foreach ($folder in $old) {
+    if (-not $PSCmdlet.ShouldProcess($folder.FullName, 'Remove old backup')) { continue }
+    # The install already succeeded, so a backup that can't be removed only warns.
+    try {
+      Remove-Item -LiteralPath $folder.FullName -Recurse -Force
+      Write-Host "Removed old backup $($folder.FullName)"
+    } catch {
+      Write-Warning "Could not remove old backup $($folder.FullName): $($_.Exception.Message)"
+    }
+  }
+}
+
+# Dot-sourcing the script only defines its functions, for tests.
+if ($MyInvocation.InvocationName -eq '.') { return }
+
 $release = Find-Release
 $installer = $release.assets | Where-Object { $_.name -match $installerAsset } | Select-Object -First 1
 $checksums = $release.assets | Where-Object { $_.name -eq $checksumsAsset } | Select-Object -First 1
@@ -197,17 +223,23 @@ try {
   }
 
   $backup = $null
-  if (-not $SkipBackup -and (Test-Path -LiteralPath $userdata)) {
+  $backingUp = -not $SkipBackup -and (Test-Path -LiteralPath $userdata)
+  if ($backingUp) {
     $backup = Backup-Userdata $(if ($app) { $app.Version })
   }
 
-  if (-not $PSCmdlet.ShouldProcess($installer.name, 'Run the installer silently')) { exit 0 }
+  if (-not $PSCmdlet.ShouldProcess($installer.name, 'Run the installer silently')) {
+    # Lists what a real run would remove, which also counts the backup it makes.
+    if ($WhatIfPreference) { Remove-OldBackups ($KeepBackups - [int]$backingUp) }
+    exit 0
+  }
   $run = Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -PassThru
   $app = Find-InstalledApp
   if ($run.ExitCode -ne 0 -or -not $app -or $app.Version -ne $releaseVersion) {
     Fail ("the installer failed (exit code $($run.ExitCode))" + $(if ($backup) { "; the backup is in $backup" }))
   }
   Write-Host "Installed T3 Code $releaseVersion."
+  Remove-OldBackups $KeepBackups
 } finally {
   Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
 }

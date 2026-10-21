@@ -7,7 +7,11 @@ import {
   type RefObject,
 } from "react";
 
-import { useClientSettings, updateClientSettings } from "~/hooks/useSettings";
+import {
+  useBoringSidebarEnabled,
+  useClientSettings,
+  updateClientSettings,
+} from "~/hooks/useSettings";
 import { Menu, MenuTrigger, MenuPopup, MenuRadioGroup, MenuRadioItem } from "../ui/menu";
 
 import { cn } from "~/lib/utils";
@@ -182,7 +186,10 @@ export function SidebarHeaderIconButton({
 
 function SidebarThreadSortMenu() {
   const sortByLastMessage = useClientSettings((s) => s.sidebarSortByLastMessage);
-  const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
+  const boringSidebarEnabled = useBoringSidebarEnabled();
+  // Project folders replace the Working section, so the sort applies inside them.
+  const workingShelfEnabled =
+    useClientSettings((s) => s.sidebarWorkingShelfEnabled) && !boringSidebarEnabled;
   return (
     <Menu>
       <MenuTrigger

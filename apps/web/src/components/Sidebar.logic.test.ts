@@ -51,6 +51,7 @@ import {
   sortPinnedThreadsForSidebar,
   sortScopedProjectsForSidebar,
   sortSidebarV2ProjectGroups,
+  sortThreadsForSidebar,
   shouldNavigateAfterThreadPark,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
   type SidebarListItem,
@@ -1727,6 +1728,38 @@ describe("groupSidebarThreadsByProject", () => {
       { projectKey: "t3code", inbox: ["a", "b"], settled: ["c"] },
       { projectKey: "fleet", inbox: [], settled: [] },
     ]);
+  });
+
+  it("keeps the chosen thread order inside each folder", () => {
+    const groups = [t3code, fleet].map((projectId) => ({
+      projectKey: projectId,
+      memberProjectRefs: [{ environmentId: localEnvironmentId, projectId }],
+    }));
+    const row = (
+      id: string,
+      projectId: ProjectId,
+      activeOrderKey: string,
+      latestUserMessageAt: string,
+    ) => ({
+      ...thread(id, localEnvironmentId, projectId),
+      createdAt: "2026-06-01T00:00:00.000Z",
+      activeOrderKey,
+      latestUserMessageAt,
+    });
+    const threads = [
+      row("arranged-first", t3code, "a", "2026-06-02T08:00:00.000Z"),
+      row("fleet-latest", fleet, "b", "2026-06-02T11:00:00.000Z"),
+      row("t3code-latest", t3code, "c", "2026-06-02T10:00:00.000Z"),
+    ];
+    const folderInboxes = (sortByLastMessage: boolean) =>
+      groupSidebarThreadsByProject({
+        groups,
+        inbox: sortThreadsForSidebar(threads, sortByLastMessage),
+        settled: [],
+      }).map((folder) => folder.inbox.map((entry) => entry.id));
+
+    expect(folderInboxes(false)).toEqual([["arranged-first", "t3code-latest"], ["fleet-latest"]]);
+    expect(folderInboxes(true)).toEqual([["t3code-latest", "arranged-first"], ["fleet-latest"]]);
   });
 });
 

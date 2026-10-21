@@ -138,7 +138,8 @@ threads in a folder for each project. Click a folder to open or close it. Use th
 a folder, or right-click it, to start a thread in that project. Settled threads stay hidden in
 each folder until you show them. Pinned threads stay above the folders, and snoozed threads stay
 in their own section below them. In this mode you cannot drag threads, and the Working section
-is off. Each device keeps its own choice.
+is off. Threads in each folder follow **Sort active threads**, and the folders follow **Settings →
+General → Project order**. Each device keeps its own choice.
 
 ## Settle finished work
 

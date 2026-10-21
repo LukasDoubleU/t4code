@@ -96,6 +96,16 @@ the bar show each account's quota, countdown, and credits. Tap a row to open its
 The same account signed in on more than one environment, or reported by a hub as well, counts once.
 Filter with the environment dropdown to see what a single machine has.
 
+With more than one Claude or Codex account, **Use next** at the top of **Usage → Limits** names the
+account for your next thread, with the name it has in **Settings → Providers**, and ranks the others
+with the reason for each place. An account is ready when its session has at least 25% left (change
+this next to **Use next**) and its weekly quota is not used up. Ready accounts are ordered by the
+weekly quota that would expire unused, per day until the weekly reset; more session room, then the
+sooner session reset, break ties. Accounts that are not ready follow with when they become ready,
+and missing or out-of-date readings come last. Banked reset credits are shown but do not change the
+order. If Claude reports a weekly allowance for a single model, such as Opus, it counts until you
+choose the model you use next.
+
 When a Claude or Codex account has no overall weekly quota left, its pooled session contribution
 shows 0% left. The next refill depends on both reset times: an exhausted session must also reset,
 and a partly spent session may only regain its unused portion when the week resets. Missing or

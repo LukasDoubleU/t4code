@@ -363,8 +363,20 @@ launching again. `create_threads` remains the batch option for a shared checkout
 
 Lists durable thread shells in one project, newest first: `projectId` when
 given, else the calling thread's project. Callers can filter by title, run
-status, and whether app-owned sub-agent threads are included. Results are
-bounded and offset-paginated. Deleted threads are never listed.
+status, pinned state, and whether app-owned sub-agent threads are included.
+Results are bounded and offset-paginated. Deleted threads are never listed.
+
+`pinned: true` without `projectId` lists the pinned threads of every project,
+here and in every linked environment, so an agent finds a thread the user names
+in one call. Pinned threads are few, so this is not paged: each environment
+answers with up to `limit`. Linked environments that cannot answer appear in
+`unlistedEnvironments` instead of failing the call. A call that arrived through
+a link lists only its own environment: linked environments never ask each other
+in turn.
+
+`t3_thread_read`, `t3_thread_send` and `t3_thread_wait` look up a thread ID
+without `environmentId` in the linked environments when it is not here, and
+run the call where they find it. An ID found in several is an error naming them.
 
 ### `t3_thread_read`
 

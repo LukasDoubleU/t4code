@@ -1,4 +1,9 @@
-import { ProviderDriverKind, type ServerProviderUsageWindow } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProviderUsageWindow,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -7,6 +12,7 @@ import {
   describeNextAccount,
   type NextAccountCandidate,
   type NextAccountOptions,
+  rankEnvironmentInstances,
   rankNextAccounts,
   weeklyModelScopes,
 } from "./usageNextAccount.ts";
@@ -48,7 +54,11 @@ const opus = (usedPercent: number, resetsInHours?: number) =>
 function account(
   name: string,
   windows: readonly ServerProviderUsageWindow[],
-  options: { readonly credits?: number; readonly driver?: string } = {},
+  options: {
+    readonly credits?: number;
+    readonly driver?: string;
+    readonly instances?: LimitAccount["instances"];
+  } = {},
 ): LimitAccount {
   return {
     key: `env-a:${name}`,
@@ -59,6 +69,7 @@ function account(
     accentColor: undefined,
     environments: [],
     sourceLabel: null,
+    instances: options.instances ?? [],
     redeem: null,
     limits: {
       checkedAt: "2026-10-21T11:55:00.000Z",
@@ -306,5 +317,81 @@ describe("weeklyModelScopes", () => {
       { key: "fable", label: "Fable" },
       { key: "opus", label: "Opus" },
     ]);
+  });
+});
+
+describe("rankEnvironmentInstances", () => {
+  const here = EnvironmentId.make("env-here");
+  const there = EnvironmentId.make("env-there");
+  const instance = (environmentId: EnvironmentId, id: string) => ({
+    environmentId,
+    instanceId: ProviderInstanceId.make(id),
+  });
+  const ready = [session(10, 2), weekly(40, 24)];
+
+  it("gives every instance its account's place and recommends the first ready account", () => {
+    const ranks = rankEnvironmentInstances(
+      [
+        account("roomy", [session(10, 2), weekly(10, 150)], {
+          instances: [instance(here, "c1"), instance(here, "c1-copy")],
+        }),
+        account("urgent", ready, { instances: [instance(here, "c2")] }),
+        account(
+          "codex",
+          [
+            { ...session(10, 2), id: "primary" },
+            { ...weekly(10, 24), id: "w" },
+          ],
+          {
+            driver: "codex",
+            instances: [instance(here, "codex")],
+          },
+        ),
+      ],
+      here,
+      ["c1", "c1-copy", "c2", "codex"].map((id) => ProviderInstanceId.make(id)),
+      { now },
+    );
+    expect([...ranks].map(([id, rank]) => [id, rank.place, rank.recommended] as const)).toEqual([
+      ["c2", 1, true],
+      ["c1", 2, false],
+      ["c1-copy", 2, false],
+      ["codex", 1, true],
+    ]);
+  });
+
+  it("ranks only accounts signed in to an eligible instance of the environment", () => {
+    const ranks = rankEnvironmentInstances(
+      [
+        account("elsewhere", ready, { instances: [instance(there, "c1")] }),
+        account("disabled", ready, { instances: [instance(here, "off")] }),
+        account("both", [session(10, 2), weekly(10, 150)], {
+          instances: [instance(there, "c9"), instance(here, "c2")],
+        }),
+        account("hub only", ready),
+      ],
+      here,
+      [ProviderInstanceId.make("c1"), ProviderInstanceId.make("c2")],
+      { now },
+    );
+    expect([...ranks.keys()]).toEqual(["c2"]);
+    expect(ranks.get(ProviderInstanceId.make("c2"))).toMatchObject({
+      place: 1,
+      recommended: true,
+    });
+  });
+
+  it("recommends nothing when no account is ready", () => {
+    const ranks = rankEnvironmentInstances(
+      [account("spent", [session(90, 2), weekly(40, 24)], { instances: [instance(here, "c1")] })],
+      here,
+      [ProviderInstanceId.make("c1")],
+      { now },
+    );
+    expect(ranks.get(ProviderInstanceId.make("c1"))).toMatchObject({
+      place: 1,
+      recommended: false,
+      candidate: { status: { kind: "blocked" } },
+    });
   });
 });

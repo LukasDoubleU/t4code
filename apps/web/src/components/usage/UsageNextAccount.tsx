@@ -1,65 +1,28 @@
 import type { LimitAccount } from "@t3tools/shared/usageLimits";
 import {
-  DEFAULT_MIN_SESSION_PERCENT,
   describeNextAccount,
   NEXT_ACCOUNT_DRIVERS,
   type NextAccountCandidate,
-  type NextAccountOptions,
   rankNextAccounts,
   type WeeklyModelScope,
   weeklyModelScopes,
 } from "@t3tools/shared/usageNextAccount";
-import * as Schema from "effect/Schema";
-import { useId, useState } from "react";
+import { useId } from "react";
 
-import { getLocalStorageItem, setLocalStorageItem } from "../../hooks/useLocalStorage";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { providerClients } from "../settings/providerDriverMeta";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
+import {
+  rankedModel,
+  SESSION_ROOM_OPTIONS,
+  useNextAccountPreferences,
+} from "./nextAccountPreferences";
 import { LimitWindows } from "./UsageLimits";
 import { AccountAvatar, AccountName } from "./UsageLimitsPooled";
-
-const STORAGE_KEY = "t3code:usage-next-account:v1";
-const SESSION_ROOM_OPTIONS = [10, DEFAULT_MIN_SESSION_PERCENT, 50, 75] as const;
-const Preferences = Schema.Struct({
-  minSessionPercent: Schema.Literals(SESSION_ROOM_OPTIONS),
-  /** `any`, `other`, or `scope:<key>` for one model's own weekly allowance. */
-  model: Schema.String,
-});
-type Preferences = typeof Preferences.Type;
-const DEFAULT_PREFERENCES: Preferences = {
-  minSessionPercent: DEFAULT_MIN_SESSION_PERCENT,
-  model: "any",
-};
-
-function readPreferences(): Preferences {
-  try {
-    return getLocalStorageItem(STORAGE_KEY, Preferences) ?? DEFAULT_PREFERENCES;
-  } catch (error) {
-    console.error("Could not read the Use next preferences.", error);
-    return DEFAULT_PREFERENCES;
-  }
-}
-
-function savePreferences(preferences: Preferences): void {
-  try {
-    setLocalStorageItem(STORAGE_KEY, preferences, Preferences);
-  } catch (error) {
-    console.error("Could not save the Use next preferences.", error);
-  }
-}
-
-// A remembered model whose allowance no account reports any more counts every allowance again.
-function rankedModel(
-  choice: string,
-  scopes: readonly WeeklyModelScope[],
-): NextAccountOptions["model"] {
-  if (choice === "other") return null;
-  return scopes.find((scope) => `scope:${scope.key}` === choice)?.key;
-}
 
 function modelChoiceLabel(choice: string, scopes: readonly WeeklyModelScope[]): string {
   if (choice === "other") return "For other models";
@@ -214,9 +177,10 @@ export function UsageNextAccount({
   readonly accounts: readonly LimitAccount[];
   readonly now: number;
 }) {
-  const [preferences, setPreferences] = useState(readPreferences);
+  const [preferences, update] = useNextAccountPreferences();
   const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
   const headingId = useId();
+  const startNewThreadsId = useId();
   const groups = NEXT_ACCOUNT_DRIVERS.flatMap((kind) => {
     const members = accounts.filter((account) => account.driver === kind);
     const driver = members[0]?.driver;
@@ -229,11 +193,6 @@ export function UsageNextAccount({
   const model = rankedModel(preferences.model, scopes);
   const modelChoice = model === undefined ? "any" : model === null ? "other" : `scope:${model}`;
   const options = { now, minSessionPercent: preferences.minSessionPercent, model };
-  const update = (patch: Partial<Preferences>) => {
-    const next = { ...preferences, ...patch };
-    setPreferences(next);
-    savePreferences(next);
-  };
   const describe = (candidate: NextAccountCandidate) =>
     describeNextAccount(candidate, {
       ...options,
@@ -258,6 +217,19 @@ export function UsageNextAccount({
           Use next
         </h2>
         <div className="ms-auto flex flex-wrap items-center justify-end gap-1">
+          <label
+            htmlFor={startNewThreadsId}
+            className="flex cursor-pointer items-center gap-1.5 px-2 text-xs text-muted-foreground"
+          >
+            <Switch
+              id={startNewThreadsId}
+              size="sm"
+              checked={preferences.startNewThreads !== false}
+              aria-label="Start new threads on the recommended account"
+              onCheckedChange={(checked) => update({ startNewThreads: checked })}
+            />
+            Start new threads on the recommended account
+          </label>
           <Select
             value={String(preferences.minSessionPercent)}
             onValueChange={(value) => {

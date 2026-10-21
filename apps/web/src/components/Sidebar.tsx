@@ -5457,7 +5457,7 @@ export default function Sidebar() {
                             <SidebarSectionHeader
                               key="background-shelf-header"
                               marker="background-header"
-                              className="mt-2"
+                              className="mt-auto"
                               label={
                                 backgroundShelfExpanded
                                   ? "Background"
@@ -5478,7 +5478,7 @@ export default function Sidebar() {
                             <SidebarSectionHeader
                               key="snoozed-shelf-header"
                               marker="snoozed-header"
-                              className={cn(backgroundThreads.length === 0 && "mt-2")}
+                              className={cn(backgroundThreads.length === 0 && "mt-auto")}
                               label={
                                 snoozedShelfExpanded
                                   ? "Snoozed"
@@ -5500,7 +5500,7 @@ export default function Sidebar() {
                               key="settled-shelf-header"
                               marker="settled-header"
                               className={cn(
-                                backgroundThreads.length + snoozedThreads.length === 0 && "mt-2",
+                                backgroundThreads.length + snoozedThreads.length === 0 && "mt-auto",
                               )}
                               label={
                                 settledShelfExpanded

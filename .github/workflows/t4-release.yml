@@ -1,0 +1,230 @@
+# Fork-only: builds the Windows x64 installer and the `t3` CLI archive on a
+# GitHub-hosted runner and publishes them as a release of this repository.
+# Installed fork builds take their updates from this repository's latest
+# release, through its latest.yml.
+#
+# Push a tag t4-v<version>, or run this workflow with the version, which then
+# tags the selected commit. Two kinds of versions are accepted:
+#
+#   X.Y.Z-t4.N    A fork release, published as the latest release. X.Y.Z is the
+#                 patch after the upstream release the fork is based on (0.1.2
+#                 on v0.1.1), as upstream nightlies do, and N counts the fork
+#                 builds on that base from 1. electron-updater compares versions
+#                 as semver, so each build sorts above the one before it, above
+#                 the upstream release it contains and below the next one.
+#   X.Y.Z-test.N  A test build, published as a prerelease. Installed builds
+#                 follow only the latest release, so none is offered it.
+name: t4 release
+
+on:
+  push:
+    tags:
+      - "t4-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, for example 0.1.2-t4.1. The selected commit is tagged t4-v<version>."
+        required: true
+        type: string
+
+# One at a time, so a release checks its version against the one published
+# before it.
+concurrency:
+  group: t4-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Resolve release version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            version="${GITHUB_REF_NAME#t4-v}"
+          else
+            version="$INPUT_VERSION"
+          fi
+          number='(0|[1-9][0-9]*)'
+          if [[ "$version" =~ ^$number\.$number\.$number-t4\.$number$ ]]; then
+            kind=release
+          elif [[ "$version" =~ ^$number\.$number\.$number-test\.$number$ ]]; then
+            kind=test
+          else
+            echo "::error::'$version' is neither a fork release (X.Y.Z-t4.N) nor a test build (X.Y.Z-test.N)."
+            exit 1
+          fi
+          tag="t4-v$version"
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::A release (or draft) for $tag exists already. Delete it or pick another version."
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" != "push" ]] && gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > /dev/null 2>&1; then
+            echo "::error::The tag $tag exists already. Re-run the run it started, or pick another version."
+            exit 1
+          fi
+
+          # The stable updater offers only a version above the one it runs.
+          if [[ "$kind" == release ]]; then
+            if latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2> "$RUNNER_TEMP/latest.err")"; then
+              previous="${latest#t4-v}"
+              # Version sort orders two X.Y.Z-t4.N versions the way semver
+              # does, and `sort -C -u` succeeds only on strictly rising lines.
+              if [[ "$previous" =~ ^$number\.$number\.$number-t4\.$number$ ]] &&
+                ! printf '%s\n' "$previous" "$version" | sort -C -u -V; then
+                echo "::error::$version is not newer than the latest release, $previous, so no installed build would be offered it."
+                exit 1
+              fi
+            elif ! grep -q "HTTP 404" "$RUNNER_TEMP/latest.err"; then
+              cat "$RUNNER_TEMP/latest.err" >&2
+              exit 1
+            fi
+          fi
+
+          {
+            echo "RELEASE_VERSION=$version"
+            echo "RELEASE_TAG=$tag"
+            echo "RELEASE_KIND=$kind"
+          } >> "$GITHUB_ENV"
+
+      # The build scripts run Vite+ (`vp`), which installs pnpm 11.10.0 from
+      # packageManager and gives the CLI executable build its own Node (see
+      # "Build CLI executable"). A package cache does not pay for its restore on
+      # Windows, where linking takes the time (see release-desktop.yml).
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      # The desktop build's preflight requires these for the resource monitor.
+      - name: Install Spectre-mitigated MSVC libs
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installPath = & $vswhere -products * -latest -property installationPath
+          $toolset = Get-ChildItem (Join-Path $installPath "VC\Tools\MSVC") -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          if (Test-Path (Join-Path $toolset.FullName "lib\spectre\x64")) {
+            Write-Host "Spectre-mitigated libraries are already installed."
+            exit 0
+          }
+          $setupExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $proc = Start-Process -FilePath $setupExe `
+            -ArgumentList "modify", "--installPath", "`"$installPath`"", "--add", `
+            "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre", "--quiet", "--norestart" `
+            -Wait -PassThru -NoNewWindow
+          if ($null -eq $proc -or $proc.ExitCode -ne 0) {
+            $code = if ($null -ne $proc) { $proc.ExitCode } else { 1 }
+            Write-Error "Visual Studio Installer failed with exit code $code"
+            exit $code
+          }
+
+      - name: Install dependencies
+        run: vp install --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
+
+      # The CLI executable bundles the server again, so the versions stay
+      # aligned for it, not only for the desktop build.
+      - name: Align package versions to the release version
+        run: node scripts/update-release-package-versions.ts "$RELEASE_VERSION"
+
+      # The public T3 Connect identifiers that official builds carry. Without
+      # them, the build ships with T3 Connect turned off.
+      - name: Enable T3 Connect
+        run: cp .env.example .env
+
+      - name: Build desktop installer
+        env:
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+        run: node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --build-version "$RELEASE_VERSION" --verbose
+
+      # The executable embeds the Node that runs `vp pack`, which must support
+      # --build-sea. Reading the version upstream ships keeps a rebase from
+      # leaving it stale here.
+      - name: Build CLI executable
+        run: |
+          VP_NODE_VERSION="$(sed -n 's/^const SEA_NODE_VERSION = "\(.*\)";$/\1/p' apps/server/vite.config.ts)"
+          test -n "$VP_NODE_VERSION"
+          export VP_NODE_VERSION
+          node apps/server/scripts/cli.ts build-exe --verbose
+
+      # The desktop build left the branded web client in apps/server/dist and
+      # the resource monitor in cargo's target directory.
+      - name: Build CLI archive
+        run: |
+          monitor_dir="$RUNNER_TEMP/cli-resource-monitor"
+          mkdir -p "$monitor_dir/win32-x64"
+          cp native/resource-monitor/target/x86_64-pc-windows-msvc/release/t3-resource-monitor.exe "$monitor_dir/win32-x64/"
+          node scripts/build-cli-archive.ts --platform win --arch x64 --version "$RELEASE_VERSION" \
+            --resource-monitor-dir "$monitor_dir" --output-dir release-cli
+
+      - name: Smoke-test CLI archive
+        run: node scripts/smoke-cli-archive.ts --archive "release-cli/t3-$RELEASE_VERSION-win32-x64.zip" --expect-version "$RELEASE_VERSION"
+
+      # Installers check downloads against SHA256SUMS, so it hashes the files
+      # exactly as they are uploaded. On Windows, sha256sum defaults to binary
+      # mode and marks each name with `*`; --text writes the same hashes in
+      # upstream's `<hash>  <name>` form.
+      - name: Collect release assets
+        run: |
+          mkdir release-assets
+          cp "release/T3-Code-$RELEASE_VERSION-x64.exe" "release/T3-Code-$RELEASE_VERSION-x64.exe.blockmap" release/latest.yml \
+            "release-cli/t3-$RELEASE_VERSION-win32-x64.zip" release-assets/
+          cd release-assets
+          sha256sum --text -- * > SHA256SUMS
+          cat SHA256SUMS
+
+      # The release is published only once every asset is uploaded, so the
+      # updater never finds a latest release without its latest.yml or
+      # installer.
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="$RUNNER_TEMP/release-notes.md"
+          if [[ "$RELEASE_KIND" == release ]]; then
+            title="t4code v$RELEASE_VERSION"
+            echo "Windows x64 build of $GITHUB_SHA. The installer is unsigned, so SmartScreen warns when a copy downloaded in a browser is first run." > "$notes"
+            create_flags=()
+            publish_flags=(--latest)
+          else
+            title="t4code v$RELEASE_VERSION (test build)"
+            echo "Test build of the release workflow, from $GITHUB_SHA. As a prerelease it is never offered as an update. Delete it when done." > "$notes"
+            create_flags=(--prerelease)
+            publish_flags=()
+          fi
+          gh release create "$RELEASE_TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --draft \
+            --target "$GITHUB_SHA" --title "$title" --notes-file "$notes" "${create_flags[@]}"
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false "${publish_flags[@]}"

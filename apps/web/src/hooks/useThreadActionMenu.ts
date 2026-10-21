@@ -46,6 +46,7 @@ import {
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { useUiStateStore } from "../uiStateStore";
+import { readThreadMemoryPath, useOpenThreadMemory } from "../threadMemory";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
@@ -93,6 +94,7 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
+  const openThreadMemory = useOpenThreadMemory();
   const background = useSidebarBackground();
   const delegatedUnderParent = useDelegatedUnderParent();
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
@@ -136,6 +138,7 @@ export function useThreadActionMenu(input: {
       const isRegeneratingTitle = thread.titleRegeneration != null;
       const snoozePresets = resolveSnoozePresets(now, timestampFormat);
       const isPinned = thread.pinnedAt != null;
+      const memoryPath = readThreadMemoryPath(threadRef, isPinned);
       const isSettled = supports.settlement && thread.settledOverride === "settled";
       const isSnoozed = supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() });
       // Background only sorts the threads the sidebar lists.
@@ -147,6 +150,7 @@ export function useThreadActionMenu(input: {
         branch: thread.branch ?? null,
         projectFilter: null,
         isPinned,
+        hasMemory: memoryPath !== null,
         isSettled,
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
         isSnoozed,
@@ -252,6 +256,9 @@ export function useThreadActionMenu(input: {
           await reportFailure("Failed to unpin thread", () => confirmAndUnpinThread(threadRef));
           return;
         }
+        case "open-memory":
+          if (memoryPath !== null) await openThreadMemory(threadRef, memoryPath);
+          return;
         case "auto-settle:enabled":
         case "auto-settle:disabled":
           await reportFailure("Failed to update auto-settle", () =>

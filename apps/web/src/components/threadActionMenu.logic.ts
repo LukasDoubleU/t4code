@@ -7,6 +7,7 @@ export type ThreadActionMenuId =
   | "project-settings"
   | "pin"
   | "unpin"
+  | "open-memory"
   | "settle"
   | "unsettle"
   | "auto-settle"
@@ -73,6 +74,8 @@ export interface ThreadActionMenuState {
     readonly isActive: boolean;
   } | null;
   readonly isPinned: boolean;
+  /** A pinned thread whose memory is active. */
+  readonly hasMemory?: boolean;
   readonly isSettled: boolean;
   readonly autoSettleEnabled: boolean;
   readonly isSnoozed: boolean;
@@ -104,6 +107,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "new-thread-on-branch",
     "project-settings",
     "mark-unread",
+    "open-memory",
     "move-to-background",
     "bring-to-front",
     "copy",
@@ -132,6 +136,9 @@ export function buildThreadActionMenuItems(
             ? { id: "unpin" as const, label: "Unpin thread", icon: "pin-off" }
             : { id: "pin" as const, label: "Pin thread", icon: "pin" },
         ]
+      : []),
+    ...(state.hasMemory === true
+      ? [{ id: "open-memory" as const, label: "Open memory", icon: "brain" }]
       : []),
     ...(state.supports.settlement
       ? [

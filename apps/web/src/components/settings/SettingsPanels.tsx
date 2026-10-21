@@ -2271,6 +2271,22 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+        <SettingsRow
+          serverScoped
+          {...searchableSetting("pinned-thread-memory")}
+          description="A pinned thread keeps its notes in a memory file and reads them again after every compaction. Turned off, no thread gets the file; existing files stay."
+          settingKeys={["pinnedThreadsKeepMemory"]}
+          control={
+            <ScopedSwitch
+              settingKeys={["pinnedThreadsKeepMemory"]}
+              checked={settings.pinnedThreadsKeepMemory}
+              onCheckedChange={(checked) =>
+                updateSettings({ pinnedThreadsKeepMemory: Boolean(checked) })
+              }
+              aria-label="Pinned threads keep a memory"
+            />
+          }
+        />
 
         {supportsAutoSettlement ? (
           <>

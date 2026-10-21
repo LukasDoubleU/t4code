@@ -4,7 +4,9 @@ export function formatAppDisplayName(input: {
   readonly baseName: string;
   readonly stageLabel: string;
 }): string {
-  if (input.stageLabel.trim().toLowerCase() === "latest") {
+  // Releases show the bare name: the hosted latest channel and Beta builds.
+  const stage = input.stageLabel.trim().toLowerCase();
+  if (stage === "latest" || stage === "beta") {
     return input.baseName;
   }
 

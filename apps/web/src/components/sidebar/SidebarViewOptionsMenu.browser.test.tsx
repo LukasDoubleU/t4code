@@ -72,3 +72,19 @@ it("leaves the order to the Working section until threads are grouped, and saves
     }),
   );
 });
+
+it("shows the Background section by default and saves the switch", async () => {
+  using _settings = await seedClientSettings({});
+  await using screen = await render(
+    <SidebarViewOptionsMenu trigger={<button type="button">View options</button>} />,
+  );
+  const backgroundSwitch = page.getByRole("menuitemcheckbox", { name: "Background section" });
+
+  await userEvent.click(screen.getByRole("button", { name: "View options" }));
+  await expect.element(backgroundSwitch).toHaveAttribute("aria-checked", "true");
+  await userEvent.click(backgroundSwitch);
+  await expect.element(backgroundSwitch).toHaveAttribute("aria-checked", "false");
+  expect(persistence.setClientSettings).toHaveBeenLastCalledWith(
+    expect.objectContaining({ sidebarBackgroundSection: false }),
+  );
+});

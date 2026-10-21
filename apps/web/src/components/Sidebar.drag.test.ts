@@ -634,6 +634,82 @@ describe("sidebar drag projection", () => {
     expect(result.get(sidebarMarkerId("settled-placeholder"))).toEqual({ ...stationary, y: -83 });
   });
 
+  describe("Background shelf", () => {
+    const backgroundHeader = sidebarMarkerId("background-header");
+    const open = [
+      pinnedHeader,
+      divider,
+      thread("a1", "active"),
+      thread("a2", "active"),
+      marker("background-header"),
+      thread("b1", "background"),
+      thread("b2", "background"),
+      settledHeader,
+      marker("settled-placeholder"),
+    ];
+
+    it("previews an active row dropped into it at its place in the sort", () => {
+      const result = preview(
+        {
+          items: open,
+          settledOrder: [],
+          settledExpanded: false,
+          backgroundOrder: ["b1", "a1", "b2"],
+          backgroundExpanded: true,
+          backgroundThreadCount: 2,
+        },
+        "a1",
+        "b2",
+      );
+      expect(result.get(backgroundHeader)?.y).toBe(-83);
+      expect(result.get("b1")?.y).toBe(-83);
+      // The dropped row takes a slim slot between b1 and b2.
+      expect(result.get("b2")?.y).toBe(-46);
+    });
+
+    it("hides the arriving row while collapsed, as the Settled shelf does", () => {
+      const collapsed = open.filter(
+        (item) => item.kind !== "thread" || item.section !== "background",
+      );
+      const input = {
+        items: collapsed,
+        settledOrder: [],
+        settledExpanded: false,
+        backgroundOrder: ["a1"],
+        backgroundThreadCount: 2,
+      };
+      expect(
+        preview({ ...input, backgroundExpanded: false }, "a1", backgroundHeader).get(
+          sidebarMarkerId("settled-header"),
+        )?.y,
+      ).toBe(-83);
+      expect(
+        preview({ ...input, backgroundExpanded: true }, "a1", backgroundHeader).get(
+          sidebarMarkerId("settled-header"),
+        )?.y,
+      ).toBe(-46);
+    });
+
+    it("removes its header when the last row leaves, and keeps it for hidden rows", () => {
+      const items = [
+        pinnedHeader,
+        divider,
+        thread("a", "active"),
+        marker("background-header"),
+        thread("b", "background"),
+        settledHeader,
+        marker("settled-placeholder"),
+      ];
+      const input = { items, settledOrder: [], settledExpanded: false, backgroundExpanded: false };
+      expect(
+        preview({ ...input, backgroundThreadCount: 1 }, "b", "a").get(backgroundHeader)?.scaleY,
+      ).toBe(0);
+      expect(
+        preview({ ...input, backgroundThreadCount: 3 }, "b", "a").get(backgroundHeader)?.scaleY,
+      ).toBe(1);
+    });
+  });
+
   it("preserves a collapsed snoozed header while another section changes", () => {
     const items = [
       pinnedHeader,

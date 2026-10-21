@@ -1307,3 +1307,15 @@ describe("sidebar sort and group menu preferences", () => {
     expect(decodeClientSettingsPatch({})).not.toHaveProperty("sidebarThreadGrouping");
   });
 });
+
+describe("sidebar Background section switch", () => {
+  it("is on for clients that never chose and keeps a device's choice", () => {
+    expect(decodeClientSettings({}).sidebarBackgroundSection).toBe(true);
+    const settings = decodeClientSettings({ sidebarBackgroundSection: false });
+    expect(encodeClientSettings(settings)).toMatchObject({ sidebarBackgroundSection: false });
+    expect(decodeClientSettingsPatch({ sidebarBackgroundSection: true })).toEqual({
+      sidebarBackgroundSection: true,
+    });
+    expect(decodeClientSettingsPatch({})).not.toHaveProperty("sidebarBackgroundSection");
+  });
+});

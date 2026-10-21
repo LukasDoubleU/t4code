@@ -62,7 +62,16 @@ vi.mock("../state/entities", () => ({
     runtime: null,
     latestRun: null,
   }),
+  useDelegatedUnderParent: () => new Set(),
   useProjects: () => [{ id: "project", environmentId: "secondary" }],
+}));
+vi.mock("../components/Sidebar.viewOptions", () => ({ resolveSidebarStatusGroup: () => "idle" }));
+vi.mock("../components/Sidebar.background", () => ({
+  sidebarBackgroundMenuItem: () => ({ placement: "front", available: true }),
+  useSidebarBackground: () => ({
+    choices: {},
+    place: (_threads: unknown, placement: string) => recordEffect(placement),
+  }),
 }));
 vi.mock("../state/environments", () => ({ usePrimaryEnvironmentId: () => "primary" }));
 vi.mock("../state/threads", () => ({ threadEnvironment: { updateMetadata: "metadata" } }));
@@ -212,6 +221,7 @@ describe("thread menu permissions", () => {
     ["copy-thread-id", "copy"],
     ["mark-unread", "mark-unread"],
     ["project-settings", "project-settings"],
+    ["bring-to-front", "front"],
   ] as const)("keeps %s available without task permission", async (action, effect) => {
     state.show.mockResolvedValue(action);
     createMenu().openMenu(position);

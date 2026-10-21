@@ -3,7 +3,6 @@ import { OrchestratorToolkit } from "./tools.ts";
 import * as Effect from "effect/Effect";
 
 import * as PeerForwarding from "../../../peer/PeerForwarding.ts";
-import * as PeerLinkRequests from "../../../peer/PeerLinkRequests.ts";
 import * as PeerLinks from "../../../peer/PeerLinks.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -150,15 +149,6 @@ const handlers = {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const forwarding = yield* PeerForwarding.PeerForwarding;
       return yield* forwarding.links(scope);
-    }),
-  ),
-  // A link lets every agent here reach the other environment, so it is an
-  // environment setting: full access, and never for linked work.
-  t3_environment_link: McpToolAccess.writesEnvironment((input) =>
-    Effect.gen(function* () {
-      const scope = yield* McpInvocationContext.McpInvocationContext;
-      const requests = yield* PeerLinkRequests.PeerLinkRequests;
-      return yield* requests.request(scope, input);
     }),
   ),
   t3_environment_unlink: McpToolAccess.writesEnvironment(({ environmentId }) =>

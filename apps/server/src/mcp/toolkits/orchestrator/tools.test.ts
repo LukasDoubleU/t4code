@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { T3_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { Tool } from "effect/ai";
 
 import {
@@ -28,6 +29,20 @@ describe("orchestrator MCP tool guidance", () => {
       OrchestratorToolkit.tools.task_cancel.description ?? "",
       "This includes later child-thread runs, even after the task is terminal",
     );
+  });
+
+  it("sends agents to Settings → Connections for a machine that is not linked", () => {
+    const namesLinkTool = /\bt3_environment_link\b/;
+    assert.notProperty(OrchestratorToolkit.tools, "t3_environment_link");
+    for (const tool of Object.values(OrchestratorToolkit.tools)) {
+      assert.notMatch(tool.description ?? "", namesLinkTool, tool.name);
+    }
+    assert.notMatch(T3_CODE_ORCHESTRATION_INSTRUCTIONS, namesLinkTool);
+    assert.include(
+      OrchestratorToolkit.tools.t3_environment_links.description ?? "",
+      "link it in Settings → Connections",
+    );
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "link it in Settings → Connections");
   });
 
   it("documents wait timeout as a parent budget, not a child failure", () => {

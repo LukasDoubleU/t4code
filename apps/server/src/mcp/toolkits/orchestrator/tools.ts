@@ -2,8 +2,6 @@ import {
   OrchestratorMcpCapabilitiesInput,
   OrchestratorMcpCapabilitiesResult,
   OrchestrationV2StopWorkflowInput,
-  OrchestratorMcpEnvironmentLinkInput,
-  OrchestratorMcpEnvironmentLinkResult,
   OrchestratorMcpEnvironmentLinksResult,
   OrchestratorMcpEnvironmentUnlinkInput,
   OrchestratorMcpEnvironmentUnlinkResult,
@@ -298,7 +296,7 @@ const ThreadInterruptTool = Tool.make("t3_thread_interrupt", {
 
 const EnvironmentLinksTool = Tool.make("t3_environment_links", {
   description:
-    "List the other T3 Code environments this one is linked to, such as the user's other machines, and whether each answers now. A machine the user names that is not listed is not linked yet: call t3_environment_link for it rather than looking elsewhere. Pass one's environmentId to any tool that takes environmentId, such as t3_thread_launch, t3_thread_send, t3_pending_request_respond, t3_queue_list or t3_project_list, to act there; delegate_task takes it as target.environmentId. A linked environment lets this one's agents do at most its access there, and never more than the calling agent may do here. An expired link has to be linked again from a new pairing code.",
+    "List the other T3 Code environments this one is linked to, such as the user's other machines, and whether each answers now. A machine the user names that is not listed is not linked yet: ask the user to link it in Settings → Connections rather than looking elsewhere. Pass one's environmentId to any tool that takes environmentId, such as t3_thread_launch, t3_thread_send, t3_pending_request_respond, t3_queue_list or t3_project_list, to act there; delegate_task takes it as target.environmentId. A linked environment lets this one's agents do at most its access there, and never more than the calling agent may do here. An expired link has to be linked again from a new pairing code.",
   success: OrchestratorMcpEnvironmentLinksResult,
   failure: OrchestratorMcpFailure,
   failureMode: "return",
@@ -308,19 +306,6 @@ const EnvironmentLinksTool = Tool.make("t3_environment_links", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true);
-
-const EnvironmentLinkTool = Tool.make("t3_environment_link", {
-  description:
-    'Ask the user to link another T3 Code environment, such as their VPS or another machine, so agents here can work there (t3_environment_links). Call it when the user asks to link, connect, or delegate to another machine. You usually do not know where it answers, so pass no address: pass a hint from their words ("vps") and the card lets the user pick the machine. Pass environmentId when a machine the user mentioned names it; if it is already linked, this returns linked at once. Pass url only when the user gave an address. The card lets the user pick the access agents here get there and approve it; their app signs in there with their own session, or they paste a pairing code from there into the card. It returns pending at once: the user answers in the card whenever they get to it, and the outcome (linked with the environmentId to pass to other tools, declined, or failed with the reason) arrives as a message in this thread. End your turn or keep working; do not poll or call it again to check. Never ask for a pairing code in chat.',
-  parameters: OrchestratorMcpEnvironmentLinkInput,
-  success: OrchestratorMcpEnvironmentLinkResult,
-  failure: OrchestratorMcpFailure,
-  failureMode: "return",
-  dependencies: linkingDependencies,
-})
-  .annotate(Tool.Title, "Link another environment")
-  .annotate(Tool.Destructive, false)
-  .annotate(Tool.OpenWorld, true);
 
 const EnvironmentUnlinkTool = Tool.make("t3_environment_unlink", {
   description:
@@ -354,6 +339,8 @@ export const OrchestratorToolkit = Toolkit.make(
   ThreadWaitTool,
   ThreadInterruptTool,
   EnvironmentLinksTool,
-  EnvironmentLinkTool,
+  // No t3_environment_link: official builds without the peer-link stack cannot
+  // read a thread holding the link_request item it records. Restore it once an
+  // official release ships the stack.
   EnvironmentUnlinkTool,
 );

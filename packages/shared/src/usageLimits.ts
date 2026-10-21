@@ -159,6 +159,11 @@ export interface LimitAccount {
     readonly label: string;
   }>;
   readonly sourceLabel: string | null;
+  /** The provider instances signed in to the account. */
+  readonly instances: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly instanceId: ProviderInstanceId;
+  }>;
   readonly redeem: {
     readonly environmentId: EnvironmentId;
     readonly input: ProviderConsumeResetCreditInput;
@@ -214,6 +219,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
       accentColor: previous.accentColor ?? next.accentColor,
       environments,
       sourceLabel: environments.length > 0 ? null : (previous.sourceLabel ?? next.sourceLabel),
+      instances: [...previous.instances, ...next.instances],
       redeem:
         hubRedeems.get(key)?.redeem ??
         (creditSource ? creditSource.redeem : (winner.redeem ?? previous.redeem ?? next.redeem)),
@@ -246,6 +252,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
         accentColor: provider.accentColor,
         environments: [{ environmentId, label }],
         sourceLabel: null,
+        instances: [{ environmentId, instanceId: provider.instanceId }],
         redeem: { environmentId, input: { instanceId: provider.instanceId } },
         limits: provider.usageLimits,
       });
@@ -269,6 +276,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
           accentColor: undefined,
           environments: [],
           sourceLabel,
+          instances: [],
           redeem: account.usageLimits.resetCredits?.nextCreditId
             ? {
                 environmentId,

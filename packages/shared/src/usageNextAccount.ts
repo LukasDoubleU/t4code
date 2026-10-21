@@ -1,4 +1,8 @@
-import type { ServerProviderUsageWindow } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ProviderInstanceId,
+  ServerProviderUsageWindow,
+} from "@t3tools/contracts";
 
 import { formatDuration, type LimitAccount, remainingPercent } from "./usageLimits.ts";
 
@@ -247,6 +251,47 @@ export function rankNextAccounts(
     ...blocked,
     ...unknown,
   ];
+}
+
+export interface NextInstanceRank {
+  /** Starts at 1, among the environment's accounts of the instance's driver. */
+  readonly place: number;
+  /** The account to start new work on: the first one, when it is ready. */
+  readonly recommended: boolean;
+  readonly candidate: NextAccountCandidate;
+}
+
+/**
+ * Ranks the accounts behind one environment's provider instances. Pooled readings count an
+ * account once however many environments sign it in, so only accounts signed in to one of
+ * `instanceIds` in that environment take part, and every such instance shares its account's place.
+ */
+export function rankEnvironmentInstances(
+  accounts: readonly LimitAccount[],
+  environmentId: EnvironmentId,
+  instanceIds: Iterable<ProviderInstanceId>,
+  options: NextAccountOptions,
+): ReadonlyMap<ProviderInstanceId, NextInstanceRank> {
+  const eligible = new Set(instanceIds);
+  const instancesHere = (account: LimitAccount) =>
+    account.instances.flatMap((instance) =>
+      instance.environmentId === environmentId && eligible.has(instance.instanceId)
+        ? [instance.instanceId]
+        : [],
+    );
+  const ranks = new Map<ProviderInstanceId, NextInstanceRank>();
+  for (const driver of NEXT_ACCOUNT_DRIVERS) {
+    const members = accounts.filter(
+      (account) => account.driver === driver && instancesHere(account).length > 0,
+    );
+    rankNextAccounts(members, options).forEach((candidate, index) => {
+      const recommended = index === 0 && candidate.status.kind === "ready";
+      for (const instanceId of instancesHere(candidate.account)) {
+        ranks.set(instanceId, { place: index + 1, recommended, candidate });
+      }
+    });
+  }
+  return ranks;
 }
 
 function formatRisk(perDay: number): string {

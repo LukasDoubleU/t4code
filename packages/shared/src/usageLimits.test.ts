@@ -818,6 +818,7 @@ describe("pools", () => {
           accentColor: undefined,
           environments: [],
           sourceLabel: null,
+          instances: [],
           redeem: null,
           limits: {
             checkedAt,
@@ -863,6 +864,7 @@ describe("pooled account columns", () => {
     accentColor: undefined,
     environments: [],
     sourceLabel: "Hub",
+    instances: [],
     redeem: null,
     limits: { checkedAt: "2026-09-03T11:00:00.000Z", windows },
   });
@@ -1050,6 +1052,7 @@ describe("Cursor limit presentation", () => {
     accentColor: undefined,
     environments: [],
     sourceLabel: "Cursor",
+    instances: [],
     redeem: null,
     limits: {
       checkedAt: "2026-09-03T11:00:00.000Z",

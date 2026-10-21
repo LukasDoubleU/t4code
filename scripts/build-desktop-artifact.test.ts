@@ -61,6 +61,7 @@ import {
   resolveFffNativeDependencies,
   resolveBuildOptions,
   resolveDesktopBuildIconAssets,
+  resolveDesktopDisplayName,
   resolveDesktopProductName,
   resolveDesktopUpdateChannel,
   resolveDesktopWebAssetBrand,
@@ -550,6 +551,12 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Nightly)");
   });
 
+  it("names shortcuts after the fork but keeps the product name of the executable", () => {
+    assert.equal(resolveDesktopDisplayName("0.1.2-t4.3"), "T4 Code");
+    assert.equal(resolveDesktopProductName("0.1.2-t4.3"), "T3 Code (Beta)");
+    assert.equal(resolveDesktopDisplayName("0.0.17-nightly.20260413.42"), "T4 Code (Nightly)");
+  });
+
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
     assert.deepStrictEqual(resolveDesktopBuildIconAssets("0.0.17"), {
       macIconPng: BRAND_ASSET_PATHS.productionMacIconPng,
@@ -968,6 +975,8 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.deepStrictEqual(win.nsis, {
         differentialPackage: true,
         include: "apps/desktop/resources/installer.nsh",
+        shortcutName: "T4 Code",
+        uninstallDisplayName: "T4 Code",
       });
       assert.deepStrictEqual(WINDOWS_SERVER_ASAR_IGNORE_GLOBS, [
         "**/node_modules/@cursor/sdk-*",

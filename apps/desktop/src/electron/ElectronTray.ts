@@ -8,7 +8,7 @@ import * as Electron from "electron";
 
 export interface ElectronTrayOptions {
   readonly iconPath: string;
-  readonly tooltip: string;
+  readonly appName: string;
   readonly open: () => void;
   readonly quit: () => void;
 }
@@ -38,12 +38,12 @@ export const make = ElectronTray.of({
           }
           const tray = new Electron.Tray(options.iconPath);
           try {
-            tray.setToolTip(options.tooltip);
+            tray.setToolTip(options.appName);
             tray.setContextMenu(
               Electron.Menu.buildFromTemplate([
-                { label: "Open T3 Code", click: options.open },
+                { label: `Open ${options.appName}`, click: options.open },
                 { type: "separator" },
-                { label: "Quit T3 Code", click: options.quit },
+                { label: `Quit ${options.appName}`, click: options.quit },
               ]),
             );
             tray.on("click", options.open);

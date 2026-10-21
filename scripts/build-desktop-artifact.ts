@@ -2812,6 +2812,13 @@ export function resolveDesktopProductName(version: string): string {
     : (desktopPackageJson.productName ?? "T3 Code");
 }
 
+// Windows shortcuts and the Apps list show this name. The product name, which
+// also names the executable, stays: an update that renames the executable
+// deletes the old shortcuts and strands taskbar pins on the removed file.
+export function resolveDesktopDisplayName(version: string): string {
+  return resolveDesktopUpdateChannel(version) === "nightly" ? "T4 Code (Nightly)" : "T4 Code";
+}
+
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   platform: typeof BuildPlatform.Type,
   target: string,
@@ -3004,6 +3011,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     buildConfig.nsis = {
       differentialPackage: true,
       include: "apps/desktop/resources/installer.nsh",
+      shortcutName: resolveDesktopDisplayName(version),
+      uninstallDisplayName: resolveDesktopDisplayName(version),
     };
     const winConfig: Record<string, unknown> = {
       target: [target],

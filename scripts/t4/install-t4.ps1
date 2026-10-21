@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Finds a release of the fork, downloads its Windows installer and checks it
-  against the release's SHA256SUMS, quits T3 Code, backs up the files in the
+  against the release's SHA256SUMS, quits T4 Code, backs up the files in the
   T3 home's userdata, runs the installer silently, removes all but the newest
   install backups and starts the app again.
 
@@ -24,7 +24,7 @@ param(
   # Install backups to keep after a successful install; older ones are removed.
   [ValidateRange(1, [int]::MaxValue)]
   [int] $KeepBackups = 3,
-  # Quit T3 Code without asking, even while agents or terminals run in it.
+  # Quit T4 Code without asking, even while agents or terminals run in it.
   [switch] $Force
 )
 
@@ -60,13 +60,14 @@ function Find-Release {
   Fail "$repo has no release$(if ($Version) { " $Version" })"
 }
 
-# The installer registers the app under its uninstall key; the product name,
-# and with it the executable's name, differs between builds.
+# The installer registers the app under its uninstall key, named T3 Code by
+# official builds and older fork builds and T4 Code by newer ones; the
+# executable's name differs between builds.
 function Find-InstalledApp {
   $entry = Get-ItemProperty -ErrorAction SilentlyContinue -Path @(
     'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
     'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
-  ) | Where-Object { $_.DisplayName -like 'T3 Code*' -and $_.DisplayIcon } | Select-Object -First 1
+  ) | Where-Object { $_.DisplayName -match '^T[34] Code' -and $_.DisplayIcon } | Select-Object -First 1
   if (-not $entry) { return $null }
   $exe = ($entry.DisplayIcon -replace ',\d+$', '').Trim('"')
   [pscustomobject]@{ Exe = $exe; Dir = Split-Path $exe; Version = $entry.DisplayVersion }
@@ -103,17 +104,17 @@ function Stop-App($app) {
   $agents = @(Get-AgentProcesses $app $processes)
   if ($agents.Count -gt 0) {
     $names = ($agents | Group-Object Name | ForEach-Object { "$($_.Name) x$($_.Count)" }) -join ', '
-    Write-Host "T3 Code is running agents or terminals ($names). Quitting stops them."
-    if (-not $Force -and -not $WhatIfPreference -and (Read-Host 'Quit T3 Code now? [y/N]') -notmatch '^y(es)?$') {
-      Fail 'cancelled; T3 Code keeps running'
+    Write-Host "T4 Code is running agents or terminals ($names). Quitting stops them."
+    if (-not $Force -and -not $WhatIfPreference -and (Read-Host 'Quit T4 Code now? [y/N]') -notmatch '^y(es)?$') {
+      Fail 'cancelled; T4 Code keeps running'
     }
   }
-  if (-not $PSCmdlet.ShouldProcess('T3 Code', 'Quit')) { return }
+  if (-not $PSCmdlet.ShouldProcess('T4 Code', 'Quit')) { return }
 
   # --quit makes the running app quit the way Quit in its tray menu does. It
   # travels through the app's single-instance lock, which finds the app by a
   # window in this Windows session; over SSH, the app runs in another session.
-  Write-Host 'Quitting T3 Code...'
+  Write-Host 'Quitting T4 Code...'
   if ($processes.SessionId -contains (Get-Process -Id $PID).SessionId) {
     Start-Process -FilePath $app.Exe -ArgumentList '--quit'
     Wait-AppExit $app 15
@@ -130,14 +131,14 @@ function Stop-App($app) {
     if ($closed -gt 0) { Wait-AppExit $app 15 }
   }
   if (Get-AppProcesses $app) {
-    Write-Host 'Ending T3 Code, which stays open in the tray or in another session.'
+    Write-Host 'Ending T4 Code, which stays open in the tray or in another session.'
     foreach ($process in Get-AppProcesses $app) {
       taskkill.exe /PID $process.ProcessId /T /F *> $null
     }
     Wait-AppExit $app 15
-    if (Get-AppProcesses $app) { Fail 'T3 Code did not quit' }
+    if (Get-AppProcesses $app) { Fail 'T4 Code did not quit' }
   }
-  Write-Host 'Quit T3 Code.'
+  Write-Host 'Quit T4 Code.'
 }
 
 function Test-InUse([string] $path) {
@@ -189,10 +190,10 @@ $releaseVersion = [regex]::Match($installer.name, $installerAsset).Groups['versi
 
 $app = Find-InstalledApp
 if ($app -and $app.Version -eq $releaseVersion) {
-  Write-Host "T3 Code $releaseVersion is already installed."
+  Write-Host "T4 Code $releaseVersion is already installed."
   exit 0
 }
-Write-Host "Installing T3 Code $releaseVersion ($($release.tag_name))$(if ($app) { " over $($app.Version)" })."
+Write-Host "Installing T4 Code $releaseVersion ($($release.tag_name))$(if ($app) { " over $($app.Version)" })."
 
 # -WhatIf still downloads and checks the installer.
 $work = Join-Path ([IO.Path]::GetTempPath()) ('install-t4-' + [IO.Path]::GetRandomFileName())
@@ -238,7 +239,7 @@ try {
   if ($run.ExitCode -ne 0 -or -not $app -or $app.Version -ne $releaseVersion) {
     Fail ("the installer failed (exit code $($run.ExitCode))" + $(if ($backup) { "; the backup is in $backup" }))
   }
-  Write-Host "Installed T3 Code $releaseVersion."
+  Write-Host "Installed T4 Code $releaseVersion."
   Remove-OldBackups $KeepBackups
 } finally {
   Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
@@ -246,8 +247,8 @@ try {
 
 if ($env:SSH_CONNECTION -or $env:SSH_CLIENT) {
   # An app started from an SSH session runs outside the desktop session.
-  Write-Host 'Connected over SSH, so T3 Code was not started: start it on that machine.'
+  Write-Host 'Connected over SSH, so T4 Code was not started: start it on that machine.'
 } else {
   Start-Process -FilePath $app.Exe
-  Write-Host 'Started T3 Code.'
+  Write-Host 'Started T4 Code.'
 }

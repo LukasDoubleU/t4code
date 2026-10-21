@@ -69,7 +69,7 @@ export const make = Effect.gen(function* () {
       };
       yield* tray.create({
         iconPath: iconPath.value,
-        tooltip: environment.displayName,
+        appName: environment.displayName,
         open,
         quit,
       });

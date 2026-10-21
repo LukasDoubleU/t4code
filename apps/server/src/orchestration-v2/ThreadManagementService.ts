@@ -389,6 +389,10 @@ export interface ThreadManagementServiceShape {
     readonly projectId: ProjectId;
     readonly includeSubagents: boolean;
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2ThreadShell>, ThreadManagementError>;
+  /** The pinned threads of every project, newest first. */
+  readonly listPinnedThreads: (input: {
+    readonly includeSubagents: boolean;
+  }) => Effect.Effect<ReadonlyArray<OrchestrationV2ThreadShell>, Orchestrator.OrchestratorV2Error>;
   readonly sendToThread: (
     input: ThreadManagementSendInput,
   ) => Effect.Effect<ThreadManagementSendResult, ThreadManagementFailure>;
@@ -741,6 +745,18 @@ const make = Effect.gen(function* () {
         ),
       );
 
+  const newestFirst = (
+    threads: ReadonlyArray<OrchestrationV2ThreadShell>,
+    includeSubagents: boolean,
+  ) =>
+    threads
+      .filter((thread) => includeSubagents || thread.lineage.relationshipToParent !== "subagent")
+      .toSorted(
+        (left, right) =>
+          DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt) ||
+          right.id.localeCompare(left.id),
+      );
+
   const listProjectThreads: ThreadManagementServiceShape["listProjectThreads"] = (input) =>
     orchestrator.getShellSnapshot({ projectId: input.projectId, location: "active" }).pipe(
       Effect.mapError(
@@ -750,19 +766,13 @@ const make = Effect.gen(function* () {
             cause,
           }),
       ),
-      Effect.map((snapshot) =>
-        snapshot.threads
-          .filter(
-            (thread) =>
-              input.includeSubagents || thread.lineage.relationshipToParent !== "subagent",
-          )
-          .toSorted(
-            (left, right) =>
-              DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt) ||
-              right.id.localeCompare(left.id),
-          ),
-      ),
+      Effect.map((snapshot) => newestFirst(snapshot.threads, input.includeSubagents)),
     );
+
+  const listPinnedThreads: ThreadManagementServiceShape["listPinnedThreads"] = (input) =>
+    orchestrator
+      .getShellSnapshot({ location: "active", pinnedOnly: true })
+      .pipe(Effect.map((snapshot) => newestFirst(snapshot.threads, input.includeSubagents)));
 
   const sendToThread: ThreadManagementServiceShape["sendToThread"] = Effect.fn(
     "ThreadManagementService.sendToThread",
@@ -1261,6 +1271,7 @@ const make = Effect.gen(function* () {
     readShellSnapshot: orchestrator.readShellSnapshot,
     getThreadShell: orchestrator.getThreadShell,
     listProjectThreads,
+    listPinnedThreads,
     sendToThread,
     assertProviderInstanceEnabled,
     isProviderInstanceEnabledForProject,

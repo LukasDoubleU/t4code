@@ -262,6 +262,11 @@ makes the pairing code itself; otherwise paste one from that machine's
 An agent asked to work on a machine that is not linked yet, such as "delegate
 this to my vps", asks you to link it here first.
 
+To hand work to a thread by name, such as "tell the release expert about it",
+pin that thread. An agent finds the pinned threads of every project, here and
+on every linked machine, in one step. A thread ID pasted without its machine
+works too: the agent finds the linked machine that has it.
+
 - The access you pick is the most agents from this machine may do there. An
   agent also never gets more there than its own mode here.
 - Threads a link starts are marked **From** and this machine's name there.

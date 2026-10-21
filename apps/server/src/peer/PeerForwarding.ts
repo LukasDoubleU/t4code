@@ -4,10 +4,16 @@ import {
   type OrchestratorMcpEnvironmentLinksResult,
   OrchestratorMcpThreadInterruptInput,
   OrchestratorMcpThreadInterruptResult,
+  OrchestratorMcpThreadListInput,
+  type OrchestratorMcpThreadListItem,
+  OrchestratorMcpThreadListResult,
   OrchestratorMcpThreadReadInput,
   OrchestratorMcpThreadReadResult,
   OrchestratorMcpThreadWaitInput,
   OrchestratorMcpThreadWaitResult,
+  type OrchestratorMcpUnlistedEnvironment,
+  type PeerLinkSummary,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -15,10 +21,11 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import type * as Tool from "effect/ai/Tool";
 
-import { assertNotLinked } from "../mcp/linkOrigin.ts";
+import { assertNotLinked, callerLinkOrigin } from "../mcp/linkOrigin.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import { readCaller, unavailable } from "../mcp/threadAccess.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
@@ -77,6 +84,29 @@ export class PeerForwarding extends Context.Service<
     readonly links: (
       scope: Scope,
     ) => Effect.Effect<OrchestratorMcpEnvironmentLinksResult, OrchestratorMcpFailure>;
+    /**
+     * `t3_thread_list` of every project's pinned threads in each linked
+     * environment, and the ones that could not list theirs.
+     */
+    readonly pinnedThreads: (
+      scope: Scope,
+      input: OrchestratorMcpThreadListInput,
+    ) => Effect.Effect<
+      {
+        readonly threads: ReadonlyArray<OrchestratorMcpThreadListItem>;
+        readonly total: number;
+        readonly unlisted: ReadonlyArray<OrchestratorMcpUnlistedEnvironment>;
+      },
+      OrchestratorMcpFailure
+    >;
+    /**
+     * The one linked environment that has a thread this environment does not,
+     * or nothing when none that answered has it. Several having it is an error.
+     */
+    readonly locateThread: (
+      scope: Scope,
+      threadId: ThreadId,
+    ) => Effect.Effect<EnvironmentId | undefined, OrchestratorMcpFailure>;
   }
 >()("t3/peer/PeerForwarding") {}
 
@@ -245,12 +275,149 @@ const make = Effect.gen(function* () {
     },
   );
 
+  /**
+   * A call that came through a link never asks this environment's links in
+   * turn, whatever the link's access: two environments linked to each other
+   * would ask each other forever.
+   */
+  const asksLinks = (scope: Scope) =>
+    readCaller().pipe(
+      Effect.map((caller) => callerLinkOrigin(caller) === undefined),
+      Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+      Effect.provideService(ThreadManagement.ThreadManagementService, threads),
+    );
+
+  const unanswered = (link: PeerLinkSummary): OrchestratorMcpUnlistedEnvironment => ({
+    environmentId: link.environmentId,
+    label: link.label,
+    error:
+      link.status === "expired"
+        ? `The link to ${link.label} expired. Link it again with a new pairing code from ${link.label}.`
+        : `${link.label} did not answer.`,
+  });
+
+  /** The links that answer now, and why each other one is left out. */
+  const answeringLinks = links.list.pipe(
+    Effect.mapError(
+      (error) =>
+        new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message }),
+    ),
+    Effect.map((listed) => ({
+      answering: listed.filter((link) => link.status === "reachable"),
+      silent: listed.filter((link) => link.status !== "reachable").map(unanswered),
+    })),
+  );
+
+  const pinnedThreads: PeerForwarding["Service"]["pinnedThreads"] = Effect.fn(
+    "PeerForwarding.pinnedThreads",
+  )(function* (scope, input) {
+    if (!(yield* asksLinks(scope))) return { threads: [], total: 0, unlisted: [] };
+    const { answering, silent } = yield* answeringLinks;
+    const { cursor: _cursor, ...listing } = input;
+    const listed = yield* Effect.forEach(
+      answering,
+      (link) =>
+        forward<OrchestratorMcpThreadListResult>(
+          scope,
+          "t3_thread_list",
+          OrchestratorMcpThreadListInput,
+          OrchestratorMcpThreadListResult,
+          link.environmentId,
+          listing,
+        ).pipe(
+          Effect.result,
+          Effect.map((result) => ({ link, result })),
+        ),
+      { concurrency: "unbounded" },
+    );
+    return {
+      threads: listed.flatMap(({ link, result }) =>
+        Result.isSuccess(result)
+          ? result.success.threads.map((thread) => ({
+              ...thread,
+              environmentId: link.environmentId,
+              environmentLabel: link.label,
+            }))
+          : [],
+      ),
+      total: listed.reduce(
+        (sum, { result }) => sum + (Result.isSuccess(result) ? result.success.total : 0),
+        0,
+      ),
+      unlisted: [
+        ...silent,
+        ...listed.flatMap(({ link, result }) =>
+          Result.isFailure(result)
+            ? [
+                {
+                  environmentId: link.environmentId,
+                  label: link.label,
+                  error: result.failure.message,
+                },
+              ]
+            : [],
+        ),
+      ],
+    };
+  });
+
+  const locateThread: PeerForwarding["Service"]["locateThread"] = Effect.fn(
+    "PeerForwarding.locateThread",
+  )(function* (scope, threadId) {
+    // A caller that may not ask the links hears that the thread is not here.
+    if (!(yield* asksLinks(scope).pipe(Effect.orElseSucceed(() => false)))) return undefined;
+    const { answering, silent } = yield* answeringLinks;
+    // The smallest read there: only whether the thread exists matters.
+    const probed = yield* Effect.forEach(
+      answering,
+      (link) =>
+        readThread(scope, link.environmentId, {
+          threadId,
+          limit: 1,
+          runLimit: 1,
+          maxCharsPerItem: 1,
+        }).pipe(
+          Effect.result,
+          Effect.map((result) => ({ link, result })),
+        ),
+      { concurrency: "unbounded" },
+    );
+    const holders = probed.flatMap(({ link, result }) => (Result.isSuccess(result) ? [link] : []));
+    const [holder, ...others] = holders;
+    if (holder !== undefined && others.length === 0) return holder.environmentId;
+    if (holder !== undefined) {
+      return yield* new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message: `Thread ${threadId} is in several linked environments: ${holders
+          .map((link) => `${link.label} (${link.environmentId})`)
+          .join(", ")}. Pass environmentId to pick one.`,
+      });
+    }
+    const unchecked = [
+      ...silent,
+      ...probed.flatMap(({ link, result }) =>
+        Result.isFailure(result) && result.failure.code !== "thread_not_found"
+          ? [{ error: `${link.label}: ${result.failure.message}` }]
+          : [],
+      ),
+    ];
+    if (unchecked.length === 0) return undefined;
+    return yield* new OrchestratorMcpFailure({
+      code: "thread_not_found",
+      message: `Thread ${threadId} is neither here nor in a linked environment that answered. ${unchecked
+        .map((environment) => environment.error)
+        .join(" ")}`,
+    });
+  });
+
   return PeerForwarding.of({
     call,
     readThread,
     interruptThread,
     waitForThread,
     links: listLinks,
+    pinnedThreads,
+    locateThread,
   });
 });
 

@@ -349,6 +349,12 @@ export const OrchestratorMcpThreadListInput = Schema.Struct({
   titleContains: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(256))),
   settled: Schema.optional(Schema.Boolean),
   snoozed: Schema.optional(Schema.Boolean),
+  pinned: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "Only pinned (true) or unpinned (false) threads. pinned=true without projectId lists the pinned threads of every project, here and in every linked environment, up to limit per environment and without paging.",
+    }),
+  ),
   includeSubagents: Schema.optional(Schema.Boolean),
   cursor: Schema.optional(NonNegativeInt),
   limit: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(100))),
@@ -387,15 +393,31 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   itemCount: NonNegativeInt,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  /** Set when pinned threads are listed across projects. */
+  projectId: Schema.optional(ProjectId),
+  projectTitle: Schema.optional(Schema.String),
+  environmentId: Schema.optional(EnvironmentId),
+  /** The linked environment's label; absent for a thread in this environment. */
+  environmentLabel: Schema.optional(Schema.String),
 });
 export type OrchestratorMcpThreadListItem = typeof OrchestratorMcpThreadListItem.Type;
 
+/** A linked environment a listing could not include, and why. */
+export const OrchestratorMcpUnlistedEnvironment = Schema.Struct({
+  environmentId: EnvironmentId,
+  label: Schema.String,
+  error: Schema.String,
+});
+export type OrchestratorMcpUnlistedEnvironment = typeof OrchestratorMcpUnlistedEnvironment.Type;
+
 export const OrchestratorMcpThreadListResult = Schema.Struct({
-  projectId: ProjectId,
+  /** Null when pinned threads are listed across projects. */
+  projectId: Schema.NullOr(ProjectId),
   currentThreadId: Schema.NullOr(ThreadId),
   threads: Schema.Array(OrchestratorMcpThreadListItem),
   nextCursor: Schema.NullOr(NonNegativeInt),
   total: NonNegativeInt,
+  unlistedEnvironments: Schema.optional(Schema.Array(OrchestratorMcpUnlistedEnvironment)),
 });
 export type OrchestratorMcpThreadListResult = typeof OrchestratorMcpThreadListResult.Type;
 

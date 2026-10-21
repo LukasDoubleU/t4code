@@ -51,6 +51,10 @@ to copy its URL and `mod+shift+k` to copy its number with a `#` prefix.
 Both shortcuts can be changed in Settings. Search for “Copy Link or Thread ID”
 or “Copy Number”. They copy the selected PR and leave terminal input alone.
 
+**Thread: Copy ID** copies the thread's own ID, also for a thread with a pull
+request. It is in the command palette and the thread menu under **Copy**, and has
+no default shortcut.
+
 ## Find in a diff
 
 Click into a diff in the Diff panel or a pull request's Code tab, then press

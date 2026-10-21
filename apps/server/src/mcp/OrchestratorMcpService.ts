@@ -717,6 +717,17 @@ function listItemFromShell(
   };
 }
 
+function matchesListFilters(input: OrchestratorMcpThreadListInput, nowMs: number) {
+  const statuses = input.statuses === undefined ? null : new Set(input.statuses);
+  const titleContains = input.titleContains?.toLocaleLowerCase();
+  return (thread: OrchestrationV2ThreadShell) =>
+    (statuses === null || statuses.has(thread.activityRunStatus ?? thread.status)) &&
+    (input.settled === undefined || threadSettlement(thread).settled === input.settled) &&
+    (input.snoozed === undefined || isSnoozed(thread, nowMs) === input.snoozed) &&
+    (input.pinned === undefined || (thread.pinnedAt != null) === input.pinned) &&
+    (titleContains === undefined || thread.title.toLocaleLowerCase().includes(titleContains));
+}
+
 function threadDetail(
   projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs" | "runtimeRequests">,
   itemCount: number,
@@ -903,6 +914,8 @@ const make = Effect.gen(function* () {
   const gitDriver = yield* GitVcsDriver.GitVcsDriver;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const remoteDelegation = yield* RemoteDelegation.RemoteDelegation;
+  // Optional like the routing of tools to linked environments: without it, listings stay here.
+  const forwarding = yield* Effect.serviceOption(PeerForwarding.PeerForwarding);
   const usageLimitSources = yield* Effect.serviceOption(UsageLimitSources.UsageLimitSources);
 
   const requireProject = (projectId: ProjectId) =>
@@ -2652,37 +2665,57 @@ const make = Effect.gen(function* () {
     ),
     listThreads: Effect.fn("OrchestratorMcpService.listThreads")(function* (scope, input) {
       const { parent } = yield* loadCaller(scope);
+      const listFailure = (error: unknown) =>
+        failure("orchestration_error", `Unable to list threads: ${errorMessage(error)}`);
+      const nowMs = yield* Clock.currentTimeMillis;
+      const limit = input.limit ?? DEFAULT_THREAD_LIST_LIMIT;
+      // Pinned threads are the few long-lived ones agents hand work to by
+      // name, so they list across projects and linked environments at once.
+      if (input.pinned === true && input.projectId === undefined) {
+        const pinned = (yield* threadManagement
+          .listPinnedThreads({ includeSubagents: input.includeSubagents !== false })
+          .pipe(Effect.mapError(listFailure))).filter(matchesListFilters(input, nowMs));
+        const page = pinned.slice(0, limit);
+        const projectTitles = new Map(
+          yield* Effect.forEach(new Set(page.map((thread) => thread.projectId)), (projectId) =>
+            projects.getById(projectId).pipe(
+              Effect.map((project) => [projectId, Option.getOrUndefined(project)?.title] as const),
+              Effect.orElseSucceed(() => [projectId, undefined] as const),
+            ),
+          ),
+        );
+        const elsewhere = Option.isSome(forwarding)
+          ? yield* forwarding.value.pinnedThreads(scope, input)
+          : { threads: [], total: 0, unlisted: [] };
+        const here = page.map((shell): OrchestratorMcpThreadListItem => {
+          const projectTitle = projectTitles.get(shell.projectId);
+          return {
+            ...listItemFromShell(shell, nowMs),
+            projectId: shell.projectId,
+            ...(projectTitle === undefined ? {} : { projectTitle }),
+            environmentId: scope.environmentId,
+          };
+        });
+        return {
+          projectId: null,
+          currentThreadId: parent?.thread.id ?? null,
+          threads: [...here, ...elsewhere.threads].toSorted((left, right) =>
+            right.updatedAt.localeCompare(left.updatedAt),
+          ),
+          nextCursor: null,
+          total: pinned.length + elsewhere.total,
+          ...(elsewhere.unlisted.length === 0 ? {} : { unlistedEnvironments: elsewhere.unlisted }),
+        } satisfies OrchestratorMcpThreadListResult;
+      }
       const projectId = yield* resolveProjectTarget(parent, input.projectId);
       const projectThreads = yield* threadManagement
         .listProjectThreads({
           projectId,
           includeSubagents: input.includeSubagents !== false,
         })
-        .pipe(
-          Effect.mapError((error) =>
-            failure("orchestration_error", `Unable to list threads: ${errorMessage(error)}`),
-          ),
-        );
-      const nowMs = yield* Clock.currentTimeMillis;
-      const statuses = input.statuses === undefined ? null : new Set(input.statuses);
-      const titleContains = input.titleContains?.toLocaleLowerCase();
-      const filtered = projectThreads
-        .filter(
-          (thread) => statuses === null || statuses.has(thread.activityRunStatus ?? thread.status),
-        )
-        .filter(
-          (thread) =>
-            input.settled === undefined || threadSettlement(thread).settled === input.settled,
-        )
-        .filter(
-          (thread) => input.snoozed === undefined || isSnoozed(thread, nowMs) === input.snoozed,
-        )
-        .filter(
-          (thread) =>
-            titleContains === undefined || thread.title.toLocaleLowerCase().includes(titleContains),
-        );
+        .pipe(Effect.mapError(listFailure));
+      const filtered = projectThreads.filter(matchesListFilters(input, nowMs));
       const cursor = input.cursor ?? 0;
-      const limit = input.limit ?? DEFAULT_THREAD_LIST_LIMIT;
       const page = filtered.slice(cursor, cursor + limit);
       const nextCursor = cursor + page.length < filtered.length ? cursor + page.length : null;
       return {

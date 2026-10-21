@@ -423,6 +423,29 @@ it.effect.each([
   }).pipe(Effect.provide(testLayer)),
 );
 
+it.effect.each([
+  ["sql", layerSql],
+  ["memory", ProjectionStore.layerMemory],
+] as const)("%s: a pinned-only shell read lists pinned threads of every project", ([, testLayer]) =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const pinned = yield* createThread("pinned-here", { pinnedAt: old });
+    const elsewhere = yield* createThread("pinned-elsewhere", {
+      pinnedAt: old,
+      projectId: ProjectId.make("project:settlement-other"),
+    });
+    yield* createThread("pinned-unpinned");
+    yield* createThread("pinned-cleared", { pinnedAt: null });
+    yield* createThread("pinned-archived", { pinnedAt: old, archivedAt: old });
+
+    const shell = yield* store.getShellSnapshot({ location: "active", pinnedOnly: true });
+    assert.deepEqual(
+      new Set(shell.threads.map((thread) => thread.id)),
+      new Set([pinned, elsewhere]),
+    );
+  }).pipe(Effect.provide(testLayer)),
+);
+
 it.effect(
   "reads settlement candidates and thread metadata without loading historical or archived payloads",
   () =>

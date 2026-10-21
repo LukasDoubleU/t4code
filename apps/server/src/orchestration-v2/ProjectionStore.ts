@@ -381,6 +381,7 @@ export interface ShellSnapshotOptions {
   readonly location?: "active" | "archive";
   readonly projectId?: ProjectId;
   readonly unsettledOnly?: boolean;
+  readonly pinnedOnly?: boolean;
 }
 
 export interface ProjectionStoreV2Shape {
@@ -5647,7 +5648,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
 
     const selectShellThreadRows = (
       threadId?: ThreadId,
-      { location, projectId, unsettledOnly = false }: ShellSnapshotOptions = {},
+      { location, projectId, unsettledOnly = false, pinnedOnly = false }: ShellSnapshotOptions = {},
     ) =>
       sql<ShellThreadRow>`
             SELECT
@@ -5844,7 +5845,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               unsettledOnly
                 ? sql` AND json_extract(t.payload_json, '$.settledAt') IS NULL AND json_extract(t.payload_json, '$.settledOverride') IS NOT 'settled'`
                 : sql``
-            }
+            }${pinnedOnly ? sql` AND json_extract(t.payload_json, '$.pinnedAt') IS NOT NULL` : sql``}
             ORDER BY t.updated_at ASC, t.thread_id ASC
           `;
 
@@ -6628,6 +6629,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             ) {
               return false;
             }
+            if (options?.pinnedOnly && projection.thread.pinnedAt == null) return false;
             if (options?.location === "active") return projection.thread.archivedAt === null;
             if (options?.location === "archive") return projection.thread.archivedAt !== null;
             return true;

@@ -11,6 +11,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
 import type * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
@@ -362,6 +363,20 @@ const linksUnavailable = new OrchestratorMcpFailure({
 });
 
 /**
+ * Tools that look for a thread id this environment does not have in the
+ * linked ones, so an id pasted without its environment still works.
+ */
+const findsThreadsElsewhere: ReadonlySet<string> = new Set([
+  "t3_thread_read",
+  "t3_thread_send",
+  "t3_thread_wait",
+]);
+
+const isMcpFailure = Schema.is(OrchestratorMcpFailure);
+const isThreadNotFound = (error: unknown) =>
+  isMcpFailure(error) && error.code === "thread_not_found";
+
+/**
  * Every tool that takes a linked environment runs there the same way: its
  * declaration checks the caller here, and the same call goes to the other
  * environment, which checks the rest. The handler here never sees
@@ -386,14 +401,44 @@ const routed = Effect.fn("McpToolAccess.routed")(function* <Tools extends Record
     const here = handlers[name] as (
       params: object,
     ) => Effect.Effect<unknown, Tool.Failure<Tools[keyof Tools]>>;
+    const there = Effect.fn("McpToolAccess.there")(function* (
+      scope: McpInvocationContext.McpInvocationScope,
+      target: EnvironmentId,
+      params: object,
+    ) {
+      yield* (remote as RemoteCheck<typeof params>)(params);
+      if (Option.isNone(forwarding)) return yield* linksUnavailable;
+      return yield* forwarding.value.call(scope, tool, target, {
+        ...params,
+        environmentId: target,
+      });
+    });
     handlers[name] = ({ environmentId, ...params }: { readonly environmentId?: EnvironmentId }) =>
       Effect.gen(function* () {
         const scope = yield* McpInvocationContext.McpInvocationContext;
         const target = PeerForwarding.remoteTarget(scope, environmentId);
-        if (target === undefined) return yield* here(params);
-        yield* (remote as RemoteCheck<typeof params>)(params);
-        if (Option.isNone(forwarding)) return yield* linksUnavailable;
-        return yield* forwarding.value.call(scope, tool, target, { ...params, environmentId });
+        if (target !== undefined) return yield* there(scope, target, params);
+        // A call a linked environment forwards here already names this one.
+        if (
+          environmentId !== undefined ||
+          !findsThreadsElsewhere.has(name) ||
+          scope.client?.linked === true
+        ) {
+          return yield* here(params);
+        }
+        return yield* here(params).pipe(
+          Effect.catchIf(isThreadNotFound, (notHere) =>
+            Effect.gen(function* () {
+              if (Option.isNone(forwarding)) return yield* Effect.fail(notHere);
+              const found = yield* forwarding.value.locateThread(
+                scope,
+                (params as { readonly threadId: ThreadId }).threadId,
+              );
+              if (found === undefined) return yield* Effect.fail(notHere);
+              return yield* there(scope, found, params);
+            }),
+          ),
+        );
       });
   }
   return handlers as Toolkit.HandlersFrom<Tools>;

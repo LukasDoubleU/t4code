@@ -31,7 +31,7 @@ const fixture = Effect.gen(function* () {
     }),
     Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
       platform: "win32",
-      displayName: "T3 Code",
+      displayName: "T4 Code",
     } as DesktopEnvironment.DesktopEnvironment["Service"]),
     Layer.succeed(ElectronTray.ElectronTray, {
       create: (options) => Ref.set(callbacks, Option.some(options)),

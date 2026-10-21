@@ -28,7 +28,7 @@ describe("ElectronTray", () => {
     vi.resetAllMocks();
     native.isEmpty.mockReturnValue(false);
   });
-  const options = { iconPath: "icon.ico", tooltip: "T3 Code", open: () => {}, quit: () => {} };
+  const options = { iconPath: "icon.ico", appName: "T4 Code", open: () => {}, quit: () => {} };
 
   it.effect("keeps the native tray until its scope closes", () =>
     Effect.gen(function* () {

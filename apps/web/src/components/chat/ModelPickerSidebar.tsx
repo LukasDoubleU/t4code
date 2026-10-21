@@ -1,7 +1,7 @@
 import { Toolbar } from "@base-ui/react/toolbar";
 import { type ProviderInstanceId } from "@t3tools/contracts";
 import { memo, useLayoutEffect, useRef, useState } from "react";
-import { SparklesIcon, StarIcon } from "lucide-react";
+import { GaugeIcon, SparklesIcon, StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
@@ -30,6 +30,8 @@ const SELECTED_INDICATOR_CLASS =
 const BADGE_BASE_CLASS =
   "pointer-events-none absolute -right-0.5 top-0.5 z-10 flex size-3.5 items-center justify-center rounded-full bg-transparent shadow-sm ";
 const NEW_BADGE_CLASS = `${BADGE_BASE_CLASS} text-update-foreground `;
+const RECOMMENDED_BADGE_CLASS =
+  "pointer-events-none absolute -left-0.5 bottom-0.5 z-10 flex size-3.5 items-center justify-center rounded-full text-success";
 
 const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_SIDE_OFFSET = 8;
@@ -44,6 +46,8 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
   newBadgeInstanceIds?: ReadonlySet<ProviderInstanceId>;
+  /** The account Usage → Limits says to use next. */
+  recommendedInstanceIds?: ReadonlySet<ProviderInstanceId>;
 }) {
   const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
     props.onSelectInstance(instanceId);
@@ -142,6 +146,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             const isHovered = hoveredInstanceId === entry.instanceId;
             const showNewBadge = props.newBadgeInstanceIds?.has(entry.instanceId) ?? false;
             const showInstanceBadge = shouldShowInstanceBadge(entry, props.instanceEntries);
+            const isRecommended = props.recommendedInstanceIds?.has(entry.instanceId) ?? false;
 
             const tooltip = isUnavailable
               ? describeUnavailableInstance(entry)
@@ -149,7 +154,9 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
                 : showNewBadge
                   ? `${entry.displayName} — New`
-                  : entry.displayName;
+                  : isRecommended
+                    ? `${entry.displayName} — Use next`
+                    : entry.displayName;
 
             const button = (
               <Toolbar.Button
@@ -176,7 +183,9 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                     ? tooltip
                     : showNewBadge
                       ? `${entry.displayName}, new`
-                      : entry.displayName
+                      : isRecommended
+                        ? `${entry.displayName}, use next`
+                        : entry.displayName
                 }
               >
                 <ProviderInstanceIcon
@@ -200,6 +209,11 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                 {showNewBadge ? (
                   <span className={NEW_BADGE_CLASS} aria-hidden>
                     <SparklesIcon className="size-2" />
+                  </span>
+                ) : null}
+                {isRecommended ? (
+                  <span className={RECOMMENDED_BADGE_CLASS} aria-hidden>
+                    <GaugeIcon className="size-2.5" />
                   </span>
                 ) : null}
               </Toolbar.Button>

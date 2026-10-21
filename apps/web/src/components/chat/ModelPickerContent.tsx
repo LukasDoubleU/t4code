@@ -62,6 +62,7 @@ import {
   type ProviderInstanceEntry,
 } from "../../providerInstances";
 import { providerModelKey, sortProviderModelItems } from "../../modelOrdering";
+import { useRecommendedInstanceIds } from "../../nextAccountSelection";
 
 type ModelPickerItem = {
   slug: string;
@@ -374,6 +375,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const pickerContentRef = useRef<HTMLDivElement>(null);
   const highlightedModelKeyRef = useRef<string | null>(null);
   const { favorites } = useEnvironmentModelPreferences(props.environmentId);
+  const recommendedInstanceIds = useRecommendedInstanceIds(props.environmentId, instanceEntries);
   const activeEntry = props.instanceEntries.find(
     (entry) => entry.instanceId === props.activeInstanceId,
   );
@@ -809,6 +811,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             onFocusSearch={focusSearchInput}
             instanceEntries={sidebarInstanceEntries}
             showFavorites
+            recommendedInstanceIds={recommendedInstanceIds}
             {...(selectableUnavailableInstanceIds ? { selectableUnavailableInstanceIds } : {})}
             {...(lockedDisabledInstanceIds
               ? {

@@ -1,141 +1,93 @@
-# T3 Code
+<p align="center"><img src="assets/prod/t4/icon.svg" width="96" alt="T4 Code icon"></p>
 
-T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
+# T4 Code
 
-Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, T3 Code can control them.
+T4 Code is a personal fork of [T3 Code](https://github.com/pingdotgg/t3code), the open-source GUI for Claude Code, Codex and other coding agents. It is built for running many agents across several machines and subscriptions: threads that reach across machines, an app that keeps running in the tray, a sidebar made for long-lived threads, and a hint which account to use next.
 
-## "Wait, what are you selling me?"
+It is based on upstream `v0.1.1` and follows upstream releases. Only Windows builds are published.
 
-Nothing. We built T3 Code because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.
+> [!NOTE]
+> T4 Code is not affiliated with T3 Tools or the T3 Code team. Please don't report its problems upstream.
 
-We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the editor that you want.
+## What's different from T3 Code
 
-## Installation
+**Across machines**
+
+- **Linked environments.** Link two machines in **Settings → Connections**, and agents on one launch, message, wait on and stop threads on the other; `delegate_task` runs a task there and reports back. Both machines need T4 Code. [Link another environment](./docs/user/remote-access.md#link-another-environment)
+- **Find threads by name.** Agents find pinned threads across projects and linked machines, and resolve a bare thread ID on whichever machine has it. **Copy thread ID** is in the thread menu and the command palette.
+
+**Long-lived threads**
+
+- **Memory for pinned threads.** A pinned thread keeps a memory file that its agent reads after every compaction and keeps current. A brain icon on the card shows it; **Open memory** opens the file. [Keep a memory](./docs/user/thread-sidebar.md#keep-a-memory-for-a-pinned-thread)
+- **Background section.** Threads that agents start on their own wait there and come forward only while they need you: a question, an approval or a failed run. The **Status** sort puts the same things first. [Keep agents' threads in the background](./docs/user/thread-sidebar.md#keep-agents-threads-in-the-background)
+- **Sidebar.** Group threads by project, sort by last message, both in one menu; compact cards; the Background and Settled shelves stay at the bottom. [Sort and group threads](./docs/user/thread-sidebar.md#sort-and-group-threads)
+
+**Several accounts**
+
+- **Use next.** **Usage → Limits** ranks your Claude and Codex accounts by the room they have left, and new threads start on the recommended one. Agents see the same ranking in `orchestrator_capabilities`. [Track subscription limits](./docs/user/usage.md#track-subscription-limits)
+
+**Chat**
+
+- Every message shows its time, relative by default (`Worked for 26s · 10m ago`).
+- The new-thread picker (<kbd>Ctrl</kbd>+<kbd>N</kbd>) lists projects by name.
+
+**Windows desktop**
+
+- Keeps running in the tray when the window closes; **Quit** in the tray menu stops it.
+- Its own name and icon, and Catppuccin (Mocha and Latte, Rosewater accent) as the default theme.
+- Updates come from this repository's releases.
+
+## Install
 
 > [!WARNING]
-> T3 Code currently supports Codex, Claude, Cursor, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
->
-> - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
-> - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
-> - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `agent login`
-> - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
-> - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
-> - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
+> T4 Code replaces T3 Code on a machine. It uses the same data folder (`~/.t3`), so your threads, settings and T3 Connect sign-in carry over, and the two can't run side by side. The builds are unsigned.
 
-### Command line
+1. Install and sign in to at least one agent CLI, for example [Claude Code](https://claude.com/product/claude-code) (`claude auth login`) or [Codex](https://developers.openai.com/codex/cli) (`codex login`). See [Install and first run](./docs/user/install.md).
+2. Download `T3-Code-<version>-x64.exe` from the [latest release](https://github.com/LukasDoubleU/t4code/releases/latest) and run it. Windows SmartScreen may warn first, because the installer is unsigned. The installer and the program folder keep T3 Code's names, so existing shortcuts and updates carry over.
+3. Later versions arrive through the app's update check.
 
-```bash
-curl -fsSL https://t3.codes/install.sh | sh
-```
+From a clone, `pwsh -File scripts/t4/install-t4.ps1` does the same in one step: it checks the download against `SHA256SUMS`, quits the app, backs up your data and installs. Each release also has the `t3` command-line tool as `t3-<version>-win32-x64.zip`.
 
-On Windows, in PowerShell:
+Versions read `0.1.2-t4.N`: the upstream patch after the base, plus the fork's build number.
 
-```powershell
-irm https://t3.codes/install.ps1 | iex
-```
+### Back to T3 Code
 
-Then run `t3` to start the server and open the local web app. `t3 service install` keeps it running in the background, `t3 update` moves to a newer release, and `t3 --help` has the full reference.
+Install the official `v0.1.1` over T4 Code: everything stays, and it only warns about the three database migrations the fork adds. For a later official release, rehearse the switch first; [`scripts/t4/README.md`](./scripts/t4/README.md) explains how.
 
-To try it once without installing, run `npx t3@latest` instead.
+## Following upstream
 
-### Desktop app
+T4 Code merges each upstream release rather than rebasing, and drops a change once upstream ships it. Until then it carries these upstream pull requests:
 
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
+| Change | Upstream |
+| --- | --- |
+| Linked environments | `#16653`, `#16654`, `#16655`, `#16684`, `#16695`, `#16698`, `#16719`, `#17130` |
+| Tray | `#19176` |
+| Group threads by project | `#21039` |
+| Sort threads by last message | `#22032` |
 
-#### Windows (`winget`)
-
-```bash
-winget install T3Tools.T3Code
-```
-
-#### Windows (`scoop`)
-
-```bash
-scoop install extras/t3code
-```
-
-#### macOS (Homebrew)
-
-```bash
-brew install --cask t3-code
-```
-
-#### Debian, Ubuntu (`.deb`)
-
-Download the `.deb` from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), then:
-
-```bash
-sudo apt install ./T3-Code-*.deb
-```
-
-#### Arch Linux (AUR)
-
-Stable:
-
-```bash
-yay -S t3code-bin
-```
-
-Nightly:
-
-```bash
-yay -S t3code-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
-
-## Some notes
-
-We are very very early in this project. Expect bugs.
-
-We are (mostly) not accepting contributions yet. Small fixes may be considered. Big features will not be.
+Everything else is a fork patch, tracked in this repository's issues. A daily workflow comments on the upkeep issue (#13) when upstream publishes a release or a carried pull request changes state.
 
 ## Documentation
 
-Full docs live in [docs/](./docs). There's no docs site yet.
+The docs in [docs/](./docs) are upstream's, with the fork's features added.
 
 - [Install and first run](./docs/user/install.md)
-- [Permission modes](./docs/user/permission-modes.md)
+- [Working with threads](./docs/user/thread-sidebar.md)
+- [Usage and limits](./docs/user/usage.md)
+- [Remote access and linked environments](./docs/user/remote-access.md)
+- [Connect Claude Code, Codex and other agents over MCP](./docs/user/outside-agents.md)
 - [Keyboard shortcuts](./docs/user/keybindings.md)
-- [Project settings](./docs/user/project-settings.md)
-- [Appearance preferences](./docs/user/appearance.md)
-- [Remote access from a phone or another machine](./docs/user/remote-access.md)
-- [Connect Claude Code, Codex, ChatGPT and other agents over MCP](./docs/user/outside-agents.md)
-- [Keeping app and server in sync](./docs/user/updating.md)
-- [Source control integrations](./docs/user/source-control.md)
-- Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
-- [Run T3 Code as a background service](./docs/user/background-service.md)
+- [Appearance](./docs/user/appearance.md)
+- [Updating](./docs/user/updating.md)
+- Multiple accounts: [Claude](./docs/user/providers-claude.md) · [Codex](./docs/user/providers-codex.md)
+- [Fork scripts: install, rehearse a switch, undo the fork's migrations](./scripts/t4/README.md)
 
-Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
+## Build from source
 
-## If you REALLY want to contribute still.... read this first
+Install [Vite+](https://viteplus.dev/guide/) for the `vp` command, then run `vp i` and `vp run dev`. Start reading at [docs/internals/overview.md](./docs/internals/overview.md). Releases are built by `.github/workflows/t4-release.yml` from a `t4-v*` tag.
 
-### Install `vp`
+This fork follows its owner's needs and doesn't take contributions. For T3 Code itself, see upstream.
 
-T3 Code uses Vite+ so you'll need to install the global `vp` command-line tool.
+## License
 
-#### macOS / Linux
-
-```bash
-curl -fsSL https://vite.plus | bash
-```
-
-#### Windows
-
-```bash
-irm https://vite.plus/ps1 | iex
-```
-
-Checkout their getting started guide for more information: https://viteplus.dev/guide/
-
-### Install dependencies
-
-```bash
-vp i
-```
-
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR.
-
-Have a feature request? Start an [Ideas discussion](https://github.com/pingdotgg/t3code/discussions/categories/ideas).
-
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+MIT, like T3 Code. See [LICENSE](./LICENSE).

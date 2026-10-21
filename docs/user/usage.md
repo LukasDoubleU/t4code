@@ -106,6 +106,15 @@ and missing or out-of-date readings come last. Banked reset credits are shown bu
 order. If Claude reports a weekly allowance for a single model, such as Opus, it counts until you
 choose the model you use next.
 
+New threads start on that account by themselves, with the same model and options where it offers
+them. Only accounts signed in on the thread's environment count, and the model picker marks the
+recommended one. Choosing an account by hand keeps it for that thread, threads that already exist
+never switch, and an account without limit readings, such as one billing an API key, stays as it
+is. Turn off **Start new threads on the recommended account** next to **Use next** to keep your
+usual default; like the session room, the choice is remembered per device. Agents see the same
+ranking: `orchestrator_capabilities` gives each account its place, whether it is recommended, and
+why.
+
 When a Claude or Codex account has no overall weekly quota left, its pooled session contribution
 shows 0% left. The next refill depends on both reset times: an exhausted session must also reset,
 and a partly spent session may only regain its unused portion when the week resets. Missing or

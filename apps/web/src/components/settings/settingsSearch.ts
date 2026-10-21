@@ -389,6 +389,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["timestamp clock locale system browser os 12 hour 24 hour"],
   },
   {
+    id: "always-show-message-times",
+    title: "Always show message times",
+    to: "/settings/general",
+    searchTerms: ["timestamp time chat message hover visible"],
+  },
+  {
     id: "response-streaming",
     title: "Response streaming",
     to: "/settings/general",

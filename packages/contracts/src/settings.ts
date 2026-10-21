@@ -467,6 +467,8 @@ export const ClientSettingsSchema = Schema.Struct({
   timestampFormat: TimestampFormat.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TIMESTAMP_FORMAT)),
   ),
+  // Chat messages show their time without hovering; their buttons stay hover-only.
+  alwaysShowMessageTimes: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   snapShotEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   snapShotIncludeAccessibility: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
@@ -1655,6 +1657,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarThreadGrouping: Schema.optionalKey(SidebarThreadGrouping),
   sidebarBackgroundSection: Schema.optionalKey(Schema.Boolean),
   timestampFormat: Schema.optionalKey(TimestampFormat),
+  alwaysShowMessageTimes: Schema.optionalKey(Schema.Boolean),
   snapShotEnabled: Schema.optionalKey(Schema.Boolean),
   snapShotIncludeAccessibility: Schema.optionalKey(Schema.Boolean),
   snapShotShortcut: Schema.optionalKey(SnapShotShortcut),

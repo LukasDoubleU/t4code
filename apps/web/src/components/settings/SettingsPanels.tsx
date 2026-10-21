@@ -557,6 +557,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
       ? ["Time format"]
       : []),
+    ...(settings.alwaysShowMessageTimes !== DEFAULT_UNIFIED_SETTINGS.alwaysShowMessageTimes
+      ? ["Always show message times"]
+      : []),
     ...(settings.notificationMode !== DEFAULT_UNIFIED_SETTINGS.notificationMode
       ? ["Thread notifications"]
       : []),
@@ -720,6 +723,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       chatWidth: DEFAULT_UNIFIED_SETTINGS.chatWidth,
       mathRenderingEnabled: DEFAULT_UNIFIED_SETTINGS.mathRenderingEnabled,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
+      alwaysShowMessageTimes: DEFAULT_UNIFIED_SETTINGS.alwaysShowMessageTimes,
       notificationMode: DEFAULT_UNIFIED_SETTINGS.notificationMode,
       inAppNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled,
       wordWrap: DEFAULT_UNIFIED_SETTINGS.wordWrap,
@@ -2411,6 +2415,29 @@ export function GeneralSettingsPanel() {
                 </SelectItem>
               </SelectPopup>
             </Select>
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("always-show-message-times")}
+          description="Show each message's time without hovering it. Its buttons still appear on hover."
+          resetAction={
+            settings.alwaysShowMessageTimes !== DEFAULT_UNIFIED_SETTINGS.alwaysShowMessageTimes ? (
+              <SettingResetButton
+                label="always show message times"
+                onClick={() =>
+                  updateSettings({
+                    alwaysShowMessageTimes: DEFAULT_UNIFIED_SETTINGS.alwaysShowMessageTimes,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.alwaysShowMessageTimes}
+              onCheckedChange={(checked) => updateSettings({ alwaysShowMessageTimes: checked })}
+              aria-label="Always show message times"
+            />
           }
         />
         <SettingsRow

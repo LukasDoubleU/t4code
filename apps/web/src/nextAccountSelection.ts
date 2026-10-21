@@ -8,7 +8,7 @@ import {
   weeklyModelScopes,
 } from "@t3tools/shared/usageNextAccount";
 import { Atom } from "effect/reactivity";
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import {
@@ -83,31 +83,72 @@ export function rankDraftInstances(input: {
 }
 
 /**
- * The selection that moves a draft to the recommended account of its provider, with the same
- * model and options, or null to leave it. A draft moves only while its prompt is empty, so the
- * account never changes under a prompt being written. A choice made by hand stays, and so does
- * an instance without a reading, such as one that bills an API key.
+ * What a visit to a draft compares to tell a pick by hand from the draft it opened with: the
+ * shown account, its model and options, and whether the selection was picked by hand.
+ */
+export function draftVisitKey(draft: DraftModelState | null): string | null {
+  if (draft === null) return null;
+  const selection =
+    draft.activeProvider === null ? null : draft.modelSelectionByProvider[draft.activeProvider];
+  return JSON.stringify([draft.activeProvider, selection ?? null, draft.modelSelectionExplicit]);
+}
+
+/**
+ * A pick by hand marks the selection explicit, and the mark stays across visits so a reused
+ * draft keeps its model. Only a pick since the draft was opened holds its account.
+ */
+export function pickedSinceOpened(
+  draft: DraftModelState | null,
+  openedKey: string | null,
+): boolean {
+  return draft?.modelSelectionExplicit === true && draftVisitKey(draft) !== openedKey;
+}
+
+function defaultModel(entry: ProviderInstanceEntry): string | undefined {
+  return (entry.models.find((model) => model.isDefault) ?? entry.models[0])?.slug;
+}
+
+/**
+ * Moves a draft to the recommended account of its provider, with the same model and options, or
+ * returns null to leave it. A draft moves only while its prompt is empty and the user has not
+ * picked since opening it, so the account never changes under a prompt being written or right
+ * after a pick. An instance without a reading, such as one that bills an API key, stays.
+ * `explicit` carries over, so a model picked on an earlier visit stays picked.
  */
 export function recommendedDraftSelection(input: {
   readonly enabled: boolean;
   readonly draft: DraftModelState | null;
+  readonly pickedThisVisit: boolean;
+  /** The instance the composer shows. It falls back past an unset or unusable `activeProvider`. */
+  readonly composerInstanceId: ProviderInstanceId | null;
+  /** What the composer starts from when the draft holds no selection for that instance. */
+  readonly fallbackSelection: ModelSelection | null;
   readonly entries: ReadonlyArray<ProviderInstanceEntry>;
   readonly ranks: ReadonlyMap<ProviderInstanceId, NextInstanceRank>;
-}): ModelSelection | null {
+}): { readonly selection: ModelSelection; readonly explicit: boolean } | null {
   const { draft } = input;
-  if (!input.enabled || draft === null || draft.modelSelectionExplicit === true) return null;
-  if (draft.hasPrompt || draft.activeProvider === null) return null;
-  const selection = draft.modelSelectionByProvider[draft.activeProvider];
-  const current = input.ranks.get(draft.activeProvider);
-  if (selection === undefined || current === undefined || current.recommended) return null;
+  if (!input.enabled || draft === null || draft.hasPrompt || input.pickedThisVisit) return null;
+  const instanceId = input.composerInstanceId ?? draft.activeProvider;
+  const current = instanceId === null ? undefined : input.ranks.get(instanceId);
+  if (instanceId === null || current === undefined || current.recommended) return null;
   const target = input.entries.find(
     (entry) =>
       entry.driverKind === current.candidate.account.driver &&
       input.ranks.get(entry.instanceId)?.recommended === true,
   );
-  return target
-    ? createModelSelection(target.instanceId, selection.model, selection.options)
-    : null;
+  if (target === undefined) return null;
+  const held = draft.modelSelectionByProvider[instanceId];
+  const fallbackEntry = input.entries.find(
+    (entry) => entry.instanceId === input.fallbackSelection?.instanceId,
+  );
+  const fallback = fallbackEntry?.driverKind === target.driverKind ? input.fallbackSelection : null;
+  const model = held?.model || fallback?.model || defaultModel(target);
+  if (!model) return null;
+  const options = held?.options ?? (fallback?.instanceId === instanceId ? fallback.options : null);
+  return {
+    selection: createModelSelection(target.instanceId, model, options),
+    explicit: draft.modelSelectionExplicit === true,
+  };
 }
 
 export function useNextAccountRanks(
@@ -149,16 +190,27 @@ export function useRecommendedInstanceIds(
 }
 
 /**
- * Keeps a draft on its provider's recommended account until the user picks an account by hand.
- * Readings that change while its prompt is empty move it along; threads that exist never move.
+ * Puts a draft on its provider's recommended account each time it is opened with an empty
+ * prompt, and keeps it there as readings change until the user types or picks by hand. Threads
+ * that exist never move.
  */
 export function useStartOnRecommendedAccount(input: {
   readonly draftId: DraftId | null;
   readonly environmentId: EnvironmentId | null;
   readonly entries: ReadonlyArray<ProviderInstanceEntry>;
+  readonly composerInstanceId: ProviderInstanceId | null;
+  readonly fallbackSelection: ModelSelection | null;
 }): void {
   const { draftId } = input;
-  const ranks = useNextAccountRanks(input.environmentId, input.entries);
+  // The entries belong to the environment the chat view resolved, which can briefly differ from
+  // the draft's while environments load.
+  const draftEnvironmentId = useComposerDraftStore((state) =>
+    draftId === null ? null : (state.getDraftSession(draftId)?.environmentId ?? null),
+  );
+  const ranks = useNextAccountRanks(
+    draftEnvironmentId === input.environmentId ? draftEnvironmentId : null,
+    input.entries,
+  );
   const [preferences] = useNextAccountPreferences();
   const draft = useComposerDraftStore(
     useShallow((state): DraftModelState | null => {
@@ -167,16 +219,49 @@ export function useStartOnRecommendedAccount(input: {
     }),
   );
   const setModelSelection = useComposerDraftStore((state) => state.setModelSelection);
-  const next = recommendedDraftSelection({
-    enabled: preferences.startNewThreads !== false,
-    draft,
-    entries: input.entries,
-    ranks,
+  const enabled = preferences.startNewThreads !== false;
+  const { entries, composerInstanceId, fallbackSelection } = input;
+  // What the current visit compares the draft against, kept off render: only the moves below
+  // change it, besides a new visit.
+  const visit = useRef<{ draftId: DraftId | null; openedKey: string | null }>({
+    draftId: null,
+    openedKey: null,
   });
-  // Before paint, so a new draft never shows the account it is about to leave.
+  // Before paint, so an opened draft never shows the account it is about to leave.
   useLayoutEffect(() => {
-    if (draftId !== null && next !== null) {
-      setModelSelection(draftId, next, { replaceOptions: true });
+    // A visit starts whenever the chat view shows a draft it was not showing.
+    if (visit.current.draftId !== draftId) {
+      visit.current = { draftId, openedKey: draftVisitKey(draft) };
     }
-  }, [draftId, next, setModelSelection]);
+    if (draftId === null) return;
+    const next = recommendedDraftSelection({
+      enabled,
+      draft,
+      pickedThisVisit: pickedSinceOpened(draft, visit.current.openedKey),
+      composerInstanceId,
+      fallbackSelection,
+      entries,
+      ranks,
+    });
+    if (next === null) return;
+    setModelSelection(draftId, next.selection, {
+      replaceOptions: true,
+      ...(next.explicit ? { explicit: true } : {}),
+    });
+    // The move is not a pick: what it wrote is what the rest of this visit compares against.
+    const moved = useComposerDraftStore.getState().getComposerDraft(draftId);
+    visit.current = {
+      draftId,
+      openedKey: draftVisitKey(moved === null ? null : draftModelState(moved)),
+    };
+  }, [
+    draftId,
+    draft,
+    enabled,
+    composerInstanceId,
+    fallbackSelection,
+    entries,
+    ranks,
+    setModelSelection,
+  ]);
 }

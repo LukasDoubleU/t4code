@@ -12,6 +12,8 @@ import { describe, expect, it } from "vite-plus/test";
 import type { NextAccountPreferences } from "./components/usage/nextAccountPreferences";
 import {
   draftModelState,
+  draftVisitKey,
+  pickedSinceOpened,
   rankDraftInstances,
   recommendedDraftSelection,
   recommendedInstanceIds,
@@ -63,7 +65,16 @@ function provider(
     status: "ready",
     auth: { status: "authenticated", ...(email === null ? {} : { email }) },
     checkedAt: inHours(0),
-    models: [],
+    models: [
+      { slug: "claude-sonnet-5-5", name: "Sonnet", isCustom: false, capabilities: null },
+      {
+        slug: "claude-opus-5-5",
+        name: "Opus",
+        isCustom: false,
+        isDefault: true,
+        capabilities: null,
+      },
+    ],
     slashCommands: [],
     skills: [],
     ...(reading === undefined
@@ -100,11 +111,27 @@ const selection = (instanceId: string): ModelSelection => ({
   options: [{ id: "effort", value: "high" }],
 });
 
-function choose(input: {
-  readonly instanceId: string;
+const draft = (input: {
+  readonly instanceId: string | null;
+  readonly explicit?: boolean;
+  readonly prompt?: string;
+}) =>
+  draftModelState({
+    prompt: input.prompt ?? "",
+    activeProvider: input.instanceId === null ? null : id(input.instanceId),
+    modelSelectionByProvider:
+      input.instanceId === null ? {} : { [id(input.instanceId)]: selection(input.instanceId) },
+    ...(input.explicit ? { modelSelectionExplicit: true } : {}),
+  });
+
+function decide(input: {
+  readonly instanceId: string | null;
   readonly explicit?: boolean;
   readonly enabled?: boolean;
   readonly prompt?: string;
+  readonly pickedThisVisit?: boolean;
+  readonly composerInstanceId?: string;
+  readonly fallbackSelection?: ModelSelection;
   readonly environments?: ReadonlyArray<readonly [EnvironmentId, ReadonlyArray<ServerProvider>]>;
 }) {
   const entries = deriveProviderInstanceEntries(hereProviders);
@@ -122,22 +149,26 @@ function choose(input: {
     entries,
     preferences,
   });
+  const composerInstanceId = input.composerInstanceId ?? input.instanceId;
   return recommendedDraftSelection({
     enabled: input.enabled ?? true,
-    draft: draftModelState({
-      prompt: input.prompt ?? "",
-      activeProvider: id(input.instanceId),
-      modelSelectionByProvider: { [id(input.instanceId)]: selection(input.instanceId) },
-      ...(input.explicit ? { modelSelectionExplicit: true } : {}),
-    }),
+    draft: draft(input),
+    pickedThisVisit: input.pickedThisVisit ?? false,
+    composerInstanceId: composerInstanceId === null ? null : id(composerInstanceId),
+    fallbackSelection: input.fallbackSelection ?? null,
     entries,
     ranks,
   });
 }
 
+const choose = (input: Parameters<typeof decide>[0]) => decide(input)?.selection ?? null;
+
 describe("recommendedDraftSelection", () => {
   it("moves a new draft to the recommended account with the same model and options", () => {
-    expect(choose({ instanceId: "claudeAgent" })).toEqual(selection("claude_urgent"));
+    expect(decide({ instanceId: "claudeAgent" })).toEqual({
+      selection: selection("claude_urgent"),
+      explicit: false,
+    });
   });
 
   it("leaves a draft already on the recommended account", () => {
@@ -153,8 +184,39 @@ describe("recommendedDraftSelection", () => {
     );
   });
 
-  it("keeps an account chosen by hand", () => {
-    expect(choose({ instanceId: "claudeAgent", explicit: true })).toBeNull();
+  it("moves a reopened empty draft picked by hand on an earlier visit, keeping its model", () => {
+    expect(decide({ instanceId: "claudeAgent", explicit: true })).toEqual({
+      selection: selection("claude_urgent"),
+      explicit: true,
+    });
+  });
+
+  it("holds an account picked during this visit", () => {
+    expect(choose({ instanceId: "claudeAgent", explicit: true, pickedThisVisit: true })).toBeNull();
+  });
+
+  it("holds a reopened draft whose prompt has text", () => {
+    expect(choose({ instanceId: "claudeAgent", explicit: true, prompt: "Ship it" })).toBeNull();
+  });
+
+  it("moves the account the composer falls back to when the draft names none", () => {
+    // No sticky pick and no project default: the composer shows the first Claude instance.
+    expect(choose({ instanceId: null, composerInstanceId: "claudeAgent" })).toEqual({
+      instanceId: id("claude_urgent"),
+      model: "claude-opus-5-5",
+    });
+    const projectDefault: ModelSelection = {
+      instanceId: id("claudeAgent"),
+      model: "claude-sonnet-5-5",
+      options: [{ id: "effort", value: "low" }],
+    };
+    expect(
+      choose({
+        instanceId: null,
+        composerInstanceId: "claudeAgent",
+        fallbackSelection: projectDefault,
+      }),
+    ).toEqual({ ...projectDefault, instanceId: id("claude_urgent") });
   });
 
   it("keeps today's default with the switch off", () => {
@@ -198,6 +260,32 @@ describe("recommendedDraftSelection", () => {
         ],
       }),
     ).toEqual(selection("claudeAgent"));
+  });
+});
+
+describe("pickedSinceOpened", () => {
+  it("tells a pick during the visit from an earlier pick and from the move itself", () => {
+    // Opened with a model picked by hand last time: that pick no longer holds the account.
+    const opened = draft({ instanceId: "claudeAgent", explicit: true });
+    expect(pickedSinceOpened(opened, draftVisitKey(opened))).toBe(false);
+    // The move keeps the flag and becomes what the rest of the visit compares against.
+    const moved = draft({ instanceId: "claude_urgent", explicit: true });
+    expect(pickedSinceOpened(moved, draftVisitKey(moved))).toBe(false);
+    // Picking another account, model or option afterwards holds it.
+    const picked = draftModelState({
+      prompt: "",
+      activeProvider: id("claudeAgent"),
+      modelSelectionByProvider: { [id("claudeAgent")]: selection("claudeAgent") },
+      modelSelectionExplicit: true,
+    });
+    expect(pickedSinceOpened(picked, draftVisitKey(moved))).toBe(true);
+    // So does confirming the account shown, which marks it picked by hand.
+    const unpicked = draft({ instanceId: "claude_urgent" });
+    expect(pickedSinceOpened(moved, draftVisitKey(unpicked))).toBe(true);
+    // A selection written for the draft, not by hand, does not.
+    expect(pickedSinceOpened(draft({ instanceId: "claudeAgent" }), draftVisitKey(moved))).toBe(
+      false,
+    );
   });
 });
 

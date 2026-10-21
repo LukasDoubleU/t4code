@@ -99,12 +99,8 @@ position, so using **Un-settle** returns it to the top. Pinning and snoozing pre
 position until you move it again. Thread activity does not change the order. The settled shelf
 continues to use settlement time.
 
-To put recent conversations first, choose **Sort active threads > Last message** in the web or
-desktop sidebar. Active threads then follow their last user message, matching the age shown on the
-row; threads without messages use their update time. Active positions cannot be rearranged in this
-mode, but threads can still move between sections. Choose **Configured order** to restore your
-saved arrangement. Each device keeps its own choice. The Working section takes precedence while
-enabled; turning it off restores your sort choice.
+To order active threads by recent messages or by status instead, see
+[Sort and group threads](#sort-and-group-threads).
 
 If dragging is unavailable for one environment, update the T3 Code server running in that
 environment. Pinned and active reordering require server support. Threads from older servers keep
@@ -118,6 +114,35 @@ Agents connected through T3 Code can use the same server-owned metadata workflow
 rename a thread, regenerate its title, or link and unlink a pull request. These changes
 appear on web, desktop, and mobile without requiring the originating browser to remain
 open.
+
+### Sort and group threads
+
+On web and desktop, the sort button at the top of the sidebar sets how threads are sorted and
+grouped. Each device keeps its own choice.
+
+**Sort** orders active threads. **Manual** keeps the arrangement you dragged into place. **Last
+message** puts recent conversations first, matching the age shown on the row; threads without
+messages use their update time. **Status** puts threads in this order, newest message first within
+each:
+
+1. **Needs you**: a question or approval is waiting, or a snooze just ended.
+2. **Failed**: the latest run failed, including runs stopped by a usage limit.
+3. **Working**: the agent is running or waiting on background work.
+4. **Completed**: finished work you have not opened yet. Opening the thread makes it idle.
+5. **Idle**: everything else.
+
+With **Last message** or **Status** you cannot rearrange active threads, but you can still drag
+them between sections. **Manual** brings your saved arrangement back. While the Working section is
+on, it orders an ungrouped list by itself.
+
+**Group** puts active threads in folders: one per **Project** (see below), one per **Machine**
+starting with your current machine, or one per **Status** in the order above. A status folder
+appears only while it holds threads, and threads move between folders as their status changes.
+Threads inside a folder follow the sort. Click a folder to open or close it. Pinned threads stay
+above the folders and snoozed threads below them. Project and machine folders keep their settled
+threads hidden until you show them; with status folders, settled threads stay in the **Settled**
+section. Grouped threads cannot be dragged, and the Working section is off. **None** returns to
+one list.
 
 ### Fold working threads (beta)
 
@@ -133,12 +158,12 @@ cannot drag or move threads within it. Your saved order returns when you turn it
 
 ### Group threads by project (beta)
 
-Turn on **Settings → Beta → Boring Sidebar (group by project)** on web and desktop to put
-threads in a folder for each project. Click a folder to open or close it. Use the pen button on
-a folder, or right-click it, to start a thread in that project. Settled threads stay hidden in
-each folder until you show them. Pinned threads stay above the folders, and snoozed threads stay
-in their own section below them. In this mode you cannot drag threads, and the Working section
-is off. Threads in each folder follow **Sort active threads**, and the folders follow **Settings →
+Choose **Group > Project** in the sort menu, or turn on **Settings → Beta → Boring Sidebar
+(group by project)** on web and desktop, to put threads in a folder for each project. Use the pen
+button on a folder, or right-click it, to start a thread in that project. Settled threads stay
+hidden in each folder until you show them. Pinned threads stay above the folders, and snoozed
+threads stay in their own section below them. In this mode you cannot drag threads, and the
+Working section is off. Threads in each folder follow the sort, and the folders follow **Settings →
 General → Project order**. Each device keeps its own choice.
 
 ## Settle finished work

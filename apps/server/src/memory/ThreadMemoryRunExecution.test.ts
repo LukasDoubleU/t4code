@@ -1,0 +1,127 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { assert, it } from "@effect/vitest";
+import {
+  CheckpointScopeId,
+  CommandId,
+  MessageId,
+  NodeId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ProviderSessionId,
+  ProviderThreadId,
+  RunAttemptId,
+  RunId,
+  ThreadId,
+  type OrchestrationV2AppThread,
+  type OrchestrationV2CheckpointScope,
+  type OrchestrationV2ExecutionNode,
+  type OrchestrationV2ProviderThread,
+  type OrchestrationV2Run,
+  type OrchestrationV2RunAttempt,
+} from "@t3tools/contracts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
+
+import * as ServerConfig from "../config.ts";
+import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
+import * as CheckpointService from "../orchestration-v2/CheckpointService.ts";
+import * as EventSink from "../orchestration-v2/EventSink.ts";
+import * as ProviderEventIngestor from "../orchestration-v2/ProviderEventIngestor.ts";
+import * as RunExecutionService from "../orchestration-v2/RunExecutionService.ts";
+import * as TurnItemPositionStore from "../orchestration-v2/TurnItemPositionStore.ts";
+import * as ServerSettings from "../serverSettings.ts";
+import * as ThreadMemory from "./ThreadMemory.ts";
+
+const layerTest = RunExecutionService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      McpAppModelContext.layerEmpty,
+      Layer.mock(CheckpointService.CheckpointServiceV2)({ captureBaseline: () => Effect.void }),
+      Layer.mock(TurnItemPositionStore.TurnItemPositionStoreV2)({
+        allocate: () => Effect.succeed(1),
+      }),
+      Layer.mock(EventSink.EventSinkV2)({}),
+      IdAllocator.layer,
+      Layer.mock(ProviderEventIngestor.ProviderEventIngestorV2)({
+        ingestNormalized: () => Effect.succeed([]),
+      }),
+    ),
+  ),
+  // As in the server, the memory comes from the surrounding context.
+  Layer.provideMerge(ThreadMemory.layer),
+  Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-thread-memory-run-" })),
+  Layer.provideMerge(ServerSettings.layerTest()),
+  Layer.provideMerge(NodeServices.layer),
+);
+
+const startTurnOf = (appThread: OrchestrationV2AppThread) =>
+  Effect.gen(function* () {
+    const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
+    const started = yield* Deferred.make<ProviderAdapter.ProviderAdapterV2TurnInput>();
+    const providerInstanceId = ProviderInstanceId.make("claudeAgent");
+    const attemptId = RunAttemptId.make(`attempt:${appThread.id}`);
+    const session = {
+      events: Stream.never,
+      startTurn: (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
+        Deferred.succeed(started, input),
+    } as unknown as ProviderAdapter.ProviderAdapterV2SessionRuntime;
+    yield* runExecution.startRootRun({
+      commandId: CommandId.make(`command:${appThread.id}`),
+      appThread,
+      providerSessionId: ProviderSessionId.make(`session:${appThread.id}`),
+      session,
+      run: {
+        id: RunId.make(`run:${appThread.id}`),
+        threadId: appThread.id,
+        ordinal: 1,
+        providerInstanceId,
+      } as OrchestrationV2Run,
+      rootNode: { id: NodeId.make(`node:${appThread.id}`) } as OrchestrationV2ExecutionNode,
+      checkpointScope: {
+        id: CheckpointScopeId.make(`checkpoint-scope:${appThread.id}`),
+      } as OrchestrationV2CheckpointScope,
+      providerThread: {
+        id: ProviderThreadId.make(`provider-thread:${appThread.id}`),
+        driver: ProviderDriverKind.make("claudeAgent"),
+      } as OrchestrationV2ProviderThread,
+      attempt: { id: attemptId, providerTurnId: null } as OrchestrationV2RunAttempt,
+      attemptId,
+      providerTurnOrdinal: 1,
+      message: {
+        messageId: MessageId.make(`message:${appThread.id}`),
+        text: "Carry on.",
+        attachments: [],
+        createdBy: "user",
+        creationSource: "web",
+      },
+      modelSelection: { instanceId: providerInstanceId, model: "claude-opus-5-5" },
+      runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: process.cwd() },
+    });
+    return yield* Deferred.await(started);
+  });
+
+it.effect("hands a pinned thread's memory to its provider turn, and none to an unpinned one", () =>
+  Effect.gen(function* () {
+    const memory = yield* ThreadMemory.ThreadMemory;
+    const pinned = yield* startTurnOf({
+      id: ThreadId.make("thread:pinned"),
+      pinnedAt: yield* DateTime.now,
+    } as OrchestrationV2AppThread);
+    assert.deepEqual(
+      pinned.threadMemory,
+      yield* memory.forTurn({ id: ThreadId.make("thread:pinned"), pinnedAt: yield* DateTime.now }),
+    );
+    assert.isDefined(pinned.threadMemory);
+
+    const unpinned = yield* startTurnOf({
+      id: ThreadId.make("thread:unpinned"),
+      pinnedAt: null,
+    } as OrchestrationV2AppThread);
+    assert.isUndefined(unpinned.threadMemory);
+  }).pipe(Effect.provide(layerTest)),
+);

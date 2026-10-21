@@ -436,6 +436,15 @@ export interface ProviderAdapterV2TurnInput {
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapterV2RuntimePolicy;
   readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
+  /**
+   * A pinned thread's memory file and the line that points the agent at it.
+   * Adapters put the line with their own instructions, where compaction does
+   * not reach. Absent while the memory sleeps.
+   */
+  readonly threadMemory?: {
+    readonly path: string;
+    readonly instructions: string;
+  };
 }
 
 export interface ProviderAdapterV2SteerInput {

@@ -45,14 +45,19 @@ jobs:
       run:
         shell: bash
     steps:
+      # The repository is public, so Git needs no credentials. actions/checkout
+      # cleans up its credentials with `git submodule foreach`, which fails on
+      # the orphaned gitlinks in the vendored .repos tree (see
+      # release-desktop.yml).
       - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout --detach FETCH_HEAD
 
       - name: Resolve release version
         env:

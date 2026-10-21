@@ -280,7 +280,7 @@ import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
-import { type TimestampFormat } from "@t3tools/contracts/settings";
+import { type MessageTimeStyle, type TimestampFormat } from "@t3tools/contracts/settings";
 import {
   formatChatTimestampTooltip,
   formatDayAwareTimestamp,
@@ -300,6 +300,12 @@ import {
 import { LinkRequestCard } from "./LinkRequestCard";
 import { SecretRequestCard } from "./SecretRequestCard";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
+import {
+  MessageTime,
+  parseTurnFoldReplyKey,
+  turnFoldReplyKey,
+  type TurnFoldReply,
+} from "./MessageTime";
 import { WorkflowOpeningBlock } from "./WorkflowOpeningBlock";
 
 import { SkillChipIcon } from "./SkillInlineText";
@@ -317,6 +323,8 @@ interface TimelineRowSharedState {
   listRef: React.RefObject<LegendListRef | null>;
   timestampFormat: TimestampFormat;
   alwaysShowMessageTimes: boolean;
+  messageTimeStyle: MessageTimeStyle;
+  turnFoldReplies: ReadonlyMap<string, TurnFoldReply>;
   routeThreadKey: string;
   threadRef: ScopedThreadRef | null;
   markdownCwd: string | undefined;
@@ -1022,6 +1030,12 @@ const ConversationTimeline = memo(function ConversationTimeline({
   );
   const chatWidth = useClientSettings((settings) => settings.chatWidth);
   const alwaysShowMessageTimes = useClientSettings((settings) => settings.alwaysShowMessageTimes);
+  const messageTimeStyle = useClientSettings((settings) => settings.messageTimeStyle);
+  // The template literal tells the compiler the key is a string, so it memoizes the parse on
+  // the key's value; a plain call result would share the rows' scope and change every token.
+  const turnFoldReplies = parseTurnFoldReplyKey(
+    `${alwaysShowMessageTimes ? turnFoldReplyKey(rows) : ""}`,
+  );
   const {
     target: readyCitationRequest,
     positioning: citationPositioning,
@@ -1294,6 +1308,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
     listRef,
     timestampFormat,
     alwaysShowMessageTimes,
+    messageTimeStyle,
+    turnFoldReplies,
     routeThreadKey,
     threadRef: citationThreadRef,
     markdownCwd,
@@ -2479,19 +2495,20 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       ) : null}
       <div
         className={cn(
-          "flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums",
-          !ctx.alwaysShowMessageTimes && USER_MESSAGE_FOOTER_REVEAL,
+          "flex w-full max-w-[80%] items-center justify-end text-xs tabular-nums",
+          !ctx.alwaysShowMessageTimes && `pe-1 ${USER_MESSAGE_FOOTER_REVEAL}`,
         )}
       >
         <div className="flex shrink-0 items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-              {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
-            </TooltipTrigger>
-            <TooltipPopup>
-              {formatChatTimestampTooltip(row.message.createdAt, ctx.timestampFormat)}
-            </TooltipPopup>
-          </Tooltip>
+          <MessageTime
+            isoDate={row.message.createdAt}
+            style={ctx.alwaysShowMessageTimes ? ctx.messageTimeStyle : "clock"}
+            timestampFormat={ctx.timestampFormat}
+            className={cn(
+              "text-muted-foreground text-xs",
+              ctx.alwaysShowMessageTimes && "order-last",
+            )}
+          />
           <div
             className={cn(
               "flex items-center gap-0.5",
@@ -2527,7 +2544,8 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   );
 }
 
-// With message times always shown, only the buttons wait for hover.
+// With message times always shown, only the buttons wait for hover, on the far side of the
+// time so it doesn't move when they appear.
 const USER_MESSAGE_FOOTER_REVEAL =
   "opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100";
 const ASSISTANT_MESSAGE_META_REVEAL =
@@ -2646,6 +2664,7 @@ function TimelineRowTimestamp({
 
 function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-fold" }> }) {
   const ctx = use(TimelineRowCtx);
+  const reply = ctx.turnFoldReplies.get(row.runId);
 
   return (
     <div className="group/timeline-row relative flex items-center gap-1 border-b border-border/60 pb-2 pe-0.5 pt-1">
@@ -2657,6 +2676,16 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
         className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       >
         <span>{row.label}</span>
+        {reply ? (
+          <span>
+            {"· "}
+            <MessageTime
+              isoDate={reply.at}
+              style={ctx.messageTimeStyle}
+              timestampFormat={ctx.timestampFormat}
+            />
+          </span>
+        ) : null}
         <MorphIcon className="size-3.5" icon={row.expanded ? ChevronDown : ChevronRight} />
       </button>
       <TimelineRowTimestamp
@@ -2822,6 +2851,7 @@ function AssistantMessageMeta({
 }) {
   const ctx = use(TimelineRowCtx);
   const revealButtonsOnly = !alwaysVisible && ctx.alwaysShowMessageTimes;
+  const timeInTurnFold = ctx.turnFoldReplies.get(message.runId ?? "")?.messageId === message.id;
 
   return (
     <div
@@ -2851,15 +2881,16 @@ function AssistantMessageMeta({
           <AssistantForkButton projectedItem={projectedItem} />
         ) : null}
       </div>
-      {!message.streaming && (
-        <Tooltip>
-          <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-            {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat)}
-          </TooltipTrigger>
-          <TooltipPopup>
-            {formatChatTimestampTooltip(message.updatedAt, ctx.timestampFormat)}
-          </TooltipPopup>
-        </Tooltip>
+      {!message.streaming && !timeInTurnFold && (
+        <MessageTime
+          isoDate={message.updatedAt}
+          style={ctx.alwaysShowMessageTimes ? ctx.messageTimeStyle : "clock"}
+          timestampFormat={ctx.timestampFormat}
+          className={cn(
+            "text-muted-foreground text-xs",
+            ctx.alwaysShowMessageTimes && "order-first",
+          )}
+        />
       )}
     </div>
   );

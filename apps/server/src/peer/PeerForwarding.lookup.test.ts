@@ -84,7 +84,8 @@ const environmentThreads = (
     Layer.mock(ThreadManagement.ThreadManagementService)({
       getThreadShell: shellOf,
       getProjectThreadRecords: (input) => projectionOf(input.threadId),
-      getThreadRecords: (threadId) => projectionOf(threadId),
+      // Only ever asked for a thread that exists: the caller, or a target already found.
+      getThreadRecords: (threadId) => projectionOf(threadId).pipe(Effect.orDie),
       getTimelinePage: () => Effect.succeed({ items: [], totalItems: 0, hasMore: false } as never),
       listPinnedThreads: () => Effect.succeed(shells.filter((shell) => shell.pinnedAt != null)),
       listProjectThreads: ({ projectId }) =>
@@ -220,7 +221,7 @@ const makeLaptop = (shells: ReadonlyArray<OrchestrationV2ThreadShell>) =>
             providerInstanceId: ProviderInstanceId.make("codex"),
           },
           client: undefined,
-          capabilities: new Set(["orchestration"]),
+          capabilities: new Set<McpInvocationContext.McpCapability>(["orchestration"]),
           issuedAt: 1,
         }),
         Effect.provideService(McpSchema.McpServerClient, mcpClient),

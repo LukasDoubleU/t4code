@@ -177,3 +177,21 @@ it("counts a model's own weekly allowance until the user ranks for another model
   await choose("Model to rank for", "For Opus");
   await expect.poll(pickText).toMatch(/^c3/);
 });
+
+it("starts new threads on the recommended account until the user turns that off", async () => {
+  setup();
+  const startNewThreads = () =>
+    page.getByRole("switch", { name: "Start new threads on the recommended account" });
+  {
+    await using _screen = await render(
+      <UsageLimitsPooled presentations={claude(accounts)} now={now} />,
+    );
+    await expect.element(startNewThreads()).toBeChecked();
+    await userEvent.click(startNewThreads());
+    await expect.element(startNewThreads()).not.toBeChecked();
+  }
+  await using _screen = await render(
+    <UsageLimitsPooled presentations={claude(accounts)} now={now} />,
+  );
+  await expect.element(startNewThreads()).not.toBeChecked();
+});

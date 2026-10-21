@@ -291,6 +291,61 @@ describe("DesktopClerk", () => {
     },
   );
 
+  it.effect.each(["before configure", "after configure"] as const)(
+    "quits instead of activating when a second instance passes --quit %s",
+    (entry) => {
+      storageMock.mockReturnValue(storageAdapter);
+      createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
+      const quit = vi.fn();
+      const activate = vi.fn();
+      const listeners = new Map<string, (...args: unknown[]) => void>();
+      const activated = Promise.withResolvers<void>();
+      const electronApp = {
+        quit: Effect.sync(quit),
+        on: (eventName: string, listener: (...args: unknown[]) => void) =>
+          Effect.sync(() => {
+            listeners.set(eventName, listener);
+          }),
+      } as unknown as ElectronApp.ElectronApp["Service"];
+      const launchQuitThenPlain = () => {
+        listeners.get("second-instance")!({}, ["t3", "--quit"]);
+        listeners.get("second-instance")!({}, ["t3"]);
+      };
+
+      return Effect.gen(function* () {
+        const clerk = yield* DesktopClerk.DesktopClerk;
+        if (entry === "before configure") launchQuitThenPlain();
+        yield* clerk.configure;
+        if (entry === "after configure") launchQuitThenPlain();
+        // Launches are handled in arrival order, so the plain launch activating
+        // means the quit request before it was handled.
+        yield* Effect.promise(() => activated.promise);
+
+        assert.equal(quit.mock.calls.length, 1);
+        assert.equal(activate.mock.calls.length, 1);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.mock(DesktopWindow.DesktopWindow)({
+              activate: Effect.sync(() => {
+                activate();
+                activated.resolve();
+              }),
+            }),
+            layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners),
+          ),
+        ),
+        Effect.provideService(ElectronApp.ElectronApp, electronApp),
+        Effect.provideService(
+          ElectronWindow.ElectronWindow,
+          {} as ElectronWindow.ElectronWindow["Service"],
+        ),
+        Effect.provideService(DesktopWebLinks.DesktopWebLinks, ignoreWebLinks),
+      );
+    },
+  );
+
   it.effect("delivers queued startup links and later links once in arrival order", () => {
     storageMock.mockReturnValue(storageAdapter);
     createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
@@ -418,6 +473,36 @@ describe("DesktopClerk", () => {
         ]);
         assert.equal(createClerkBridgeMock.mock.calls.length, 0);
         assert.equal(storageMock.mock.calls.length, 0);
+      }),
+  );
+
+  it.effect.each([false, true])(
+    "a launch with --quit requests the lock and quits without starting the app (lock acquired: %s)",
+    (lockAcquired) =>
+      Effect.gen(function* () {
+        requestSingleInstanceLockMock.mockReturnValueOnce(lockAcquired);
+        createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
+        const events: string[] = [];
+        const runtime = layerDesktopClerk(false, events, "win32").pipe(
+          Layer.flatMap(() =>
+            Layer.effectDiscard(
+              Effect.sync(() => {
+                events.push("initializeApplicationRuntime");
+              }),
+            ),
+          ),
+        );
+        const exit = yield* Effect.exit(Effect.scoped(Layer.build(runtime))).pipe(
+          Effect.provideService(HostProcess.Arguments, ["T3 Code.exe", "--quit"]),
+        );
+
+        assert.isTrue(Exit.hasInterrupts(exit));
+        assert.deepEqual(events, [
+          "setPath:userData:/tmp/app-data/t3code-v2",
+          "requestSingleInstanceLock",
+          "quit",
+        ]);
+        assert.equal(createClerkBridgeMock.mock.calls.length, 0);
       }),
   );
 });

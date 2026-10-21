@@ -46,6 +46,7 @@ import {
   resetCreditsSummary,
   useResetCredit,
 } from "./UsageLimits";
+import { UsageNextAccount } from "./UsageNextAccount";
 
 function accountInitials(email: string): string {
   const [local = "", domain = ""] = email.split("@");
@@ -74,7 +75,7 @@ function AccountChip({ email }: { readonly email: string }) {
   );
 }
 
-function AccountAvatar({
+export function AccountAvatar({
   account,
   className,
 }: {
@@ -101,7 +102,7 @@ function AccountAvatar({
   return account.email ? <AccountChip email={account.email} /> : null;
 }
 
-function AccountName({
+export function AccountName({
   account,
   className,
 }: {
@@ -606,7 +607,8 @@ export function UsageLimitsPooled({
 }) {
   const [segmentPopover] = useState(() => PopoverCreateHandle<SegmentPayload>());
   const segmentPopoverActions = useRef<PopoverPrimitive.Root.Actions | null>(null);
-  const pools = collectLimitPools(collectLimitAccounts(presentations), now);
+  const accounts = collectLimitAccounts(presentations);
+  const pools = collectLimitPools(accounts, now);
   const notices = collectLimitNotices(presentations);
   const externalLinks = collectExternalUsageLinks(presentations);
   const cursorPromptAt =
@@ -621,6 +623,7 @@ export function UsageLimitsPooled({
           No provider on the selected environments reports subscription limits.
         </p>
       ) : null}
+      <UsageNextAccount accounts={accounts} now={now} />
       <SegmentPopoverContext value={segmentPopover}>
         {pools.map((pool, index) => (
           <Fragment key={pool.driver}>

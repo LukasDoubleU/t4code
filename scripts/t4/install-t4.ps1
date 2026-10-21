@@ -6,7 +6,8 @@
 .DESCRIPTION
   Finds a release of the fork, downloads its Windows installer and checks it
   against the release's SHA256SUMS, quits T3 Code, backs up the files in the
-  T3 home's userdata, runs the installer silently and starts the app again.
+  T3 home's userdata, runs the installer silently, removes all but the newest
+  install backups and starts the app again.
 
 .EXAMPLE
   pwsh -File scripts/t4/install-t4.ps1
@@ -20,12 +21,18 @@ param(
   [string] $Version,
   # Don't back up userdata before installing.
   [switch] $SkipBackup,
+  # Install backups to keep after a successful install; older ones are removed.
+  [ValidateRange(1, [int]::MaxValue)]
+  [int] $KeepBackups = 3,
   # Quit T3 Code without asking, even while agents or terminals run in it.
   [switch] $Force
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+# T3 Code's terminals and agents inherit this from its server. It would make
+# the app's executable, started for --quit or the restart, run as plain Node.
+$env:ELECTRON_RUN_AS_NODE = $null
 
 $repo = 'LukasDoubleU/t4code'
 # Tags and asset names of the fork's release workflow, t4-release.yml.
@@ -86,6 +93,11 @@ function Get-AgentProcesses($app, $appProcesses) {
   }
 }
 
+function Wait-AppExit($app, [int] $seconds) {
+  $deadline = (Get-Date).AddSeconds($seconds)
+  while ((Get-AppProcesses $app) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+}
+
 function Stop-App($app) {
   $processes = @(Get-AppProcesses $app)
   if ($processes.Count -eq 0) { return }
@@ -99,24 +111,33 @@ function Stop-App($app) {
   }
   if (-not $PSCmdlet.ShouldProcess('T3 Code', 'Quit')) { return }
 
-  # Closing the window quits builds without a tray icon and lets their server
-  # shut down. Builds with one hide in the tray, and only their tray menu quits
-  # them; a window in another session, as seen from SSH, can't be closed at
-  # all. Those are ended, which the database survives like a crash.
+  # --quit makes the running app quit the way Quit in its tray menu does. It
+  # travels through the app's single-instance lock, which finds the app by a
+  # window in this Windows session; over SSH, the app runs in another session.
   Write-Host 'Quitting T3 Code...'
-  $closed = 0
-  foreach ($process in Get-Process -Id $processes.ProcessId -ErrorAction SilentlyContinue) {
-    if ($process.MainWindowHandle -ne 0 -and $process.CloseMainWindow()) { $closed++ }
+  if ($processes.SessionId -contains (Get-Process -Id $PID).SessionId) {
+    Start-Process -FilePath $app.Exe -ArgumentList '--quit'
+    Wait-AppExit $app 15
   }
-  $deadline = (Get-Date).AddSeconds($(if ($closed -gt 0) { 15 } else { 0 }))
-  while ((Get-AppProcesses $app) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-  if (Get-AppProcesses $app) { Write-Host 'Ending T3 Code, which stays open in the tray or in another session.' }
-  foreach ($process in Get-AppProcesses $app) {
-    taskkill.exe /PID $process.ProcessId /T /F *> $null
+  # Builds from before --quit show their window instead. Closing it quits
+  # builds without a tray icon; builds with one hide in the tray again. Those,
+  # and an app in another session, are ended, which the database survives like
+  # a crash.
+  if (Get-AppProcesses $app) {
+    $closed = 0
+    foreach ($process in Get-Process -Id $processes.ProcessId -ErrorAction SilentlyContinue) {
+      if ($process.MainWindowHandle -ne 0 -and $process.CloseMainWindow()) { $closed++ }
+    }
+    if ($closed -gt 0) { Wait-AppExit $app 15 }
   }
-  $deadline = (Get-Date).AddSeconds(15)
-  while ((Get-AppProcesses $app) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-  if (Get-AppProcesses $app) { Fail 'T3 Code did not quit' }
+  if (Get-AppProcesses $app) {
+    Write-Host 'Ending T3 Code, which stays open in the tray or in another session.'
+    foreach ($process in Get-AppProcesses $app) {
+      taskkill.exe /PID $process.ProcessId /T /F *> $null
+    }
+    Wait-AppExit $app 15
+    if (Get-AppProcesses $app) { Fail 'T3 Code did not quit' }
+  }
   Write-Host 'Quit T3 Code.'
 }
 
@@ -137,6 +158,28 @@ function Backup-Userdata([string] $installedVersion) {
   Write-Host "Backed up userdata to $target"
   $target
 }
+
+# Backup-Userdata names its folders <time>-<installed version>, or <time> when
+# no version was installed. Other folders in backups are left alone, such as
+# the <time>-undo-peer-links backups of undo-peer-link-migrations.ps1.
+function Remove-OldBackups([int] $keep) {
+  $old = Get-ChildItem -LiteralPath (Join-Path $t3Home 'backups') -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^\d{8}-\d{6}(-\d+\.\d+\.\d+\S*)?$' -and $_.Name -notlike '*-undo-peer-links' } |
+    Sort-Object Name -Descending | Select-Object -Skip $keep
+  foreach ($folder in $old) {
+    if (-not $PSCmdlet.ShouldProcess($folder.FullName, 'Remove old backup')) { continue }
+    # The install already succeeded, so a backup that can't be removed only warns.
+    try {
+      Remove-Item -LiteralPath $folder.FullName -Recurse -Force
+      Write-Host "Removed old backup $($folder.FullName)"
+    } catch {
+      Write-Warning "Could not remove old backup $($folder.FullName): $($_.Exception.Message)"
+    }
+  }
+}
+
+# Dot-sourcing the script only defines its functions, for tests.
+if ($MyInvocation.InvocationName -eq '.') { return }
 
 $release = Find-Release
 $installer = $release.assets | Where-Object { $_.name -match $installerAsset } | Select-Object -First 1
@@ -181,17 +224,23 @@ try {
   }
 
   $backup = $null
-  if (-not $SkipBackup -and (Test-Path -LiteralPath $userdata)) {
+  $backingUp = -not $SkipBackup -and (Test-Path -LiteralPath $userdata)
+  if ($backingUp) {
     $backup = Backup-Userdata $(if ($app) { $app.Version })
   }
 
-  if (-not $PSCmdlet.ShouldProcess($installer.name, 'Run the installer silently')) { exit 0 }
+  if (-not $PSCmdlet.ShouldProcess($installer.name, 'Run the installer silently')) {
+    # Lists what a real run would remove, which also counts the backup it makes.
+    if ($WhatIfPreference) { Remove-OldBackups ($KeepBackups - [int]$backingUp) }
+    exit 0
+  }
   $run = Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -PassThru
   $app = Find-InstalledApp
   if ($run.ExitCode -ne 0 -or -not $app -or $app.Version -ne $releaseVersion) {
     Fail ("the installer failed (exit code $($run.ExitCode))" + $(if ($backup) { "; the backup is in $backup" }))
   }
   Write-Host "Installed T3 Code $releaseVersion."
+  Remove-OldBackups $KeepBackups
 } finally {
   Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
 }

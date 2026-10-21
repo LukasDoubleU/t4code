@@ -15,7 +15,7 @@ pwsh -File scripts/t4/install-t4.ps1 -WhatIf    # download and check only, show 
 4. Backs up the files in `userdata` to `~/.t3/backups/<time>-<installed version>/userdata`: the databases with their `-wal` and `-shm` files, settings and keybindings. The installer leaves the subfolders alone. `-SkipBackup` skips this step.
 5. Runs the installer silently and starts the app again. Over SSH, it prints a hint instead: an app started from an SSH session doesn't appear on the desktop.
 
-Closing the window lets a build without a tray icon shut its server down. A build with one only hides in the tray, and over SSH there is no window to close, so after up to 15 seconds the app is ended. The database survives that like a crash; agents that were running in it stop.
+**Quitting.** The script starts the installed app with `--quit`. The single-instance lock hands that to the running app, which quits as Quit in its tray menu does. A launch with `--quit` never starts the app, so it also works by hand, for example before `undo-peer-link-migrations.ps1 -Apply`. It only reaches an app in the same Windows session: over SSH, the app runs in another session, so there it is ended right away. Builds from before `--quit` show their window instead. Closing it quits a build without a tray icon; one with a tray icon hides again and is ended after up to 15 seconds. The database survives being ended like a crash; agents that were running in the app stop either way.
 
 A file downloaded with PowerShell carries no "from the internet" mark, so SmartScreen doesn't ask. The build is still unsigned.
 

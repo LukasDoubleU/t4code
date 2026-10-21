@@ -26,6 +26,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+# T3 Code's terminals and agents inherit this from its server. It would make
+# the app's executable, started for --quit or the restart, run as plain Node.
+$env:ELECTRON_RUN_AS_NODE = $null
 
 $repo = 'LukasDoubleU/t4code'
 # Tags and asset names of the fork's release workflow, t4-release.yml.
@@ -85,6 +88,11 @@ function Get-AgentProcesses($app, $appProcesses) {
   }
 }
 
+function Wait-AppExit($app, [int] $seconds) {
+  $deadline = (Get-Date).AddSeconds($seconds)
+  while ((Get-AppProcesses $app) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+}
+
 function Stop-App($app) {
   $processes = @(Get-AppProcesses $app)
   if ($processes.Count -eq 0) { return }
@@ -98,24 +106,33 @@ function Stop-App($app) {
   }
   if (-not $PSCmdlet.ShouldProcess('T3 Code', 'Quit')) { return }
 
-  # Closing the window quits builds without a tray icon and lets their server
-  # shut down. Builds with one hide in the tray, and only their tray menu quits
-  # them; a window in another session, as seen from SSH, can't be closed at
-  # all. Those are ended, which the database survives like a crash.
+  # --quit makes the running app quit the way Quit in its tray menu does. It
+  # travels through the app's single-instance lock, which finds the app by a
+  # window in this Windows session; over SSH, the app runs in another session.
   Write-Host 'Quitting T3 Code...'
-  $closed = 0
-  foreach ($process in Get-Process -Id $processes.ProcessId -ErrorAction SilentlyContinue) {
-    if ($process.MainWindowHandle -ne 0 -and $process.CloseMainWindow()) { $closed++ }
+  if ($processes.SessionId -contains (Get-Process -Id $PID).SessionId) {
+    Start-Process -FilePath $app.Exe -ArgumentList '--quit'
+    Wait-AppExit $app 15
   }
-  $deadline = (Get-Date).AddSeconds($(if ($closed -gt 0) { 15 } else { 0 }))
-  while ((Get-AppProcesses $app) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-  if (Get-AppProcesses $app) { Write-Host 'Ending T3 Code, which stays open in the tray or in another session.' }
-  foreach ($process in Get-AppProcesses $app) {
-    taskkill.exe /PID $process.ProcessId /T /F *> $null
+  # Builds from before --quit show their window instead. Closing it quits
+  # builds without a tray icon; builds with one hide in the tray again. Those,
+  # and an app in another session, are ended, which the database survives like
+  # a crash.
+  if (Get-AppProcesses $app) {
+    $closed = 0
+    foreach ($process in Get-Process -Id $processes.ProcessId -ErrorAction SilentlyContinue) {
+      if ($process.MainWindowHandle -ne 0 -and $process.CloseMainWindow()) { $closed++ }
+    }
+    if ($closed -gt 0) { Wait-AppExit $app 15 }
   }
-  $deadline = (Get-Date).AddSeconds(15)
-  while ((Get-AppProcesses $app) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-  if (Get-AppProcesses $app) { Fail 'T3 Code did not quit' }
+  if (Get-AppProcesses $app) {
+    Write-Host 'Ending T3 Code, which stays open in the tray or in another session.'
+    foreach ($process in Get-AppProcesses $app) {
+      taskkill.exe /PID $process.ProcessId /T /F *> $null
+    }
+    Wait-AppExit $app 15
+    if (Get-AppProcesses $app) { Fail 'T3 Code did not quit' }
+  }
   Write-Host 'Quit T3 Code.'
 }
 

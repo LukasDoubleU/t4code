@@ -493,6 +493,21 @@ describe("CodexAdapterV2 runtime policy", () => {
     }),
   );
 
+  it.effect("sends a pinned thread's memory line as application context", () =>
+    Effect.gen(function* () {
+      const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
+        nativeThreadId: "native-thread-memory",
+        codexInput: [{ type: "text", text: "continue" }],
+        runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: null },
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+        memoryInstructions: "MEMORY LINE",
+      });
+      assert.deepEqual(params.additionalContext, {
+        t3_thread_memory: { kind: "application", value: "MEMORY LINE" },
+      });
+    }),
+  );
+
   it.effect("adds default-mode developer instructions when the T3 MCP server is attached", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({

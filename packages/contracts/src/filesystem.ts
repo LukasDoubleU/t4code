@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 const FILESYSTEM_PATH_MAX_LENGTH = 512;
 
@@ -11,6 +11,7 @@ export const FilesystemGetMetadataInput = Schema.Struct({
   paths: Schema.Array(
     TrimmedNonEmptyString.check(Schema.isMaxLength(FILESYSTEM_PATH_MAX_LENGTH)),
   ).check(Schema.isMinLength(1), Schema.isMaxLength(FILESYSTEM_METADATA_BATCH_LIMIT)),
+  includeModifiedAt: Schema.optionalKey(Schema.Boolean),
 });
 export type FilesystemGetMetadataInput = typeof FilesystemGetMetadataInput.Type;
 
@@ -18,6 +19,8 @@ export const FilesystemEntryMetadata = Schema.Struct({
   kind: Schema.Literals(["file", "directory", "other"]),
   byteLength: Schema.optionalKey(NonNegativeInt),
   mimeType: Schema.optionalKey(TrimmedNonEmptyString),
+  /** Files only, when the request asks for it. */
+  modifiedAt: Schema.optionalKey(IsoDateTime),
 });
 export type FilesystemEntryMetadata = typeof FilesystemEntryMetadata.Type;
 

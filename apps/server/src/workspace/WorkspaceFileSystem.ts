@@ -17,6 +17,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
@@ -140,7 +141,10 @@ export const make = Effect.gen(function* () {
   const knownWorkspaces = yield* KnownWorkspaces.KnownWorkspaces;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
 
-  const metadataForPath = Effect.fnUntraced(function* (requestedPath: string) {
+  const metadataForPath = Effect.fnUntraced(function* (
+    requestedPath: string,
+    includeModifiedAt: boolean,
+  ) {
     const expandedPath = expandHomePath(requestedPath, yield* HostProcess.HomeDirectory);
     if (!path.isAbsolute(expandedPath)) return null;
     const stat = yield* fileSystem.stat(expandedPath).pipe(Effect.option);
@@ -171,6 +175,9 @@ export const make = Effect.gen(function* () {
       kind: "file",
       byteLength: Number(stat.value.size),
       ...(mimeType === undefined ? {} : { mimeType }),
+      ...(includeModifiedAt && Option.isSome(stat.value.mtime)
+        ? { modifiedAt: stat.value.mtime.value.toISOString() }
+        : {}),
     } satisfies FilesystemEntryMetadata;
   });
 
@@ -178,7 +185,11 @@ export const make = Effect.gen(function* () {
     "WorkspaceFileSystem.getMetadata",
   )(function* (input) {
     const paths = [...new Set(input.paths)];
-    const entries = yield* Effect.forEach(paths, metadataForPath, { concurrency: 8 });
+    const entries = yield* Effect.forEach(
+      paths,
+      (requestedPath) => metadataForPath(requestedPath, input.includeModifiedAt === true),
+      { concurrency: 8 },
+    );
     const byPath = new Map(paths.map((value, index) => [value, entries[index] ?? null]));
     return { entries: input.paths.map((value) => byPath.get(value) ?? null) };
   });

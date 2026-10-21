@@ -116,6 +116,25 @@ rename a thread, regenerate its title, or link and unlink a pull request. These 
 appear on web, desktop, and mobile without requiring the originating browser to remain
 open.
 
+### Keep a memory for a pinned thread
+
+A thread you keep for weeks loses detail every time its conversation is compacted. A pinned
+thread keeps a memory file against that: its agent is told where the file is, reads it at the
+start of a session and after every compaction, and keeps it current with the thread's purpose,
+the current state, decisions and their reasons, your preferences, and open points. The history
+stays in the thread, and secrets stay out of the file.
+
+While the memory is active, the pinned card shows a brain icon. Hover it to see when the file last
+changed, or **No notes yet** before the agent has written it. Choose **Open memory** in the
+thread's menu to open the file in your editor; for a thread on another machine, its path is
+copied instead. You can edit the file yourself.
+
+Unpinning lets the memory sleep: the file stays, and pinning the thread again picks it up. Forks,
+subagents, and delegated tasks start without one. The files live in the environment's state
+folder, usually `~/.t3/userdata/memory`. To turn memories off for an environment, go to
+**Settings → General → Pinned threads keep a memory**. A change takes effect on the thread's next
+turn. Claude, Codex, and OpenCode threads use the memory; other providers work as before.
+
 ### Sort and group threads
 
 On web and desktop, the sort button at the top of the sidebar sets how threads are sorted and

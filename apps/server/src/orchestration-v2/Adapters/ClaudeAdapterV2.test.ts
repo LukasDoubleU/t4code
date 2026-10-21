@@ -6215,6 +6215,58 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
+  it.effect("carries a pinned thread's memory line until the thread is unpinned", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarnessWithOptions({ freshQueueOnReopen: true });
+      const threadMemory = {
+        path: NodePath.join(harness.attachmentsDir, "memory", "thread-claude-wake.md"),
+        instructions: "MEMORY LINE for thread-claude-wake",
+      };
+      const appended = (options: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions | undefined) =>
+        (options?.systemPrompt as { readonly append?: string } | undefined)?.append ?? "";
+      const turnInput = (attempt: number, pinned: boolean) => ({
+        ...makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: DateTime.makeUnsafe(0),
+          attemptId: RunAttemptId.make(`attempt-claude-memory-${attempt}`),
+          providerTurnOrdinal: attempt,
+          text: `Turn ${attempt}.`,
+          attachments: [],
+        }),
+        ...(pinned ? { threadMemory } : {}),
+      });
+
+      yield* harness.runtime.startTurn(turnInput(1, true));
+      const pinnedOptions = harness.getOpenedOptions();
+      assert.include(appended(pinnedOptions), threadMemory.instructions);
+      assert.include(
+        pinnedOptions?.additionalDirectories ?? [],
+        NodePath.dirname(threadMemory.path),
+      );
+      yield* harness.offerAndWait(wakeTurnInit);
+      yield* Queue.offer(harness.sdkMessages, turnOneResult);
+      yield* Queue.take(harness.terminalReceipts);
+
+      // Unpinning changes the system prompt, so the next turn opens a new process.
+      yield* harness.runtime.startTurn(turnInput(2, false));
+      const unpinnedOptions = harness.getOpenedOptions();
+      assert.notStrictEqual(unpinnedOptions, pinnedOptions);
+      assert.lengthOf(harness.processQueues, 2);
+      assert.equal(unpinnedOptions?.resume, WAKE_NATIVE_SESSION);
+      assert.notInclude(appended(unpinnedOptions), "MEMORY LINE");
+      assert.notInclude(
+        unpinnedOptions?.additionalDirectories ?? [],
+        NodePath.dirname(threadMemory.path),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect("preserves typed Claude plans and todos through generic tool completion", () =>
     Effect.scoped(
       Effect.gen(function* () {

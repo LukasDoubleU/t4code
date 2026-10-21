@@ -1260,6 +1260,7 @@ export function makeClaudeQueryOptions(input: {
   readonly supportedDialogKinds?: ClaudeQueryOptions["supportedDialogKinds"];
   readonly allowDangerouslySkipPermissions?: boolean;
   readonly appendSystemPromptFileText?: string;
+  readonly threadMemory?: { readonly instructions: string; readonly directory: string };
 }): ClaudeAgentSdkQueryOptions {
   const compiledSelection = compileClaudeModelSelection(input.modelSelection);
   const {
@@ -1354,6 +1355,7 @@ export function makeClaudeQueryOptions(input: {
       append: [
         buildRuntimeInstructions({ harness: "Claude Code" }) +
           (input.mcpServers === undefined ? "" : T3_CODE_ORCHESTRATION_INSTRUCTIONS),
+        ...(input.threadMemory === undefined ? [] : [input.threadMemory.instructions]),
         ...launchAppendSystemPrompt,
       ].join("\n\n"),
     },
@@ -1362,6 +1364,7 @@ export function makeClaudeQueryOptions(input: {
   const additionalDirectories = [
     ...(input.cwd === null ? [] : [input.cwd]),
     ...(input.attachmentsDir === undefined ? [] : [input.attachmentsDir]),
+    ...(input.threadMemory === undefined ? [] : [input.threadMemory.directory]),
   ];
   const withDirectories =
     additionalDirectories.length === 0 ? options : { ...options, additionalDirectories };
@@ -3410,6 +3413,7 @@ interface ClaudeLiveQueryContext {
   permissionMode: PermissionMode;
   stopping: boolean;
   readonly subagentsFromEarlierProcesses: ReadonlySet<ActiveClaudeSubagent>;
+  readonly memoryInstructions: string | undefined;
 }
 
 interface ActiveClaudeToolCall {
@@ -9045,6 +9049,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           });
           const queryPolicyKey = claudeEffectiveQueryPolicyKey(queryPolicy, mcpOverrides);
           const compiledSelection = compileClaudeModelSelection(turnInput.modelSelection);
+          const memoryInstructions = turnInput.threadMemory?.instructions;
           const resumeSessionAt = yield* getNativeConversationHeadId(turnInput.providerThread);
           const existing = yield* Ref.get(queryContext);
           // A continuation prompts nothing: it drains output the live process
@@ -9083,7 +9088,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             existing !== null &&
             existing.nativeThreadId === nativeThreadId &&
             existing.queryPolicyKey === queryPolicyKey &&
-            existing.selection.queryIdentity === compiledSelection.queryIdentity
+            existing.selection.queryIdentity === compiledSelection.queryIdentity &&
+            // Pinning or unpinning changes the system prompt, which only a new process
+            // takes. Background work keeps the old prompt until the process next opens.
+            (existing.memoryInstructions === memoryInstructions ||
+              (yield* liveProcessRunsBackgroundWork(existing)))
           ) {
             // A denied ExitPlanMode leaves Claude in plan mode. Restore only from plan:
             // Auto/default may reflect a policy restriction that forbids restoring bypass.
@@ -9169,6 +9178,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             onUserDialog,
             supportedDialogKinds: ["resume_return"],
             ...(appendSystemPromptFileText === undefined ? {} : { appendSystemPromptFileText }),
+            ...(turnInput.threadMemory === undefined
+              ? {}
+              : {
+                  threadMemory: {
+                    instructions: turnInput.threadMemory.instructions,
+                    directory: path.dirname(turnInput.threadMemory.path),
+                  },
+                }),
           });
           const querySession = yield* queryRunner
             .open({
@@ -9221,6 +9238,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 (subagent) => subagent.task.status === "running",
               ),
             ),
+            memoryInstructions,
           };
           yield* Ref.set(queryContext, context);
           yield* querySession.messages.pipe(

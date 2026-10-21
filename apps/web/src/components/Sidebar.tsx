@@ -3,6 +3,8 @@ import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import { ThreadTerminalStatusButton } from "./ThreadStatusIndicators";
+import { ThreadMemoryIndicator } from "./ThreadMemoryIndicator";
+import { readThreadMemoryPath, useOpenThreadMemory } from "../threadMemory";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -2660,6 +2662,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {/* Left of the status slot, the pin would slide when hover swaps the
                 label for the wider row controls. */}
               {pinIndicator}
+              {showPin ? <ThreadMemoryIndicator threadRef={threadRef} /> : null}
               {props.projectDisplayName ? (
                 <span
                   className={cn(
@@ -4630,6 +4633,7 @@ export default function Sidebar() {
     },
   );
 
+  const openThreadMemory = useOpenThreadMemory();
   const handleThreadContextMenu = useStableCallback(
     (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
       void (async () => {
@@ -4664,6 +4668,7 @@ export default function Sidebar() {
         const isSettled = settledThreadKeysRef.current.has(threadKey);
         const isSnoozed = snoozedThreadKeysRef.current.has(threadKey);
         const isPinned = thread.pinnedAt != null;
+        const memoryPath = readThreadMemoryPath(threadRef, isPinned);
         const backgroundItem = sidebarBackgroundMenuItem({
           thread,
           choices: backgroundChoices,
@@ -4694,6 +4699,7 @@ export default function Sidebar() {
                   }
                 : null,
               isPinned,
+              hasMemory: memoryPath !== null,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
               isSnoozed,
@@ -4782,6 +4788,9 @@ export default function Sidebar() {
             return;
           case "unpin":
             attemptUnpin(threadRef);
+            return;
+          case "open-memory":
+            if (memoryPath !== null) await openThreadMemory(threadRef, memoryPath);
             return;
           case "auto-settle:enabled":
           case "auto-settle:disabled": {

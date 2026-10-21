@@ -327,6 +327,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["usage quota rate limit reset recover continue"],
   },
   {
+    id: "pinned-thread-memory",
+    title: "Pinned threads keep a memory",
+    to: "/settings/general",
+    searchTerms: ["memory notes file compaction pin expert context"],
+  },
+  {
     id: "boring-sidebar",
     title: "Boring Sidebar (group by project)",
     to: "/settings/beta",

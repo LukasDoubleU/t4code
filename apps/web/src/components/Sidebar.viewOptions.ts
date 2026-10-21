@@ -68,8 +68,11 @@ export function sidebarGroupingPatch(grouping: SidebarGrouping): ClientSettingsP
   };
 }
 
-/** In sidebar order: what needs the user first, idle threads last. */
-const SIDEBAR_STATUS_GROUPS = ["needs_you", "failed", "working", "completed", "idle"] as const;
+/**
+ * In sidebar order: what needs the user first, so an unseen result comes before work still
+ * running, and idle threads last.
+ */
+const SIDEBAR_STATUS_GROUPS = ["needs_you", "failed", "completed", "working", "idle"] as const;
 export type SidebarStatusGroup = (typeof SIDEBAR_STATUS_GROUPS)[number];
 
 type SidebarStatusGroupInput = Parameters<typeof resolveSidebarThreadStatus>[0] &

@@ -127,8 +127,8 @@ each:
 
 1. **Needs you**: a question or approval is waiting, or a snooze just ended.
 2. **Failed**: the latest run failed, including runs stopped by a usage limit.
-3. **Working**: the agent is running or waiting on background work.
-4. **Completed**: finished work you have not opened yet. Opening the thread makes it idle.
+3. **Completed**: finished work you have not opened yet. Opening the thread makes it idle.
+4. **Working**: the agent is running or waiting on background work.
 5. **Idle**: everything else.
 
 With **Last message** or **Status** you cannot rearrange active threads, but you can still drag

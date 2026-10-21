@@ -321,8 +321,8 @@ describe("sorting and grouping threads", () => {
       status: [
         { key: "sidebar-status:needs_you", inbox: ["input", "approval"], settled: [] },
         { key: "sidebar-status:failed", inbox: ["failed"], settled: [] },
-        { key: "sidebar-status:working", inbox: ["working"], settled: [] },
         { key: "sidebar-status:completed", inbox: ["done"], settled: [] },
+        { key: "sidebar-status:working", inbox: ["working"], settled: [] },
         { key: "sidebar-status:idle", inbox: ["idle"], settled: [] },
       ],
     },
@@ -347,13 +347,13 @@ describe("sorting and grouping threads", () => {
       status: [
         { key: "sidebar-status:needs_you", inbox: ["approval", "input"], settled: [] },
         { key: "sidebar-status:failed", inbox: ["failed"], settled: [] },
-        { key: "sidebar-status:working", inbox: ["working"], settled: [] },
         { key: "sidebar-status:completed", inbox: ["done"], settled: [] },
+        { key: "sidebar-status:working", inbox: ["working"], settled: [] },
         { key: "sidebar-status:idle", inbox: ["idle"], settled: [] },
       ],
     },
     status: {
-      none: ["approval", "input", "failed", "working", "done", "idle"],
+      none: ["approval", "input", "failed", "done", "working", "idle"],
       project: [
         { key: "app", inbox: ["approval", "input", "done", "idle"], settled: ["settled"] },
         { key: "docs", inbox: ["failed", "working"], settled: [] },
@@ -373,8 +373,8 @@ describe("sorting and grouping threads", () => {
       status: [
         { key: "sidebar-status:needs_you", inbox: ["approval", "input"], settled: [] },
         { key: "sidebar-status:failed", inbox: ["failed"], settled: [] },
-        { key: "sidebar-status:working", inbox: ["working"], settled: [] },
         { key: "sidebar-status:completed", inbox: ["done"], settled: [] },
+        { key: "sidebar-status:working", inbox: ["working"], settled: [] },
         { key: "sidebar-status:idle", inbox: ["idle"], settled: [] },
       ],
     },

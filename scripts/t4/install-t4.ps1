@@ -53,13 +53,14 @@ function Find-Release {
   Fail "$repo has no release$(if ($Version) { " $Version" })"
 }
 
-# The installer registers the app under its uninstall key; the product name,
-# and with it the executable's name, differs between builds.
+# The installer registers the app under its uninstall key, named T3 Code by
+# official builds and older fork builds and T4 Code by newer ones; the
+# executable's name differs between builds.
 function Find-InstalledApp {
   $entry = Get-ItemProperty -ErrorAction SilentlyContinue -Path @(
     'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
     'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
-  ) | Where-Object { $_.DisplayName -like 'T3 Code*' -and $_.DisplayIcon } | Select-Object -First 1
+  ) | Where-Object { $_.DisplayName -match '^T[34] Code' -and $_.DisplayIcon } | Select-Object -First 1
   if (-not $entry) { return $null }
   $exe = ($entry.DisplayIcon -replace ',\d+$', '').Trim('"')
   [pscustomobject]@{ Exe = $exe; Dir = Split-Path $exe; Version = $entry.DisplayVersion }

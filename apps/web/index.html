@@ -121,7 +121,23 @@
               chrome: "oklch(0.225975 0.031062 293.741)",
             },
           },
+          "catppuccin-mocha-rosewater": {
+            light: {
+              background: "oklch(0.957761 0.005767 264.532)",
+              foreground: "oklch(0.43547 0.043008 279.325)",
+              accent: "oklch(0.714133 0.104543 33.097)",
+              chrome: "oklch(0.957761 0.005767 264.532)",
+            },
+            dark: {
+              background: "oklch(0.242867 0.030357 283.911)",
+              foreground: "oklch(0.87866 0.042552 272.277)",
+              accent: "oklch(0.92257 0.023835 30.492)",
+              chrome: "oklch(0.242867 0.030357 283.911)",
+            },
+          },
         };
+        // Built-ins whose base appearance is dark; the rest are light-based.
+        const DARK_BASE_THEME_IDS = ["catppuccin-mocha-rosewater"];
         // Keep the built-in mode list in sync with the runtime so the selected
         // T3 Chat palette is visible before React has mounted.
         const BUILT_IN_THEME_MODES = Object.fromEntries(
@@ -139,6 +155,7 @@
           "ocean",
           "ember",
           "iris",
+          "catppuccin-mocha-rosewater",
           "t3-chat-dark",
           "t3-grove",
           "t3-ocean",
@@ -250,7 +267,11 @@
             themeModes !== null;
           const theme = isKnownTheme && storedTheme ? storedTheme : "system";
           const isThemed = isKnownTheme && themeModes !== null;
-          const baseAppearance = customTheme ? customTheme.appearance : "light";
+          const baseAppearance = customTheme
+            ? customTheme.appearance
+            : DARK_BASE_THEME_IDS.includes(themeId)
+              ? "dark"
+              : "light";
           const systemMode = prefersDark ? "dark" : "light";
           const storedAppearanceMode = window.localStorage.getItem(
             THEME_APPEARANCE_MODE_STORAGE_KEY,

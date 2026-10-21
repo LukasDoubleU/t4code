@@ -147,7 +147,11 @@ import {
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { sourceControlRepositorySelector } from "@t3tools/shared/sourceControl";
 import { truncate } from "@t3tools/shared/String";
-import { resolveThreadReferenceCopyTarget } from "@t3tools/shared/threadReference";
+import {
+  resolveThreadReferenceCopyTarget,
+  threadIdCopyTarget,
+  type ThreadReferenceCopyTarget,
+} from "@t3tools/shared/threadReference";
 import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
 import { Debouncer } from "@tanstack/react-pacer";
 import { useAtomValue } from "@effect/atom-react";
@@ -5028,8 +5032,7 @@ export default function ChatView(props: ChatViewProps) {
           pullRequests: activeThread?.pullRequests,
           linkedPullRequestUrl: linkedThreadPullRequest?.url ?? null,
         });
-  const copyActiveThreadReference = () => {
-    const target = activeThreadReferenceCopyTarget;
+  const copyThreadTarget = (target: ThreadReferenceCopyTarget | null) => {
     if (target === null) return;
     void writeTextToClipboard(target.value, target.clipboardTarget).then(
       (didCopy) => {
@@ -5052,7 +5055,14 @@ export default function ChatView(props: ChatViewProps) {
       },
     );
   };
-  const copyActiveThreadReferenceStable = useStableCallback(copyActiveThreadReference);
+  const copyActiveThreadReferenceStable = useStableCallback(() =>
+    copyThreadTarget(activeThreadReferenceCopyTarget),
+  );
+  const copyActiveThreadIdStable = useStableCallback(() =>
+    copyThreadTarget(
+      activeThreadId === null || !isServerThread ? null : threadIdCopyTarget(activeThreadId),
+    ),
+  );
   const pullRequestPanelTarget = activeThread
     ? threadPullRequestPanelTarget({
         projectId: activeThread.projectId,
@@ -5843,6 +5853,9 @@ export default function ChatView(props: ChatViewProps) {
     commands: {
       "thread.copyReference": ({ event }) => {
         if (!event.repeat) copyActiveThreadReferenceStable();
+      },
+      "thread.copyId": ({ event }) => {
+        if (!event.repeat) copyActiveThreadIdStable();
       },
       "thread.settle": () => {
         if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return false;

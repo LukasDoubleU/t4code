@@ -10,6 +10,17 @@ export interface ThreadReferenceCopyTarget {
   readonly failureTitle: string;
 }
 
+/** The thread's own id, whether or not it has a pull request. */
+export function threadIdCopyTarget(threadId: string): ThreadReferenceCopyTarget {
+  return {
+    kind: "thread",
+    value: threadId,
+    clipboardTarget: "thread ID",
+    successTitle: "Thread ID copied",
+    failureTitle: "Failed to copy thread ID",
+  };
+}
+
 export function resolveThreadReferenceCopyTarget(input: {
   readonly threadId: string;
   /** Undefined means no PR panel; null means its URL is not available yet. */
@@ -30,11 +41,5 @@ export function resolveThreadReferenceCopyTarget(input: {
         successTitle: "PR link copied",
         failureTitle: "Failed to copy PR link",
       }
-    : {
-        kind: "thread",
-        value: input.threadId,
-        clipboardTarget: "thread ID",
-        successTitle: "Thread ID copied",
-        failureTitle: "Failed to copy thread ID",
-      };
+    : threadIdCopyTarget(input.threadId);
 }

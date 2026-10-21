@@ -27,7 +27,11 @@ import {
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { connectionStatusText } from "@t3tools/client-runtime/connection";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import { resolveThreadReferenceCopyTarget } from "@t3tools/shared/threadReference";
+import {
+  resolveThreadReferenceCopyTarget,
+  threadIdCopyTarget,
+  type ThreadReferenceCopyTarget,
+} from "@t3tools/shared/threadReference";
 import {
   canPreloadBrowsePath,
   createBrowseNavigationCoordinator,
@@ -66,6 +70,7 @@ import {
   FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
+  HashIcon,
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -798,8 +803,8 @@ function OpenCommandPaletteDialog(props: {
           linkedPullRequestUrl:
             activeThread?.linkedPullRequest?.url ?? activeThread?.branchPullRequest?.url ?? null,
         });
-  const copyActiveThreadReference = async () => {
-    const target = activeThreadReferenceCopyTarget;
+  const activeThreadIdCopyTarget = activeThread ? threadIdCopyTarget(activeThread.id) : null;
+  const copyThreadTarget = async (target: ThreadReferenceCopyTarget | null) => {
     if (target === null) return;
     try {
       const didCopy = await writeTextToClipboard(target.value, target.clipboardTarget);
@@ -1726,7 +1731,20 @@ function OpenCommandPaletteDialog(props: {
       description: activeThreadReferenceCopyTarget.value,
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyReference",
-      run: copyActiveThreadReference,
+      run: () => copyThreadTarget(activeThreadReferenceCopyTarget),
+    });
+  }
+  // Without a pull request, the item above already copies the thread ID.
+  if (activeThreadIdCopyTarget !== null && activeThreadReferenceCopyTarget?.kind !== "thread") {
+    actionItems.push({
+      kind: "action",
+      value: "action:copy-thread-id",
+      searchTerms: ["copy", "thread id", "id"],
+      title: "Copy thread ID",
+      description: activeThreadIdCopyTarget.value,
+      icon: <HashIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "thread.copyId",
+      run: () => copyThreadTarget(activeThreadIdCopyTarget),
     });
   }
 
@@ -2926,7 +2944,15 @@ function OpenCommandPaletteDialog(props: {
       event.stopPropagation();
       if (activeThreadReferenceCopyTarget === null) return;
       setOpen(false);
-      void copyActiveThreadReference();
+      void copyThreadTarget(activeThreadReferenceCopyTarget);
+      return;
+    }
+    if (command === "thread.copyId") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (activeThreadIdCopyTarget === null) return;
+      setOpen(false);
+      void copyThreadTarget(activeThreadIdCopyTarget);
       return;
     }
     // ChatView ignores shortcuts while the palette is open, so handle find here

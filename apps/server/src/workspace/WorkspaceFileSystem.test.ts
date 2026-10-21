@@ -3,6 +3,7 @@ import * as NodeChildProcess from "node:child_process";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it, describe, expect } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
@@ -81,6 +82,30 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
             .getMetadata({ paths: ["~/file"] })
             .pipe(Effect.provideService(HostProcess.HomeDirectory, home))).entries,
         ).toEqual([{ kind: "file", byteLength: 5 }]);
+      }),
+    );
+
+    it.effect("reports a file's modification time only when asked", () =>
+      Effect.gen(function* () {
+        const service = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "notes.md", "hello");
+        const file = path.join(cwd, "notes.md");
+        const modifiedAt = DateTime.makeUnsafe("2026-10-01T08:30:00.000Z");
+        // Node reads a numeric time as seconds.
+        const modifiedAtSeconds = DateTime.toEpochMillis(modifiedAt) / 1000;
+        yield* fs.utimes(file, modifiedAtSeconds, modifiedAtSeconds);
+
+        const asked = yield* service.getMetadata({ paths: [file, cwd], includeModifiedAt: true });
+        expect(asked.entries).toEqual([
+          { kind: "file", byteLength: 5, modifiedAt: DateTime.formatIso(modifiedAt) },
+          { kind: "directory" },
+        ]);
+        expect((yield* service.getMetadata({ paths: [file] })).entries).toEqual([
+          { kind: "file", byteLength: 5 },
+        ]);
       }),
     );
 

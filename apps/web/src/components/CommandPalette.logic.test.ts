@@ -9,7 +9,10 @@ import {
   buildProjectActionItems,
   buildThreadActionItems,
   buildLinkedThreadActionItems,
+  buildNewThreadPickerItems,
   enumerateCommandPaletteItems,
+  NEW_THREAD_WITHOUT_PROJECT_ITEM_VALUE,
+  sortNewThreadPickerProjects,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
   findHighlightedCommandPaletteItem,
@@ -275,6 +278,94 @@ describe("reduceCommandPaletteUiState", () => {
       mode: "command",
       openIntent: null,
     });
+  });
+});
+
+describe("new-thread picker order", () => {
+  const local = EnvironmentId.make("local");
+  const laptop = EnvironmentId.make("laptop");
+  const server = EnvironmentId.make("server");
+  const locations = new Map([
+    [local, { kind: "local" as const, label: "Local" }],
+    [laptop, { kind: "remote" as const, label: "Laptop" }],
+    [server, { kind: "remote" as const, label: "Build server" }],
+  ]);
+  const project = (environmentId: EnvironmentId, id: string, displayName: string) => ({
+    environmentId,
+    id: ProjectId.make(id),
+    displayName,
+    workspaceRoot: `/work/${id}`,
+  });
+  const actionItem = (value: string): CommandPaletteActionItem => ({
+    kind: "action",
+    value,
+    searchTerms: [],
+    title: value,
+    icon: null,
+    run: async () => undefined,
+  });
+
+  it("sorts projects by name, then the local machine, then the machine label", () => {
+    const projects = [
+      project(laptop, "web-laptop", "web"),
+      project(local, "zebra", "Zebra"),
+      project(server, "web-server", "Web"),
+      project(local, "api", "api"),
+      project(local, "web-local", "web"),
+      project(local, "docs", "Docs"),
+    ];
+
+    expect(sortNewThreadPickerProjects(projects, locations).map((entry) => entry.id)).toEqual([
+      "api",
+      "docs",
+      "web-local",
+      "web-server",
+      "web-laptop",
+      "zebra",
+    ]);
+    // The order does not depend on which project the caller listed first.
+    expect(sortNewThreadPickerProjects(projects.toReversed(), locations)).toEqual(
+      sortNewThreadPickerProjects(projects, locations),
+    );
+  });
+
+  it("numbers the project rows top-down, highlights the current one in place and ends with No project", () => {
+    const projectItems = enumerateCommandPaletteItems(["alpha", "beta", "gamma"].map(actionItem));
+    const noProjectItem = {
+      ...actionItem(NEW_THREAD_WITHOUT_PROJECT_ITEM_VALUE),
+      shortcutCommand: "chat.newWithoutProject" as const,
+    };
+
+    const { items, highlightedItemValue } = buildNewThreadPickerItems({
+      projectItems,
+      noProjectItem,
+      currentItemValue: "gamma",
+    });
+
+    expect(items.map((item) => [item.value, item.shortcutCommand])).toEqual([
+      ["alpha", "thread.jump.1"],
+      ["beta", "thread.jump.2"],
+      ["gamma", "thread.jump.3"],
+      [NEW_THREAD_WITHOUT_PROJECT_ITEM_VALUE, "chat.newWithoutProject"],
+    ]);
+    expect(highlightedItemValue).toBe("gamma");
+  });
+
+  it("highlights No project when the current thread has none, and nothing for an unlisted project", () => {
+    const projectItems = ["alpha", "beta"].map(actionItem);
+    const noProjectItem = actionItem(NEW_THREAD_WITHOUT_PROJECT_ITEM_VALUE);
+
+    expect(
+      buildNewThreadPickerItems({
+        projectItems,
+        noProjectItem,
+        currentItemValue: NEW_THREAD_WITHOUT_PROJECT_ITEM_VALUE,
+      }).highlightedItemValue,
+    ).toBe(NEW_THREAD_WITHOUT_PROJECT_ITEM_VALUE);
+    expect(
+      buildNewThreadPickerItems({ projectItems, noProjectItem: null, currentItemValue: "gone" })
+        .highlightedItemValue,
+    ).toBeNull();
   });
 });
 

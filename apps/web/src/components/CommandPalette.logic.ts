@@ -167,6 +167,7 @@ export interface CommandPaletteSubmenuItem extends CommandPaletteItem {
   readonly addonIcon: ReactNode;
   readonly groups: ReadonlyArray<CommandPaletteGroup>;
   readonly initialQuery?: string;
+  readonly initialHighlightedItemValue?: string;
 }
 
 export interface CommandPaletteGroup {
@@ -179,6 +180,7 @@ export interface CommandPaletteView {
   readonly addonIcon: ReactNode;
   readonly groups: ReadonlyArray<CommandPaletteGroup>;
   readonly initialQuery?: string;
+  readonly initialHighlightedItemValue?: string;
 }
 
 // Child search unmounts the palette; retain search data without its view closures.
@@ -286,6 +288,48 @@ export function enumerateCommandPaletteItems(
     const { shortcutCommand: _shortcutCommand, ...itemWithoutShortcut } = item;
     return itemWithoutShortcut;
   });
+}
+
+// The new-thread picker lists projects by name rather than the sidebar sort, so neither recent
+// activity nor the thread it was opened from reshuffles the rows or their number labels.
+export function sortNewThreadPickerProjects<
+  TProject extends Pick<
+    CommandPaletteProject,
+    "displayName" | "environmentId" | "id" | "workspaceRoot"
+  >,
+>(
+  projects: ReadonlyArray<TProject>,
+  locationByEnvironmentId: ReadonlyMap<
+    EnvironmentId,
+    { readonly kind: "local" | "remote"; readonly label: string }
+  >,
+): TProject[] {
+  const location = (project: TProject) =>
+    locationByEnvironmentId.get(project.environmentId) ?? { kind: "remote", label: "Remote" };
+  return projects.toSorted(
+    (left, right) =>
+      left.displayName.localeCompare(right.displayName, undefined, { sensitivity: "accent" }) ||
+      Number(location(left).kind !== "local") - Number(location(right).kind !== "local") ||
+      location(left).label.localeCompare(location(right).label) ||
+      left.workspaceRoot.localeCompare(right.workspaceRoot) ||
+      `${left.environmentId}:${left.id}`.localeCompare(`${right.environmentId}:${right.id}`),
+  );
+}
+
+export const NEW_THREAD_WITHOUT_PROJECT_ITEM_VALUE = "new-thread-in:no-project";
+
+// "No project" goes after the numbered project rows. The current target keeps its place and is
+// highlighted instead, so Enter still starts a thread there.
+export function buildNewThreadPickerItems(input: {
+  readonly projectItems: ReadonlyArray<CommandPaletteActionItem>;
+  readonly noProjectItem: CommandPaletteActionItem | null;
+  readonly currentItemValue: string | null;
+}) {
+  const items = [...input.projectItems, ...(input.noProjectItem ? [input.noProjectItem] : [])];
+  const highlightedItemValue = items.some((item) => item.value === input.currentItemValue)
+    ? input.currentItemValue
+    : null;
+  return { items, highlightedItemValue };
 }
 
 export type CommandPaletteMode = "root" | "root-browse" | "submenu" | "submenu-browse";

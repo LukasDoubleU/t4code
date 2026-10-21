@@ -183,7 +183,10 @@ import {
   buildThreadActionItems,
   buildLinkedThreadActionItems,
   buildCommandPaletteRows,
+  buildNewThreadPickerItems,
   enumerateCommandPaletteItems,
+  NEW_THREAD_WITHOUT_PROJECT_ITEM_VALUE,
+  sortNewThreadPickerProjects,
   findHighlightedCommandPaletteItem,
   type CommandPaletteActionItem,
   type CommandPaletteOpenIntent,
@@ -1159,11 +1162,15 @@ function OpenCommandPaletteDialog(props: {
   });
 
   const projectThreadItems = (() => {
-    const isScratch = (project: CommandPaletteProject) =>
+    const isScratch = (project: Pick<CommandPaletteProject, "environmentId" | "workspaceRoot">) =>
       isScratchProject(project, scratchWorkspaceRootFor(project.environmentId));
+    const currentProject = projectPickerEntries.find((entry) => entry.isPreferred)?.targetProject;
     const projectItems = enumerateCommandPaletteItems(
       buildProjectActionItems({
-        projects: pickerProjects.filter((project) => !isScratch(project)),
+        projects: sortNewThreadPickerProjects(
+          pickerProjects.filter((project) => !isScratch(project)),
+          projectEnvironmentLocationById,
+        ),
         valuePrefix: "new-thread-in",
         searchTerms: (project) => {
           const group = projectGroupByTargetKey.get(`${project.environmentId}:${project.id}`);
@@ -1215,22 +1222,27 @@ function OpenCommandPaletteDialog(props: {
         },
       }),
     );
-    if (scratchTargetEnvironmentId === null) return projectItems;
-
-    const noProjectIndex = pickerProjects[0] !== undefined && isScratch(pickerProjects[0]) ? 0 : 1;
-    return [
-      ...projectItems.slice(0, noProjectIndex),
-      {
-        kind: "action" as const,
-        value: "new-thread-in:no-project",
-        searchTerms: ["no project", "without project", "none"],
-        title: "No project",
-        icon: <MessageSquareDashedIcon className={ITEM_ICON_CLASS} />,
-        shortcutCommand: "chat.newWithoutProject" as const,
-        run: () => startScratchThread(scratchTargetEnvironmentId),
-      },
-      ...projectItems.slice(noProjectIndex),
-    ];
+    return buildNewThreadPickerItems({
+      projectItems,
+      noProjectItem:
+        scratchTargetEnvironmentId === null
+          ? null
+          : {
+              kind: "action",
+              value: NEW_THREAD_WITHOUT_PROJECT_ITEM_VALUE,
+              searchTerms: ["no project", "without project", "none"],
+              title: "No project",
+              icon: <MessageSquareDashedIcon className={ITEM_ICON_CLASS} />,
+              shortcutCommand: "chat.newWithoutProject",
+              run: () => startScratchThread(scratchTargetEnvironmentId),
+            },
+      currentItemValue:
+        currentProject === undefined
+          ? null
+          : isScratch(currentProject)
+            ? NEW_THREAD_WITHOUT_PROJECT_ITEM_VALUE
+            : `new-thread-in:${currentProject.environmentId}:${currentProject.id}`,
+    });
   })();
 
   const allThreadItems = buildThreadActionItems({
@@ -1304,8 +1316,10 @@ function OpenCommandPaletteDialog(props: {
   const pushPaletteView = useStableCallback((view: CommandPaletteView): void => {
     browseNavigation.invalidate();
     dispatchSearch({ type: "push", view });
+    // The cleared flag stays set so Base UI's automatic first-row highlight cannot replace the
+    // view's own, and ArrowDown starts from the top as in any other view.
     highlightClearedRef.current = true;
-    setHighlightedItemValue(null);
+    setHighlightedItemValue(view.initialHighlightedItemValue ?? null);
   });
 
   function popView(): void {
@@ -1620,7 +1634,10 @@ function OpenCommandPaletteDialog(props: {
       title: "New thread in...",
       icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
-      groups: [{ value: "projects", label: "Projects", items: projectThreadItems }],
+      groups: [{ value: "projects", label: "Projects", items: projectThreadItems.items }],
+      ...(projectThreadItems.highlightedItemValue === null
+        ? {}
+        : { initialHighlightedItemValue: projectThreadItems.highlightedItemValue }),
     });
   }
 
@@ -1947,7 +1964,7 @@ function OpenCommandPaletteDialog(props: {
 
   // The parent pushes an intent into this mounted dialog; applying it clears the
   // parent's intent and may navigate, so it runs after commit but before paint.
-  const projectThreadItemCount = projectThreadItems.length;
+  const projectThreadItemCount = projectThreadItems.items.length;
   const applyOpenIntent = useEffectEvent((intent: CommandPaletteOpenIntent) => {
     clearOpenIntent();
     browseNavigation.invalidate();
@@ -1967,7 +1984,10 @@ function OpenCommandPaletteDialog(props: {
       case "new-thread-in":
         pushPaletteView({
           addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
-          groups: [{ value: "projects", label: "Projects", items: projectThreadItems }],
+          groups: [{ value: "projects", label: "Projects", items: projectThreadItems.items }],
+          ...(projectThreadItems.highlightedItemValue === null
+            ? {}
+            : { initialHighlightedItemValue: projectThreadItems.highlightedItemValue }),
         });
         return;
       case "change-theme":
@@ -2773,6 +2793,20 @@ function OpenCommandPaletteDialog(props: {
   const resultRows = buildCommandPaletteRows(displayedGroups);
   const autoHighlightsFirstRow =
     !isBrowsing && !isRemoteProjectCloneFlow && newProjectFlow === null;
+  const initialHighlightedItemValue = currentView?.initialHighlightedItemValue;
+  const scrollToInitialHighlight = useEffectEvent((itemValue: string) => {
+    if (itemValue !== highlightedItemValue) return;
+    const rowIndex = resultRows.rowIndexByItemIndex[resultRows.itemValues.indexOf(itemValue)];
+    if (rowIndex !== undefined) scrollCommandPaletteRowIntoView(resultListRef.current, rowIndex);
+  });
+  useEffect(() => {
+    if (initialHighlightedItemValue === undefined) return;
+    // The list mounts with the view; wait a frame for its first layout.
+    const frame = requestAnimationFrame(() =>
+      scrollToInitialHighlight(initialHighlightedItemValue),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [initialHighlightedItemValue]);
 
   const inputPlaceholder =
     newProjectFlow !== null

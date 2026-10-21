@@ -158,10 +158,11 @@ it, it returns to Background. Settling still moves a finished thread to **Settle
 subagents stay with their parent thread.
 
 To move any thread yourself, choose **Move to background** or **Bring to front** from its menu,
-or drag it between the active list and the **Background** header. A thread you moved to
-Background comes back when you write in it again; one you brought to front stays in the main
-list. Pinned, snoozed, and settled threads keep their own sections. Each device keeps its own
-choices. To show every thread as before, turn off **Background section** in the sort menu.
+or drag it between the active list and the **Background** header. A thread that needs you moves
+to Background only once you have dealt with it. A thread you moved to Background comes back when
+you write in it again; one you brought to front stays in the main list. Pinned, snoozed, and
+settled threads keep their own sections. Each device keeps its own choices. To show every thread
+as before, turn off **Background section** in the sort menu.
 
 ### Fold working threads (beta)
 

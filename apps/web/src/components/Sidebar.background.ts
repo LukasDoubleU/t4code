@@ -68,37 +68,50 @@ export function isSidebarBackgroundThread(
   return thread.source.createdBy === "agent" && userMessageAt === null;
 }
 
+/** The two statuses the Status sort puts first; Background lets these threads out. */
+export function sidebarThreadNeedsUser(statusGroup: SidebarStatusGroup): boolean {
+  return statusGroup === "needs_you" || statusGroup === "failed";
+}
+
 /**
  * Whether the sidebar lists a thread under Background. A thread there returns to the main
- * list while it needs the user, in the two statuses the Status sort puts first. `choices` is
- * null while the section is off.
+ * list while it needs the user. `choices` is null while the section is off.
  */
 export function isInSidebarBackground<T extends SidebarBackgroundListing>(
   thread: T,
   choices: SidebarBackgroundChoices | null,
   statusGroupOf: (thread: T) => SidebarStatusGroup,
+  threadKey: string = threadKeyOf(thread),
 ): boolean {
   // Settling wins. Checking it first also spares the many settled agent threads the
   // status check on every sidebar update.
   if (choices === null || thread.settledOverride === "settled") return false;
-  if (!isSidebarBackgroundThread(thread, choiceFor(choices, thread))) return false;
-  const statusGroup = statusGroupOf(thread);
-  return statusGroup !== "needs_you" && statusGroup !== "failed";
+  if (!isSidebarBackgroundThread(thread, choices[threadKey])) return false;
+  return !sidebarThreadNeedsUser(statusGroupOf(thread));
+}
+
+/** A move a thread's menu offers; unavailable while it would not take effect. */
+export interface SidebarBackgroundMenuItem {
+  readonly placement: SidebarBackgroundPlacement;
+  readonly available: boolean;
 }
 
 /**
- * The placement a thread's menu offers: the side Background does not put it on. Pinned,
- * snoozed and settled threads keep their own sections, so their menu offers neither.
+ * The move a thread's menu offers: to the side Background does not put it on. A thread that
+ * needs the user would come straight back, so it moves to Background only once that is
+ * handled. Pinned, snoozed and settled threads keep their own sections, so their menu offers
+ * neither.
  */
-export function sidebarBackgroundMenuPlacement(input: {
+export function sidebarBackgroundMenuItem(input: {
   readonly thread: SidebarBackgroundThread;
   readonly choices: SidebarBackgroundChoices | null;
   readonly parked: boolean;
-}): SidebarBackgroundPlacement | null {
+  readonly statusGroup: SidebarStatusGroup;
+}): SidebarBackgroundMenuItem | null {
   if (input.choices === null || input.parked) return null;
   return isSidebarBackgroundThread(input.thread, choiceFor(input.choices, input.thread))
-    ? "front"
-    : "background";
+    ? { placement: "front", available: true }
+    : { placement: "background", available: !sidebarThreadNeedsUser(input.statusGroup) };
 }
 
 /** The choices after moving `threads` to `placement`. */

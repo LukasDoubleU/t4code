@@ -7,7 +7,7 @@ import {
   isInSidebarBackground,
   isSidebarBackgroundThread,
   placeSidebarThreads,
-  sidebarBackgroundMenuPlacement,
+  sidebarBackgroundMenuItem,
   type SidebarBackgroundChoices,
 } from "./Sidebar.background";
 import { resolveSidebarThreadSection } from "./Sidebar.logic";
@@ -216,15 +216,32 @@ describe("placeSidebarThreads", () => {
   });
 });
 
-describe("sidebarBackgroundMenuPlacement", () => {
+describe("sidebarBackgroundMenuItem", () => {
   const menu = (entry: Thread, choices: SidebarBackgroundChoices | null = {}, parked = false) =>
-    sidebarBackgroundMenuPlacement({ thread: entry, choices, parked });
+    sidebarBackgroundMenuItem({
+      thread: entry,
+      choices,
+      parked,
+      statusGroup: statusGroupOf(entry),
+    });
 
   it("offers the side the section does not put the thread on", () => {
-    expect(menu(thread("launched"))).toBe("front");
+    expect(menu(thread("launched"))).toEqual({ placement: "front", available: true });
     // Still Background's while it waits for the user in the main list.
-    expect(menu(thread("asking", { hasPendingApprovals: true }))).toBe("front");
-    expect(menu(thread("mine", { createdBy: "user" }))).toBe("background");
+    expect(menu(thread("asking", { hasPendingApprovals: true }))?.placement).toBe("front");
+    expect(menu(thread("mine", { createdBy: "user" }))).toEqual({
+      placement: "background",
+      available: true,
+    });
+  });
+
+  it("holds the move to Background back while the thread needs the user", () => {
+    for (const asking of [
+      thread("approval", { createdBy: "user", hasPendingApprovals: true }),
+      thread("failed", { createdBy: "user", runtime: runtime("failed") }),
+    ]) {
+      expect(menu(asking)).toEqual({ placement: "background", available: false });
+    }
   });
 
   it("offers neither while the section is off or the thread is pinned, snoozed or settled", () => {

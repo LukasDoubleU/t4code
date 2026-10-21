@@ -250,7 +250,8 @@ import {
 } from "./Sidebar.viewOptions";
 import {
   isInSidebarBackground,
-  sidebarBackgroundMenuPlacement,
+  sidebarBackgroundMenuItem,
+  sidebarThreadNeedsUser,
   useSidebarBackground,
   type SidebarBackgroundChoices,
 } from "./Sidebar.background";
@@ -540,8 +541,8 @@ function useSidebarThreads(input: {
   const background = useSidebarBackground();
   const machines = useEnvironmentIdentities();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  // Only a status sort or grouping, or the Background section, repartitions when this
-  // browser records a visit.
+  // Only a status sort or grouping, or the Background section (a woken snooze leaves it
+  // until visited), repartitions when this browser records a visit.
   const readsStatus =
     threadSort === "status" || grouping === "status" || background.choices !== null;
   const localLastVisitedAtById = useUiStateStore((store) =>
@@ -840,7 +841,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
         snoozed: supportsSnooze && effectiveSnoozed(thread, { now: preciseNow }),
         settled: supportsSettlement && thread.settledOverride === "settled",
         pinned: thread.pinnedAt != null,
-        background: isInSidebarBackground(thread, backgroundChoices, statusGroupOf),
+        background: isInSidebarBackground(thread, backgroundChoices, statusGroupOf, threadKey),
       });
       (section === "snoozed"
         ? snoozed
@@ -4060,6 +4061,7 @@ export default function Sidebar() {
       return createSidebarCollisionDetection(() => true);
     const source = threadByKey.get(draggedThreadKey);
     if (source === undefined) return createSidebarCollisionDetection(() => false);
+    const backgroundAvailable = !sidebarThreadNeedsUser(statusGroupOf(source));
     return createSidebarCollisionDetection(
       (id) => {
         const target = resolveSidebarDropTarget(sidebarListItems, draggedThreadKey, id);
@@ -4081,6 +4083,7 @@ export default function Sidebar() {
             activeKeysById,
             activeReorderableKeys: activeReorderableThreadKeys,
             activeTimeOrdered: workingShelfEnabled || threadSort !== "manual",
+            backgroundAvailable,
           }).kind !== "none"
         );
       },
@@ -4116,9 +4119,11 @@ export default function Sidebar() {
       activeKeysById,
       activeReorderableKeys: activeReorderableThreadKeys,
       activeTimeOrdered: workingShelfEnabled || threadSort !== "manual",
+      backgroundAvailable: !sidebarThreadNeedsUser(statusGroupOf(activeThread)),
     });
     if (plan.kind === "none") return;
     // Background is this device's view, so dropping into it changes nothing on the server.
+    // Only a "background" plan targets it; checking both narrows the types below.
     if (plan.kind === "background" || target.section === "background") {
       placeInBackground([activeThread], "background");
       return;
@@ -4142,8 +4147,9 @@ export default function Sidebar() {
       )
     )
       return;
-    // A thread dropped into the active list stays there.
-    if (plan.kind === "move-active" && backgroundChoices !== null) {
+    // A thread dropped into the active list from another section stays there; reordering
+    // one that came forward to ask for something leaves its place alone.
+    if (plan.kind === "move-active" && activeSection !== "active" && backgroundChoices !== null) {
       placeInBackground([activeThread], "front");
     }
     const drop: SidebarOptimisticDrop = {
@@ -4340,11 +4346,13 @@ export default function Sidebar() {
       const backgroundMoves = (placement: "background" | "front") =>
         selectedThreads.filter((thread) => {
           const section = sectionByThreadKeyRef.current.get(threadShellKey(thread));
-          const parked = section === "pinned" || section === "snoozed" || section === "settled";
-          return (
-            sidebarBackgroundMenuPlacement({ thread, choices: backgroundChoices, parked }) ===
-            placement
-          );
+          const item = sidebarBackgroundMenuItem({
+            thread,
+            choices: backgroundChoices,
+            parked: section === "pinned" || section === "snoozed" || section === "settled",
+            statusGroup: statusGroupOf(thread),
+          });
+          return item?.placement === placement && item.available;
         });
       const toBackground = backgroundMoves("background");
       const toFront = backgroundMoves("front");
@@ -4656,10 +4664,11 @@ export default function Sidebar() {
         const isSettled = settledThreadKeysRef.current.has(threadKey);
         const isSnoozed = snoozedThreadKeysRef.current.has(threadKey);
         const isPinned = thread.pinnedAt != null;
-        const backgroundPlacement = sidebarBackgroundMenuPlacement({
+        const backgroundItem = sidebarBackgroundMenuItem({
           thread,
           choices: backgroundChoices,
           parked: isPinned || isSettled || isSnoozed,
+          statusGroup: statusGroupOf(thread),
         });
         const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
         const threadProjectGroup =
@@ -4689,7 +4698,7 @@ export default function Sidebar() {
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
               isSnoozed,
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
-              backgroundPlacement,
+              background: backgroundItem,
               isRegeneratingTitle,
               isRunning: !threadRuntimeCanArchive(thread.runtime),
               supports: {

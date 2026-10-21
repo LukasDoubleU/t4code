@@ -65,8 +65,9 @@ vi.mock("../state/entities", () => ({
   useDelegatedUnderParent: () => new Set(),
   useProjects: () => [{ id: "project", environmentId: "secondary" }],
 }));
+vi.mock("../components/Sidebar.viewOptions", () => ({ resolveSidebarStatusGroup: () => "idle" }));
 vi.mock("../components/Sidebar.background", () => ({
-  sidebarBackgroundMenuPlacement: () => "front",
+  sidebarBackgroundMenuItem: () => ({ placement: "front", available: true }),
   useSidebarBackground: () => ({
     choices: {},
     place: (_threads: unknown, placement: string) => recordEffect(placement),

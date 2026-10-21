@@ -293,6 +293,8 @@ export function planSidebarThreadDrop(input: {
   readonly activeKeysById: ReadonlyMap<string, string | null | undefined>;
   readonly activeReorderableKeys?: ReadonlySet<string>;
   readonly activeTimeOrdered?: boolean;
+  // False while the thread needs the user: Background would let it straight back out.
+  readonly backgroundAvailable?: boolean;
 }): SidebarThreadDropPlan {
   const {
     activeKey,
@@ -361,7 +363,9 @@ export function planSidebarThreadDrop(input: {
     case "settled":
       return activeSection === "settled" ? { kind: "none" } : { kind: "settle" };
     case "background":
-      return activeSection === "active" ? { kind: "background" } : { kind: "none" };
+      return activeSection === "active" && input.backgroundAvailable !== false
+        ? { kind: "background" }
+        : { kind: "none" };
     case "pinned": {
       const order = target.pinnedOrder;
       if (

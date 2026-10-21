@@ -2245,6 +2245,22 @@ describe("dragging with the Background section", () => {
     expect(plan("s1", "settled", "b1")).toEqual({ kind: "none" });
   });
 
+  it("refuses a thread that needs the user, which would come straight back", () => {
+    expect(
+      planSidebarThreadDrop({
+        activeKey: "a1",
+        activeSection: "active",
+        target: resolveSidebarDropTarget(items, "a1", "b1")!,
+        pinnedOrder: ["p1"],
+        pinnedKeysById: new Map([["p1", "m"]]),
+        activeOrder: ["a1", "a2"],
+        activeKeysById: new Map(),
+        activeTimeOrdered: true,
+        backgroundAvailable: false,
+      }),
+    ).toEqual({ kind: "none" });
+  });
+
   it("lets a Background thread leave for the active list, a pin or Settled", () => {
     expect(plan("b1", "background", "a2")).toEqual({
       kind: "move-active",

@@ -1,4 +1,4 @@
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
 import {
   type AtomCommandResult,
@@ -15,11 +15,9 @@ import {
 } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 
-import {
-  sidebarBackgroundMenuPlacement,
-  useSidebarBackground,
-} from "../components/Sidebar.background";
+import { sidebarBackgroundMenuItem, useSidebarBackground } from "../components/Sidebar.background";
 import { resolveSnoozePresets } from "../components/Sidebar.snooze";
+import { resolveSidebarStatusGroup } from "../components/Sidebar.viewOptions";
 import {
   buildThreadActionMenuItems,
   threadActionRequiresOperate,
@@ -47,6 +45,7 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
+import { useUiStateStore } from "../uiStateStore";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
@@ -152,11 +151,16 @@ export function useThreadActionMenu(input: {
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
         isSnoozed,
         canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
-        backgroundPlacement: listed
-          ? sidebarBackgroundMenuPlacement({
+        background: listed
+          ? sidebarBackgroundMenuItem({
               thread,
               choices: background.choices,
               parked: isPinned || isSettled || isSnoozed,
+              statusGroup: resolveSidebarStatusGroup(thread, {
+                now: now.toISOString(),
+                localLastVisitedAt:
+                  useUiStateStore.getState().threadLastVisitedAtById[scopedThreadKey(threadRef)],
+              }),
             })
           : null,
         isRegeneratingTitle,

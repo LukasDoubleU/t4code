@@ -157,21 +157,30 @@ describe("buildThreadActionMenuItems", () => {
     expect(ids(baseState)).not.toContain("move-to-background");
     const toBackground = buildThreadActionMenuItems({
       ...baseState,
-      backgroundPlacement: "background",
+      background: { placement: "background", available: true },
     });
     const snoozeIndex = toBackground.findIndex((item) => item.id === "snooze");
     expect(toBackground[snoozeIndex + 1]).toMatchObject({
       id: "move-to-background",
       label: "Move to background",
       icon: "send-to-back",
+      disabled: false,
     });
     const toFront = buildThreadActionMenuItems({
       ...baseState,
       canOperate: false,
-      backgroundPlacement: "front",
+      background: { placement: "front", available: true },
     }).find((item) => item.id === "bring-to-front");
     expect(toFront).toMatchObject({ label: "Bring to front", icon: "bring-to-front" });
     expect(toFront?.disabled).toBeFalsy();
+  });
+
+  it("disables Move to background while the move would not take effect", () => {
+    const item = buildThreadActionMenuItems({
+      ...baseState,
+      background: { placement: "background", available: false },
+    }).find((candidate) => candidate.id === "move-to-background");
+    expect(item?.disabled).toBe(true);
   });
 
   it("offers auto-settle as a submenu with the current option checked", () => {

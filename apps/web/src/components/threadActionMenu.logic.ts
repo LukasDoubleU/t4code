@@ -78,7 +78,10 @@ export interface ThreadActionMenuState {
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
   /** Where the sidebar's Background section lets this thread move; null hides both items. */
-  readonly backgroundPlacement?: "background" | "front" | null;
+  readonly background?: {
+    readonly placement: "background" | "front";
+    readonly available: boolean;
+  } | null;
   readonly isRegeneratingTitle: boolean;
   /** Archive rejects a thread with an attached provider, so disable it here rather than let the action fail. */
   readonly isRunning: boolean;
@@ -156,9 +159,16 @@ export function buildThreadActionMenuItems(
               },
         ]
       : []),
-    ...(state.backgroundPlacement === "background"
-      ? [{ id: "move-to-background" as const, label: "Move to background", icon: "send-to-back" }]
-      : state.backgroundPlacement === "front"
+    ...(state.background?.placement === "background"
+      ? [
+          {
+            id: "move-to-background" as const,
+            label: "Move to background",
+            icon: "send-to-back",
+            disabled: !state.background.available,
+          },
+        ]
+      : state.background?.placement === "front"
         ? [{ id: "bring-to-front" as const, label: "Bring to front", icon: "bring-to-front" }]
         : []),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },

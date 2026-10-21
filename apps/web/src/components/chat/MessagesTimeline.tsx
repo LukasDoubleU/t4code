@@ -316,6 +316,7 @@ interface TimelineRowSharedState {
   citationRequest: AssistantCitationTarget | null;
   listRef: React.RefObject<LegendListRef | null>;
   timestampFormat: TimestampFormat;
+  alwaysShowMessageTimes: boolean;
   routeThreadKey: string;
   threadRef: ScopedThreadRef | null;
   markdownCwd: string | undefined;
@@ -1020,6 +1021,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     null,
   );
   const chatWidth = useClientSettings((settings) => settings.chatWidth);
+  const alwaysShowMessageTimes = useClientSettings((settings) => settings.alwaysShowMessageTimes);
   const {
     target: readyCitationRequest,
     positioning: citationPositioning,
@@ -1291,6 +1293,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     citationRequest: readyCitationRequest,
     listRef,
     timestampFormat,
+    alwaysShowMessageTimes,
     routeThreadKey,
     threadRef: citationThreadRef,
     markdownCwd,
@@ -2474,7 +2477,12 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           </span>
         </div>
       ) : null}
-      <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
+      <div
+        className={cn(
+          "flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums",
+          !ctx.alwaysShowMessageTimes && USER_MESSAGE_FOOTER_REVEAL,
+        )}
+      >
         <div className="flex shrink-0 items-center gap-2">
           <Tooltip>
             <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
@@ -2484,7 +2492,12 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               {formatChatTimestampTooltip(row.message.createdAt, ctx.timestampFormat)}
             </TooltipPopup>
           </Tooltip>
-          <div className="flex items-center gap-0.5">
+          <div
+            className={cn(
+              "flex items-center gap-0.5",
+              ctx.alwaysShowMessageTimes && USER_MESSAGE_FOOTER_REVEAL,
+            )}
+          >
             {typeof revertTurnCount === "number" && (
               <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
             )}
@@ -2513,6 +2526,12 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     </div>
   );
 }
+
+// With message times always shown, only the buttons wait for hover.
+const USER_MESSAGE_FOOTER_REVEAL =
+  "opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100";
+const ASSISTANT_MESSAGE_META_REVEAL =
+  "opacity-0 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100";
 
 function UserMessageIntentMarker({
   intent,
@@ -2802,30 +2821,36 @@ function AssistantMessageMeta({
   alwaysVisible?: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
+  const revealButtonsOnly = !alwaysVisible && ctx.alwaysShowMessageTimes;
 
   return (
     <div
       className={cn(
         "flex items-center gap-2 text-xs tabular-nums transition-opacity duration-200",
-        alwaysVisible
-          ? "opacity-100"
-          : "opacity-0 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100",
+        alwaysVisible || revealButtonsOnly ? "opacity-100" : ASSISTANT_MESSAGE_META_REVEAL,
         className,
       )}
     >
-      {projectedItem && projectedItem.item.status !== "completed" ? (
-        <span className="rounded-full border border-border/70 px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
-          {projectedItem.item.status}
-        </span>
-      ) : null}
-      <AssistantCopyButton
-        message={message}
-        showCopyButton={showCopyButton}
-        streaming={copyStreaming}
-      />
-      {projectedItem?.item.type === "assistant_message" ? (
-        <AssistantForkButton projectedItem={projectedItem} />
-      ) : null}
+      <div
+        className={cn(
+          "flex items-center gap-2 transition-opacity duration-200 empty:hidden",
+          revealButtonsOnly && ASSISTANT_MESSAGE_META_REVEAL,
+        )}
+      >
+        {projectedItem && projectedItem.item.status !== "completed" ? (
+          <span className="rounded-full border border-border/70 px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
+            {projectedItem.item.status}
+          </span>
+        ) : null}
+        <AssistantCopyButton
+          message={message}
+          showCopyButton={showCopyButton}
+          streaming={copyStreaming}
+        />
+        {projectedItem?.item.type === "assistant_message" ? (
+          <AssistantForkButton projectedItem={projectedItem} />
+        ) : null}
+      </div>
       {!message.streaming && (
         <Tooltip>
           <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>

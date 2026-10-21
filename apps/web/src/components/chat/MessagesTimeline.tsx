@@ -2831,17 +2831,17 @@ function AssistantMessageMeta({
         className,
       )}
     >
+      {projectedItem && projectedItem.item.status !== "completed" ? (
+        <span className="rounded-full border border-border/70 px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
+          {projectedItem.item.status}
+        </span>
+      ) : null}
       <div
         className={cn(
           "flex items-center gap-2 transition-opacity duration-200 empty:hidden",
           revealButtonsOnly && ASSISTANT_MESSAGE_META_REVEAL,
         )}
       >
-        {projectedItem && projectedItem.item.status !== "completed" ? (
-          <span className="rounded-full border border-border/70 px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
-            {projectedItem.item.status}
-          </span>
-        ) : null}
         <AssistantCopyButton
           message={message}
           showCopyButton={showCopyButton}

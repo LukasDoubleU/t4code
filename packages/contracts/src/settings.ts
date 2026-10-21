@@ -49,6 +49,8 @@ import { PullRequestMergeMethod } from "./pullRequest.ts";
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
 export type TimestampFormat = typeof TimestampFormat.Type;
 const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
+export const MessageTimeStyle = Schema.Literals(["relative", "clock"]);
+export type MessageTimeStyle = typeof MessageTimeStyle.Type;
 
 export const DiffLayout = Schema.Literals(["stacked", "split"]);
 export type DiffLayout = typeof DiffLayout.Type;
@@ -469,6 +471,7 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   // Chat messages show their time without hovering; their buttons stay hover-only.
   alwaysShowMessageTimes: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  messageTimeStyle: MessageTimeStyle.pipe(Schema.withDecodingDefault(Effect.succeed("relative"))),
   snapShotEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   snapShotIncludeAccessibility: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
@@ -1658,6 +1661,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarBackgroundSection: Schema.optionalKey(Schema.Boolean),
   timestampFormat: Schema.optionalKey(TimestampFormat),
   alwaysShowMessageTimes: Schema.optionalKey(Schema.Boolean),
+  messageTimeStyle: Schema.optionalKey(MessageTimeStyle),
   snapShotEnabled: Schema.optionalKey(Schema.Boolean),
   snapShotIncludeAccessibility: Schema.optionalKey(Schema.Boolean),
   snapShotShortcut: Schema.optionalKey(SnapShotShortcut),

@@ -77,6 +77,16 @@ The `.deb` updates itself like the other desktop builds. It asks for your
 password to install each update. If your desktop has no password prompt, the
 update fails. Download the new `.deb` and install it the same way.
 
+### Keep work running on Windows
+
+Closing the desktop window keeps T3 Code and its running tasks in the system tray.
+Click the tray icon or choose **Open T3 Code** to reopen the window. Choose
+**Quit T3 Code** from the tray menu to stop the app and its local tasks.
+If the tray cannot be created, closing the last window exits the app.
+
+This keeps work running while the window is closed; it does not keep work running
+after a crash, Windows shutdown, or explicitly quitting the app.
+
 ### The `t3` command
 
 The desktop app includes the `t3` command-line tool. To run it from any

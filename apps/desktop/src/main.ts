@@ -48,6 +48,8 @@ import * as DesktopLocalEnvironmentAuth from "./backend/DesktopLocalEnvironmentA
 import * as DesktopNetworkInterfaces from "./backend/DesktopNetworkInterfaces.ts";
 import * as DesktopEnvironment from "./app/DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./app/DesktopLifecycle.ts";
+import * as DesktopTray from "./app/DesktopTray.ts";
+import * as ElectronTray from "./electron/ElectronTray.ts";
 import * as DesktopLinuxUrlHandler from "./app/DesktopLinuxUrlHandler.ts";
 import * as DesktopShutdown from "./app/DesktopShutdown.ts";
 import * as DesktopObservability from "./app/DesktopObservability.ts";
@@ -134,6 +136,7 @@ const layerElectron = Layer.mergeAll(
   ElectronSafeStorage.layer,
   ElectronShell.layer,
   ElectronTheme.layer,
+  ElectronTray.layer,
   ElectronUpdater.layer,
   ElectronWindow.layer,
   DesktopIpc.layer(Electron.ipcMain),
@@ -204,6 +207,7 @@ const layerDesktopLocalEnvironmentAuth = DesktopLocalEnvironmentAuth.layer.pipe(
 
 const layerDesktopApplication = Layer.mergeAll(
   DesktopLifecycle.layer,
+  DesktopTray.layer,
   layerDesktopAppActivation,
   DesktopWebLinks.layer,
   DesktopApplicationMenu.layer,

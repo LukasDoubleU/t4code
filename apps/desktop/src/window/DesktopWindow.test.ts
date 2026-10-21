@@ -353,7 +353,10 @@ function layerTest(input: {
   );
 }
 
-const makeSplashScenario = (createOutcomes: readonly (Electron.BrowserWindow | null)[]) =>
+const makeSplashScenario = (
+  createOutcomes: readonly (Electron.BrowserWindow | null)[],
+  platform: NodeJS.Platform = "darwin",
+) =>
   Effect.gen(function* () {
     const createdWindows = yield* Ref.make<Electron.BrowserWindow[]>([]);
     const createCalls = yield* Ref.make(0);
@@ -369,7 +372,7 @@ const makeSplashScenario = (createOutcomes: readonly (Electron.BrowserWindow | n
         return registered;
       }
       const created = yield* Ref.get(createdWindows);
-      return Option.fromNullishOr(created[0] ?? null);
+      return Option.fromNullishOr(created.find((window) => !window.isDestroyed()) ?? null);
     });
 
     const electronWindowShape = {
@@ -427,7 +430,17 @@ const makeSplashScenario = (createOutcomes: readonly (Electron.BrowserWindow | n
             recordMetrics: () => Effect.void,
             shutdown: Effect.void,
           }),
-          layerDesktopEnvironment,
+          DesktopEnvironment.layer({ ...environmentInput, platform }).pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                NodeServices.layer,
+                DesktopConfig.layerTest({
+                  T3CODE_PORT: "3773",
+                  VITE_DEV_SERVER_URL: "http://127.0.0.1:5733",
+                }),
+              ),
+            ),
+          ),
           DesktopAppSettings.layerTest(),
           layerDesktopClientSettings,
           layerDesktopServerExposure,
@@ -637,6 +650,36 @@ describe("DesktopWindow", () => {
       }),
     );
   });
+
+  it.effect.each([false, true])(
+    "ignores activation and backend readiness while quitting (existing window: %s)",
+    (existing) =>
+      Effect.gen(function* () {
+        const fakeWindow = makeFakeBrowserWindow();
+        const createCount = yield* Ref.make(0);
+        const mainWindow = yield* Ref.make(
+          existing ? Option.some(fakeWindow.window) : Option.none<Electron.BrowserWindow>(),
+        );
+        let reveals = 0;
+        const layer = layerTest({
+          window: fakeWindow.window,
+          createCount,
+          mainWindow,
+          onReveal: () => {
+            reveals += 1;
+          },
+        });
+        yield* Effect.gen(function* () {
+          const desktopWindow = yield* DesktopWindow.DesktopWindow;
+          const state = yield* DesktopState.DesktopState;
+          yield* Ref.set(state.quitting, true);
+          yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+          yield* desktopWindow.activate;
+          assert.equal(yield* Ref.get(createCount), 0);
+          assert.equal(reveals, 0);
+        }).pipe(Effect.provide(layer));
+      }),
+  );
 
   it.effect("does not open a development window until the backend is ready", () =>
     Effect.gen(function* () {
@@ -1660,6 +1703,49 @@ describe("DesktopWindow", () => {
         assert.isTrue(prevented);
         assert.deepEqual(openedExternalUrls, ["https://accounts.microsoft.com/oauth"]);
       }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect.each(["splash", "main"] as const)(
+    "keeps a closed Windows %s closed on backend readiness until activation",
+    (kind) =>
+      Effect.gen(function* () {
+        const closed = makeFakeBrowserWindow();
+        const reopened = makeFakeBrowserWindow();
+        const scenario = yield* makeSplashScenario([closed.window, reopened.window], "win32");
+        yield* Effect.gen(function* () {
+          const desktopWindow = yield* DesktopWindow.DesktopWindow;
+          if (kind === "splash") yield* desktopWindow.showConnectingSplash;
+          else yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+          closed.isDestroyed.mockReturnValue(true);
+          closed.windowListeners.get("closed")!();
+          yield* Effect.yieldNow;
+          yield* desktopWindow.handleBackendNotReady;
+          yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+          assert.equal(yield* Ref.get(scenario.createCalls), 1);
+          yield* desktopWindow.activate;
+          assert.equal(yield* Ref.get(scenario.createCalls), 2);
+          assert.equal(Option.getOrThrow(yield* Ref.get(scenario.mainWindow)), reopened.window);
+        }).pipe(Effect.provide(scenario.layer));
+      }),
+  );
+
+  it.effect("remembers activation while the Windows backend is still starting", () =>
+    Effect.gen(function* () {
+      const splash = makeFakeBrowserWindow();
+      const main = makeFakeBrowserWindow();
+      const scenario = yield* makeSplashScenario([splash.window, main.window], "win32");
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.showConnectingSplash;
+        splash.isDestroyed.mockReturnValue(true);
+        splash.windowListeners.get("closed")!();
+        yield* Effect.yieldNow;
+        yield* desktopWindow.activate;
+        assert.equal(yield* Ref.get(scenario.createCalls), 1);
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+        assert.equal(yield* Ref.get(scenario.createCalls), 2);
+      }).pipe(Effect.provide(scenario.layer));
     }),
   );
 

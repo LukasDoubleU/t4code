@@ -20,6 +20,7 @@ import * as ElectronProtocol from "../electron/ElectronProtocol.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopUserData from "./DesktopUserData.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as DesktopWebLinks from "./DesktopWebLinks.ts";
 
 declare const __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: string | undefined;
@@ -59,6 +60,7 @@ export class DesktopClerk extends Context.Service<
       | ElectronApp.ElectronApp
       | ElectronWindow.ElectronWindow
       | DesktopWebLinks.DesktopWebLinks
+      | DesktopWindow.DesktopWindow
       | Scope.Scope
     >;
   }
@@ -148,7 +150,9 @@ export const make = Effect.gen(function* () {
       const electronApp = yield* ElectronApp.ElectronApp;
       const electronWindow = yield* ElectronWindow.ElectronWindow;
       const webLinks = yield* DesktopWebLinks.DesktopWebLinks;
-      const context = yield* Effect.context<ElectronWindow.ElectronWindow>();
+      const context = yield* Effect.context<
+        ElectronWindow.ElectronWindow | DesktopWindow.DesktopWindow
+      >();
       const runPromise = Effect.runPromiseWith(context);
 
       const startProviderAuthHandoff = (value: string | undefined) => {
@@ -222,18 +226,17 @@ export const make = Effect.gen(function* () {
         void runPromise(webLinks.receive(NodeURL.pathToFileURL(path).href));
       });
       handleSecondInstance = (argv) => {
-        if (
-          argv?.some(
-            (value) =>
-              startProviderAuthHandoff(value) || resumeProviderAuth(value) || openAppLink(value),
-          )
-        )
+        if (argv?.some((value) => startProviderAuthHandoff(value) || resumeProviderAuth(value)))
           return;
+        // An app link waits for a renderer, which a window closed to the tray no longer has.
+        argv?.some(openAppLink);
         void runPromise(
           Effect.gen(function* () {
-            const mainWindow = yield* electronWindow.currentMainOrFirst;
-            if (Option.isSome(mainWindow)) yield* electronWindow.reveal(mainWindow.value);
-          }),
+            const desktopWindow = yield* DesktopWindow.DesktopWindow;
+            yield* desktopWindow.activate;
+          }).pipe(
+            Effect.catchCause((cause) => Effect.logWarning("Could not activate desktop", cause)),
+          ),
         );
       };
       for (const argv of pendingSecondInstances.splice(0)) handleSecondInstance(argv);

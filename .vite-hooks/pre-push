@@ -1,0 +1,13 @@
+#!/bin/sh
+# Fork-only: pushes to this public fork run the maintainer's local guard, and are refused when it
+# is missing. Other remotes are not affected.
+case "$2" in
+  *github.com/LukasDoubleU/t4code*) ;;
+  *) exit 0 ;;
+esac
+guard="$HOME/.config/t3-fork/pre-push-guard.sh"
+if [ ! -f "$guard" ]; then
+  echo "pre-push: $guard is missing; refusing to push to the public fork" >&2
+  exit 1
+fi
+exec sh "$guard" "$@"

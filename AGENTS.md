@@ -185,3 +185,11 @@ Architecture and its constraints: `docs/internals/overview.md`. Glossary: `docs/
 
 - Don't verify with browsers or computer use unless the user explicitly agrees or requests it.
 - Security is important, but should not be over-indexed on, especially for dev mode/maintainer-only features.
+
+## Fork: t4code
+
+This is a public fork of T3 Code (pingdotgg/t3code); its backlog is in this repository's issues.
+
+- Keep anything about the maintainer, their employer, other projects or machines out of code, commits, branch names, issues, PRs and releases.
+- Reference upstream PRs and issues as plain code (`#16653`), never as links or @-mentions, so nothing posts notes or notifications upstream.
+- `.vite-hooks/pre-push` runs the maintainer's local push guard. Never bypass it with `--no-verify`.

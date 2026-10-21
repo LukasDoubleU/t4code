@@ -60,3 +60,13 @@ When a rehearsal fails that way:
 4. Switch, then link the machines again.
 
 The script refuses when migrations above 067 aren't the stack's, for example after a switch already happened.
+
+## Icon: `export-t4-icons.ts`
+
+```powershell
+vp run icons:export:t4
+```
+
+The fork's T4 icon is drawn in `assets/prod/t4`: `icon.svg` for 48 px and up, and `icon-16.svg`, `icon-24.svg` and `icon-32.svg`, fitted to the pixel grid so the tray and the favicon stay sharp. The script renders them over the production Windows, web and Linux icons in `assets/prod` that the builds package; macOS and iOS keep upstream's. It needs only Node and the repository's dependencies.
+
+Upstream's `vp run icons:export` renders the T3 mark over the same files, so don't run it here. When an upstream merge conflicts on one of them, keep the fork's version and run this script again.

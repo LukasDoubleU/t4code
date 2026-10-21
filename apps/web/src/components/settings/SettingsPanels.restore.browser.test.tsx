@@ -9,22 +9,25 @@ const state = vi.hoisted(() => ({
   confirm: vi.fn(),
 }));
 
-vi.mock(import("../../hooks/useTheme"), async (original) => ({
-  ...(await original()),
-  useTheme: () =>
-    ({
-      theme: "system",
-      followSystem: true,
-      themeHalves: null,
-      setTheme: vi.fn(),
-      setFollowSystem: vi.fn(),
-      setThemeHalf: vi.fn(),
-      clearThemeHalves: vi.fn(),
-    }) as never,
-  readThemePreference: () => "system",
-  readThemeHalves: () => null,
-  readAppearanceModePreference: () => "system",
-}));
+vi.mock(import("../../hooks/useTheme"), async (original) => {
+  const { DEFAULT_THEME_ID } = await import("@t3tools/shared/themePalettes");
+  return {
+    ...(await original()),
+    useTheme: () =>
+      ({
+        theme: DEFAULT_THEME_ID,
+        followSystem: true,
+        themeHalves: null,
+        setTheme: vi.fn(),
+        setFollowSystem: vi.fn(),
+        setThemeHalf: vi.fn(),
+        clearThemeHalves: vi.fn(),
+      }) as never,
+    readThemePreference: () => DEFAULT_THEME_ID,
+    readThemeHalves: () => null,
+    readAppearanceModePreference: () => "system",
+  };
+});
 vi.mock(import("./useScopedSettings"), async (original) => ({
   ...(await original()),
   useScopedSettings: (() => state.settings!) as never,

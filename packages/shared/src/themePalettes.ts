@@ -7,6 +7,9 @@ export const BUILT_IN_THEME_IDS = [
   "catppuccin-mocha-rosewater",
 ] as const;
 
+/** What web and desktop open on until a theme is chosen; mobile keeps its own default. */
+export const DEFAULT_THEME_ID = "catppuccin-mocha-rosewater" satisfies BuiltInThemeId;
+
 export const MOBILE_DEFAULT_THEME_ID = "t3-code";
 
 export const MOBILE_THEME_IDS = [MOBILE_DEFAULT_THEME_ID, ...BUILT_IN_THEME_IDS] as const;

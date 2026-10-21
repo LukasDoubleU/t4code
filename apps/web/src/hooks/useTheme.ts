@@ -1,5 +1,6 @@
 import type { DesktopBridge } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
+import { DEFAULT_THEME_ID } from "@t3tools/shared/themePalettes";
 import * as Schema from "effect/Schema";
 import { useEffect, useSyncExternalStore } from "react";
 import {
@@ -151,7 +152,10 @@ function getSystemDark() {
 }
 
 function readStoredFollowSystem(theme: Theme): boolean {
-  if (typeof window === "undefined") return theme === "system";
+  // Until a mode is chosen, the standard theme and the default theme follow the
+  // OS; any other theme opens in its own appearance.
+  const fallback = theme === "system" || theme === DEFAULT_THEME_ID;
+  if (typeof window === "undefined") return fallback;
 
   try {
     const raw = window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY);
@@ -159,7 +163,7 @@ function readStoredFollowSystem(theme: Theme): boolean {
     if (raw === "false") return false;
   } catch {}
 
-  return theme === "system";
+  return fallback;
 }
 
 function isThemePreferenceMode(value: string | null): value is ThemePreferenceMode {
@@ -203,7 +207,11 @@ export function readThemePreference(): Theme {
       cause,
     });
   }
-  if (raw !== null && isKnownThemePreference(raw)) {
+  // Only a client that never chose a theme gets the default theme: choosing
+  // the standard one stores "system", "light", or "dark", and an id that no
+  // longer resolves keeps falling back to the standard theme.
+  if (raw === null) return DEFAULT_THEME_ID;
+  if (isKnownThemePreference(raw)) {
     return canonicalThemePreference(raw);
   }
   return DEFAULT_THEME_SNAPSHOT.theme;

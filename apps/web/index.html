@@ -138,6 +138,9 @@
         };
         // Built-ins whose base appearance is dark; the rest are light-based.
         const DARK_BASE_THEME_IDS = ["catppuccin-mocha-rosewater"];
+        // Mirrors DEFAULT_THEME_ID: what a client that never chose a theme opens
+        // on, following the OS like the standard theme until a mode is chosen.
+        const DEFAULT_THEME_ID = "catppuccin-mocha-rosewater";
         // Keep the built-in mode list in sync with the runtime so the selected
         // T3 Chat palette is visible before React has mounted.
         const BUILT_IN_THEME_MODES = Object.fromEntries(
@@ -234,7 +237,7 @@
         };
 
         try {
-          const storedTheme = window.localStorage.getItem("t3code:theme");
+          const storedTheme = window.localStorage.getItem("t3code:theme") ?? DEFAULT_THEME_ID;
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           // Older builds stored the dark T3 Chat palette as its own theme id
           // and every maintainer theme under a t3- prefix; keep those
@@ -247,8 +250,7 @@
             "t3-iris": "iris",
           };
           const isLegacyT3ChatDark = storedTheme === "t3-chat-dark";
-          const themeId =
-            storedTheme === null ? "" : (LEGACY_THEME_IDS[storedTheme] ?? storedTheme);
+          const themeId = LEGACY_THEME_IDS[storedTheme] ?? storedTheme;
           const legacyMode = isLegacyT3ChatDark ? "dark" : null;
           const builtInModes = BUILT_IN_THEME_MODES[themeId] ?? null;
           const customTheme = builtInModes ? null : findCustomTheme(themeId);
@@ -287,7 +289,7 @@
               ? "system"
               : storedFollowSystem === "false"
                 ? preferenceMode
-                : theme === "system"
+                : theme === "system" || theme === DEFAULT_THEME_ID
                   ? "system"
                   : preferenceMode;
           // A valid mix half for the wanted appearance takes over: it decides
@@ -381,7 +383,7 @@
           }
           // A resolved half is a selection even when the base theme is gone
           // (deleting the base leaves the mix pointing at a real theme).
-          const hasSelection = halfThemeId !== null || (isKnownTheme && storedTheme !== null);
+          const hasSelection = halfThemeId !== null || isKnownTheme;
           if (hasSelection) {
             document.documentElement.dataset.themeSelected = "true";
           } else {

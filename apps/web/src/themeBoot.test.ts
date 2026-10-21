@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
+import { BUILT_IN_THEMES, DEFAULT_THEME_ID } from "@t3tools/shared/themePalettes";
 
 import indexHtml from "../index.html?raw";
 import {
   CUSTOM_THEMES_STORAGE_KEY,
   getDefaultThemeColors,
   getThemeColorsForMode,
+  getThemeDefinition,
   invalidateCustomThemes,
   isKnownThemePreference,
   resolveThemeAppearance,
@@ -108,7 +109,7 @@ function runtimeResolvedAppearance(
   invalidateCustomThemes();
   try {
     const raw = storage[THEME_STORAGE_KEY] ?? null;
-    const theme = raw !== null && isKnownThemePreference(raw) ? raw : "system";
+    const theme = raw === null ? DEFAULT_THEME_ID : isKnownThemePreference(raw) ? raw : "system";
     const followRaw = storage[THEME_FOLLOW_SYSTEM_STORAGE_KEY] ?? null;
     const appearanceRaw = storage[THEME_APPEARANCE_MODE_STORAGE_KEY] ?? null;
     const appearanceMode =
@@ -118,7 +119,7 @@ function runtimeResolvedAppearance(
           ? "system"
           : followRaw === "false"
             ? null
-            : theme === "system"
+            : theme === "system" || theme === DEFAULT_THEME_ID
               ? "system"
               : null;
     const followSystem = appearanceMode === "system";
@@ -150,6 +151,12 @@ describe("index.html boot script", () => {
     prefersDark: boolean;
   }> = [
     { name: "no stored preference on a dark OS", storage: {}, prefersDark: true },
+    { name: "no stored preference on a light OS", storage: {}, prefersDark: false },
+    {
+      name: "a chosen dark mode without a chosen theme stays dark on a light OS",
+      storage: { [THEME_APPEARANCE_MODE_STORAGE_KEY]: "dark" },
+      prefersDark: false,
+    },
     {
       name: "Catppuccin follows a light OS",
       storage: {
@@ -369,6 +376,20 @@ describe("index.html boot script", () => {
         expect(boot.backgroundColor).toBe(colors!.chrome);
         expect(boot.metaContent).toBe(colors!.chrome);
       }
+    }
+  });
+
+  it("paints the default theme in the OS appearance for a client that never chose one", () => {
+    const theme = getThemeDefinition(DEFAULT_THEME_ID)!;
+    for (const mode of ["light", "dark"] as const) {
+      const colors = getThemeColorsForMode(theme, mode)!;
+      const boot = runBootScript({ storage: {}, prefersDark: mode === "dark" });
+      expect(boot.themeId).toBe(DEFAULT_THEME_ID);
+      expect(boot.themeSelected).toBe("true");
+      expect(boot.isDark).toBe(mode === "dark");
+      expect(boot.bootVariables["--boot-background"]).toBe(colors.canvas);
+      expect(boot.bootVariables["--boot-accent"]).toBe(colors.accent);
+      expect(boot.metaContent).toBe(colors.chrome);
     }
   });
 

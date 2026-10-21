@@ -51,6 +51,7 @@ import {
 } from "@t3tools/contracts/settings";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { createModelSelection } from "@t3tools/shared/model";
+import { DEFAULT_THEME_ID } from "@t3tools/shared/themePalettes";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
@@ -532,7 +533,7 @@ export function useSettingsRestore(onRestored?: () => void) {
   const isBackgroundActivityDirty = hasChangedBackgroundActivitySettings(settings);
 
   const changedSettingLabels = [
-    ...(theme !== "system" ? ["Theme"] : []),
+    ...(theme !== DEFAULT_THEME_ID ? ["Theme"] : []),
     ...(!followSystem ? ["Follow system"] : []),
     ...(themeHalves !== null ? ["Theme mix"] : []),
     ...(settings.appearanceContrast !== DEFAULT_UNIFIED_SETTINGS.appearanceContrast
@@ -678,7 +679,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       previousTheme = readThemePreference();
     } catch {}
     const liveHalves = readThemeHalves();
-    const needsThemeReset = previousTheme !== "system";
+    const needsThemeReset = previousTheme !== DEFAULT_THEME_ID;
     const needsMixReset = liveHalves !== null;
     const needsFollowSystemReset = readAppearanceModePreference(previousTheme) !== "system";
     const notifyThemeRestoreFailure = () => {
@@ -699,7 +700,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       if (previousHalves?.light) setThemeHalf("light", previousHalves.light);
       if (previousHalves?.dark) setThemeHalf("dark", previousHalves.dark);
     };
-    if (needsThemeReset && !setTheme("system")) {
+    if (needsThemeReset && !setTheme(DEFAULT_THEME_ID)) {
       notifyThemeRestoreFailure();
       return;
     }

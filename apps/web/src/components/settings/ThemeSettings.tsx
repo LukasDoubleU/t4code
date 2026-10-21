@@ -10,6 +10,7 @@ import {
   UploadIcon,
 } from "lucide-react";
 import { useState, type ReactElement } from "react";
+import { CATPPUCCIN_THEME } from "@t3tools/shared/themePalettes";
 import { useEnvironmentThemeDefinitions } from "../../hooks/useEnvironmentTheme";
 import { readThemeHalvesRaw } from "../../hooks/useTheme";
 import { cn } from "../../lib/utils";
@@ -60,6 +61,7 @@ const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
   OCEAN_THEME,
   EMBER_THEME,
   IRIS_THEME,
+  CATPPUCCIN_THEME,
 ];
 
 function collectionVariantLabels(themes: ReadonlyArray<ThemeDefinition>): ReadonlyArray<string> {

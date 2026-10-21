@@ -1,4 +1,14 @@
-export const BUILT_IN_THEME_IDS = ["t3-chat", "grove", "ocean", "ember", "iris"] as const;
+export const BUILT_IN_THEME_IDS = [
+  "t3-chat",
+  "grove",
+  "ocean",
+  "ember",
+  "iris",
+  "catppuccin-mocha-rosewater",
+] as const;
+
+/** What web and desktop open on until a theme is chosen; mobile keeps its own default. */
+export const DEFAULT_THEME_ID = "catppuccin-mocha-rosewater" satisfies BuiltInThemeId;
 
 export const MOBILE_DEFAULT_THEME_ID = "t3-code";
 
@@ -918,12 +928,207 @@ export const IRIS_THEME: ThemeDefinition = {
   sidebarArtwork: true,
 };
 
+/*
+ * Catppuccin palette v1.8.0 (https://catppuccin.com), MIT License,
+ * Copyright (c) 2021 Catppuccin. The colors the theme below uses, each with its
+ * official hex.
+ */
+const CATPPUCCIN_MOCHA = {
+  rosewater: "oklch(0.92257 0.023835 30.492)", // #f5e0dc
+  flamingo: "oklch(0.879744 0.041813 17.975)", // #f2cdcd
+  red: "oklch(0.755592 0.129702 2.764)", // #f38ba8
+  yellow: "oklch(0.919303 0.070415 86.528)", // #f9e2af
+  blue: "oklch(0.76642 0.111344 259.885)", // #89b4fa
+  text: "oklch(0.87866 0.042552 272.277)", // #cdd6f4
+  subtext0: "oklch(0.750961 0.039565 273.932)", // #a6adc8
+  overlay2: "oklch(0.686521 0.037355 274.725)", // #9399b2
+  surface2: "oklch(0.476506 0.033994 278.643)", // #585b70
+  surface1: "oklch(0.403691 0.031955 280.152)", // #45475a
+  surface0: "oklch(0.324022 0.031885 281.978)", // #313244
+  base: "oklch(0.242867 0.030357 283.911)", // #1e1e2e
+  mantle: "oklch(0.215522 0.025417 284.065)", // #181825
+} as const;
+
+const CATPPUCCIN_LATTE = {
+  rosewater: "oklch(0.714133 0.104543 33.097)", // #dc8a78
+  flamingo: "oklch(0.68564 0.12594 20.867)", // #dd7878
+  red: "oklch(0.550474 0.215514 19.809)", // #d20f39
+  yellow: "oklch(0.713992 0.149442 67.777)", // #df8e1d
+  blue: "oklch(0.558617 0.225503 262.087)", // #1e66f5
+  text: "oklch(0.43547 0.043008 279.325)", // #4c4f69
+  subtext1: "oklch(0.492003 0.038491 279.299)", // #5c5f77
+  subtext0: "oklch(0.547078 0.034343 279.084)", // #6c6f85
+  surface2: "oklch(0.758394 0.020453 273.154)", // #acb0be
+  surface1: "oklch(0.808307 0.017393 271.198)", // #bcc0cc
+  surface0: "oklch(0.857477 0.01448 268.476)", // #ccd0da
+  base: "oklch(0.957761 0.005767 264.532)", // #eff1f5
+  mantle: "oklch(0.933459 0.008714 264.521)", // #e6e9ef
+  crust: "oklch(0.905965 0.011717 264.507)", // #dce0e8
+} as const;
+
+/**
+ * Mocha with a Rosewater accent, and Latte for light mode. Roles follow
+ * Catppuccin's style guide, with its translucent tints flattened onto the pane
+ * they sit on. Latte's light Base is unreadable on its Rosewater, and its Red,
+ * Yellow, and Blue are too light for text, so text on Rosewater uses Mocha's
+ * Base and those three are darkened to WCAG AA where they are text.
+ */
+export const CATPPUCCIN_THEME: ThemeDefinition = {
+  id: "catppuccin-mocha-rosewater",
+  label: "Catppuccin",
+  appearance: "dark",
+  colors: {
+    canvas: CATPPUCCIN_MOCHA.base,
+    chrome: CATPPUCCIN_MOCHA.base,
+    toolbar: CATPPUCCIN_MOCHA.base,
+    toolbarForeground: CATPPUCCIN_MOCHA.text,
+    toolbarBorder: CATPPUCCIN_MOCHA.surface1,
+    toolbarControl: CATPPUCCIN_MOCHA.surface0,
+    toolbarControlForeground: CATPPUCCIN_MOCHA.text,
+    toolbarControlHover: CATPPUCCIN_MOCHA.surface1,
+    surface: CATPPUCCIN_MOCHA.base,
+    surfaceRaised: CATPPUCCIN_MOCHA.surface0,
+    surfaceOverlay: CATPPUCCIN_MOCHA.mantle,
+    text: CATPPUCCIN_MOCHA.text,
+    textMuted: CATPPUCCIN_MOCHA.subtext0,
+    border: CATPPUCCIN_MOCHA.surface0,
+    input: CATPPUCCIN_MOCHA.surface1,
+    focus: CATPPUCCIN_MOCHA.rosewater,
+    accent: CATPPUCCIN_MOCHA.rosewater,
+    accentForeground: CATPPUCCIN_MOCHA.base,
+    secondary: CATPPUCCIN_MOCHA.surface0,
+    secondaryForeground: CATPPUCCIN_MOCHA.text,
+    muted: CATPPUCCIN_MOCHA.surface0,
+    mutedForeground: CATPPUCCIN_MOCHA.subtext0,
+    placeholder: CATPPUCCIN_MOCHA.subtext0,
+    secondaryLabel: CATPPUCCIN_MOCHA.subtext0,
+    iconMuted: CATPPUCCIN_MOCHA.overlay2,
+    error: CATPPUCCIN_MOCHA.red,
+    errorForeground: CATPPUCCIN_MOCHA.red,
+    // Red at 16% over Base
+    errorSurface: "oklch(0.332217 0.039986 322.897)",
+    warning: CATPPUCCIN_MOCHA.yellow,
+    warningForeground: CATPPUCCIN_MOCHA.yellow,
+    // Yellow at 16% over Base
+    warningSurface: "oklch(0.366246 0.011447 314.675)",
+    update: CATPPUCCIN_MOCHA.blue,
+    updateForeground: CATPPUCCIN_MOCHA.blue,
+    // Blue at 16% over Base
+    updateSurface: "oklch(0.33792 0.045191 271.8)",
+    accentSurface: CATPPUCCIN_MOCHA.surface0,
+    accentSurfaceForeground: CATPPUCCIN_MOCHA.text,
+    messageSurface: CATPPUCCIN_MOCHA.surface0,
+    messageForeground: CATPPUCCIN_MOCHA.text,
+    messageAction: CATPPUCCIN_MOCHA.rosewater,
+    messageActionForeground: CATPPUCCIN_MOCHA.base,
+    messageActionHover: CATPPUCCIN_MOCHA.flamingo,
+    codeBackground: CATPPUCCIN_MOCHA.mantle,
+    codeForeground: CATPPUCCIN_MOCHA.text,
+    // Teal at 30% over Base
+    searchMatchBackground: "oklch(0.447235 0.03113 217.664)",
+    searchMatchForeground: CATPPUCCIN_MOCHA.text,
+    searchMatchActiveBackground: CATPPUCCIN_MOCHA.red,
+    searchMatchActiveForeground: CATPPUCCIN_MOCHA.base,
+    sidebar: CATPPUCCIN_MOCHA.mantle,
+    sidebarForeground: CATPPUCCIN_MOCHA.text,
+    sidebarMutedForeground: CATPPUCCIN_MOCHA.subtext0,
+    sidebarControlSurface: CATPPUCCIN_MOCHA.surface0,
+    // Overlay 2 at 10% over Mantle
+    sidebarRowHover: "oklch(0.26984 0.02599 281.313)",
+    sidebarRowActive: CATPPUCCIN_MOCHA.surface0,
+    sidebarRowSelected: CATPPUCCIN_MOCHA.surface0,
+    sidebarBorder: CATPPUCCIN_MOCHA.surface1,
+    terminalBackground: CATPPUCCIN_MOCHA.base,
+    terminalForeground: CATPPUCCIN_MOCHA.text,
+    terminalCursor: CATPPUCCIN_MOCHA.rosewater,
+    // Overlay 2 at 30% over Base
+    terminalSelection: "oklch(0.38875 0.032268 280.078)",
+    terminalScrollbar: CATPPUCCIN_MOCHA.surface1,
+    terminalScrollbarHover: CATPPUCCIN_MOCHA.surface2,
+  },
+  variants: {
+    light: {
+      canvas: CATPPUCCIN_LATTE.base,
+      chrome: CATPPUCCIN_LATTE.base,
+      toolbar: CATPPUCCIN_LATTE.base,
+      toolbarForeground: CATPPUCCIN_LATTE.text,
+      toolbarBorder: CATPPUCCIN_LATTE.surface0,
+      toolbarControl: CATPPUCCIN_LATTE.mantle,
+      toolbarControlForeground: CATPPUCCIN_LATTE.text,
+      toolbarControlHover: CATPPUCCIN_LATTE.crust,
+      surface: CATPPUCCIN_LATTE.base,
+      surfaceRaised: CATPPUCCIN_LATTE.mantle,
+      surfaceOverlay: CATPPUCCIN_LATTE.base,
+      text: CATPPUCCIN_LATTE.text,
+      textMuted: CATPPUCCIN_LATTE.subtext1,
+      border: CATPPUCCIN_LATTE.surface0,
+      input: CATPPUCCIN_LATTE.surface1,
+      // Rosewater darkened to 3:1 on Crust, so the ring shows on every pane
+      focus: "oklch(0.601883 0.104543 33.097)",
+      accent: CATPPUCCIN_LATTE.rosewater,
+      accentForeground: CATPPUCCIN_MOCHA.base,
+      secondary: CATPPUCCIN_LATTE.crust,
+      secondaryForeground: CATPPUCCIN_LATTE.text,
+      muted: CATPPUCCIN_LATTE.mantle,
+      mutedForeground: CATPPUCCIN_LATTE.subtext1,
+      placeholder: CATPPUCCIN_LATTE.subtext1,
+      secondaryLabel: CATPPUCCIN_LATTE.subtext1,
+      iconMuted: CATPPUCCIN_LATTE.subtext0,
+      error: CATPPUCCIN_LATTE.red,
+      // Red darkened to AA on its surface
+      errorForeground: "oklch(0.529805 0.212827 19.809)",
+      // Red at 8% over Base
+      errorSurface: "oklch(0.91681 0.017837 345.645)",
+      warning: CATPPUCCIN_LATTE.yellow,
+      // Yellow darkened to AA on its surface
+      warningForeground: "oklch(0.52558 0.115632 67.777)",
+      // Yellow at 8% over Base
+      warningSurface: "oklch(0.936527 0.008634 67.72)",
+      update: CATPPUCCIN_LATTE.blue,
+      // Blue darkened to AA on its surface
+      updateForeground: "oklch(0.521265 0.225503 262.087)",
+      // Blue at 8% over Base
+      updateSurface: "oklch(0.923333 0.02213 263.189)",
+      accentSurface: CATPPUCCIN_LATTE.crust,
+      accentSurfaceForeground: CATPPUCCIN_LATTE.text,
+      messageSurface: CATPPUCCIN_LATTE.mantle,
+      messageForeground: CATPPUCCIN_LATTE.text,
+      messageAction: CATPPUCCIN_LATTE.rosewater,
+      messageActionForeground: CATPPUCCIN_MOCHA.base,
+      messageActionHover: CATPPUCCIN_LATTE.flamingo,
+      codeBackground: CATPPUCCIN_LATTE.crust,
+      codeForeground: CATPPUCCIN_LATTE.text,
+      // Teal at 35% over Base
+      searchMatchBackground: "oklch(0.827368 0.047576 204.695)",
+      searchMatchForeground: CATPPUCCIN_LATTE.text,
+      searchMatchActiveBackground: CATPPUCCIN_LATTE.red,
+      searchMatchActiveForeground: CATPPUCCIN_LATTE.base,
+      sidebar: CATPPUCCIN_LATTE.crust,
+      sidebarForeground: CATPPUCCIN_LATTE.text,
+      sidebarMutedForeground: CATPPUCCIN_LATTE.subtext1,
+      sidebarControlSurface: CATPPUCCIN_LATTE.base,
+      sidebarRowHover: CATPPUCCIN_LATTE.mantle,
+      sidebarRowActive: CATPPUCCIN_LATTE.base,
+      sidebarRowSelected: CATPPUCCIN_LATTE.base,
+      sidebarBorder: CATPPUCCIN_LATTE.surface1,
+      terminalBackground: CATPPUCCIN_LATTE.base,
+      terminalForeground: CATPPUCCIN_LATTE.text,
+      terminalCursor: CATPPUCCIN_LATTE.rosewater,
+      // Overlay 2 at 30% over Base
+      terminalSelection: "oklch(0.855624 0.012582 276.071)",
+      terminalScrollbar: CATPPUCCIN_LATTE.surface1,
+      terminalScrollbarHover: CATPPUCCIN_LATTE.surface2,
+    },
+  },
+};
+
 export const BUILT_IN_THEMES: ReadonlyArray<ThemeDefinition> = [
   T3_CHAT_THEME,
   GROVE_THEME,
   OCEAN_THEME,
   EMBER_THEME,
   IRIS_THEME,
+  CATPPUCCIN_THEME,
 ];
 
 export function getThemeColorsForAppearance(

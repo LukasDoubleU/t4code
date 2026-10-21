@@ -1,18 +1,17 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { BUILT_IN_THEMES, DEFAULT_THEME_ID } from "@t3tools/shared/themePalettes";
 
 import indexHtml from "../index.html?raw";
 import {
   CUSTOM_THEMES_STORAGE_KEY,
   getDefaultThemeColors,
   getThemeColorsForMode,
+  getThemeDefinition,
   invalidateCustomThemes,
   isKnownThemePreference,
   resolveThemeAppearance,
   T3_CHAT_THEME,
-  EMBER_THEME,
   GROVE_THEME,
-  IRIS_THEME,
-  OCEAN_THEME,
   THEME_APPEARANCE_MODE_STORAGE_KEY,
   THEME_FOLLOW_SYSTEM_STORAGE_KEY,
   toCanonicalThemeColor,
@@ -110,7 +109,7 @@ function runtimeResolvedAppearance(
   invalidateCustomThemes();
   try {
     const raw = storage[THEME_STORAGE_KEY] ?? null;
-    const theme = raw !== null && isKnownThemePreference(raw) ? raw : "system";
+    const theme = raw === null ? DEFAULT_THEME_ID : isKnownThemePreference(raw) ? raw : "system";
     const followRaw = storage[THEME_FOLLOW_SYSTEM_STORAGE_KEY] ?? null;
     const appearanceRaw = storage[THEME_APPEARANCE_MODE_STORAGE_KEY] ?? null;
     const appearanceMode =
@@ -120,7 +119,7 @@ function runtimeResolvedAppearance(
           ? "system"
           : followRaw === "false"
             ? null
-            : theme === "system"
+            : theme === "system" || theme === DEFAULT_THEME_ID
               ? "system"
               : null;
     const followSystem = appearanceMode === "system";
@@ -152,6 +151,28 @@ describe("index.html boot script", () => {
     prefersDark: boolean;
   }> = [
     { name: "no stored preference on a dark OS", storage: {}, prefersDark: true },
+    { name: "no stored preference on a light OS", storage: {}, prefersDark: false },
+    {
+      name: "a chosen dark mode without a chosen theme stays dark on a light OS",
+      storage: { [THEME_APPEARANCE_MODE_STORAGE_KEY]: "dark" },
+      prefersDark: false,
+    },
+    {
+      name: "Catppuccin follows a light OS",
+      storage: {
+        [THEME_STORAGE_KEY]: "catppuccin-mocha-rosewater",
+        [THEME_FOLLOW_SYSTEM_STORAGE_KEY]: "true",
+      },
+      prefersDark: false,
+    },
+    {
+      name: "dark-based Catppuccin opens in Mocha once the OS is no longer followed",
+      storage: {
+        [THEME_STORAGE_KEY]: "catppuccin-mocha-rosewater",
+        [THEME_FOLLOW_SYSTEM_STORAGE_KEY]: "false",
+      },
+      prefersDark: false,
+    },
     {
       name: "T3 Chat follows a dark OS",
       storage: { [THEME_STORAGE_KEY]: "t3-chat", [THEME_FOLLOW_SYSTEM_STORAGE_KEY]: "true" },
@@ -336,8 +357,7 @@ describe("index.html boot script", () => {
   });
 
   it("keeps every built-in boot splash in sync with the real palettes", () => {
-    for (const theme of [T3_CHAT_THEME, GROVE_THEME, OCEAN_THEME, EMBER_THEME, IRIS_THEME]) {
-      expect(theme.appearance).toBe("light");
+    for (const theme of BUILT_IN_THEMES) {
       for (const mode of ["light", "dark"] as const) {
         const colors = getThemeColorsForMode(theme, mode);
         expect(colors).not.toBeNull();
@@ -356,6 +376,20 @@ describe("index.html boot script", () => {
         expect(boot.backgroundColor).toBe(colors!.chrome);
         expect(boot.metaContent).toBe(colors!.chrome);
       }
+    }
+  });
+
+  it("paints the default theme in the OS appearance for a client that never chose one", () => {
+    const theme = getThemeDefinition(DEFAULT_THEME_ID)!;
+    for (const mode of ["light", "dark"] as const) {
+      const colors = getThemeColorsForMode(theme, mode)!;
+      const boot = runBootScript({ storage: {}, prefersDark: mode === "dark" });
+      expect(boot.themeId).toBe(DEFAULT_THEME_ID);
+      expect(boot.themeSelected).toBe("true");
+      expect(boot.isDark).toBe(mode === "dark");
+      expect(boot.bootVariables["--boot-background"]).toBe(colors.canvas);
+      expect(boot.bootVariables["--boot-accent"]).toBe(colors.accent);
+      expect(boot.metaContent).toBe(colors.chrome);
     }
   });
 

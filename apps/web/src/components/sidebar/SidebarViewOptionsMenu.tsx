@@ -11,6 +11,7 @@ import {
 } from "../Sidebar.viewOptions";
 import {
   Menu,
+  MenuCheckboxItem,
   MenuGroup,
   MenuGroupLabel,
   MenuPopup,
@@ -39,6 +40,7 @@ export function SidebarViewOptionsMenu(props: {
   readonly trigger: ReactElement;
 }) {
   const { sort, grouping } = useClientSettings(selectSidebarViewOptions);
+  const backgroundSection = useClientSettings((s) => s.sidebarBackgroundSection);
   // The Working section orders the flat list by return time; folders replace it.
   const workingShelfOrders =
     useClientSettings((s) => s.sidebarWorkingShelfEnabled) && grouping === "none";
@@ -91,6 +93,16 @@ export function SidebarViewOptionsMenu(props: {
             ))}
           </MenuRadioGroup>
         </MenuGroup>
+        <MenuSeparator />
+        <MenuCheckboxItem
+          variant="switch"
+          checked={backgroundSection}
+          onCheckedChange={(checked) =>
+            void updateClientSettings({ sidebarBackgroundSection: checked })
+          }
+        >
+          Background section
+        </MenuCheckboxItem>
       </MenuPopup>
     </Menu>
   );

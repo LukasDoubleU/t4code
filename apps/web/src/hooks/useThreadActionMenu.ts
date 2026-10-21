@@ -7,6 +7,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import {
   AuthOrchestrationOperateScope,
   type ScopedThreadRef,
@@ -14,6 +15,10 @@ import {
 } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 
+import {
+  sidebarBackgroundMenuPlacement,
+  useSidebarBackground,
+} from "../components/Sidebar.background";
 import { resolveSnoozePresets } from "../components/Sidebar.snooze";
 import {
   buildThreadActionMenuItems,
@@ -31,6 +36,7 @@ import {
   readEnvironmentSupportsSnooze,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShell,
+  useDelegatedUnderParent,
   useProjects,
 } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
@@ -88,6 +94,8 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
+  const background = useSidebarBackground();
+  const delegatedUnderParent = useDelegatedUnderParent();
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
@@ -128,15 +136,29 @@ export function useThreadActionMenu(input: {
       };
       const isRegeneratingTitle = thread.titleRegeneration != null;
       const snoozePresets = resolveSnoozePresets(now, timestampFormat);
+      const isPinned = thread.pinnedAt != null;
+      const isSettled = supports.settlement && thread.settledOverride === "settled";
+      const isSnoozed = supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() });
+      // Background only sorts the threads the sidebar lists.
+      const listed =
+        thread.archivedAt === null &&
+        !isShownUnderParent(threadRef, thread.lineage, delegatedUnderParent);
       const items = buildThreadActionMenuItems({
         canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
         branch: thread.branch ?? null,
         projectFilter: null,
-        isPinned: thread.pinnedAt != null,
-        isSettled: supports.settlement && thread.settledOverride === "settled",
+        isPinned,
+        isSettled,
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
-        isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
+        isSnoozed,
         canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
+        backgroundPlacement: listed
+          ? sidebarBackgroundMenuPlacement({
+              thread,
+              choices: background.choices,
+              parked: isPinned || isSettled || isSnoozed,
+            })
+          : null,
         isRegeneratingTitle,
         isRunning: !threadRuntimeCanArchive(thread.runtime),
         supports,
@@ -214,6 +236,10 @@ export function useThreadActionMenu(input: {
           return;
         case "unsnooze":
           await reportFailure("Failed to wake thread", () => unsnoozeThread(threadRef));
+          return;
+        case "move-to-background":
+        case "bring-to-front":
+          background.place([thread], action === "bring-to-front" ? "front" : "background");
           return;
         case "pin":
           await reportFailure("Failed to pin thread", () => pinThread(threadRef));

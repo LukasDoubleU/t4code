@@ -116,18 +116,21 @@ export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
 // Snoozed rows can leave the shelf, but dropping into it is not supported
 // because snoozing requires a wake time. The Working shelf (beta) follows live
 // status, so its rows only drag out as chat context, never between sidebar
-// sections.
+// sections. Background is this device's view of active threads, so only active
+// rows drop into it.
 
-export type SidebarSection = "pinned" | "active" | "working" | "snoozed" | "settled";
+export type SidebarSection = "pinned" | "active" | "working" | "background" | "snoozed" | "settled";
 
 export function resolveSidebarThreadSection(input: {
   readonly snoozed: boolean;
   readonly settled: boolean;
   readonly pinned: boolean;
+  readonly background?: boolean;
 }): SidebarSection {
   if (input.snoozed) return "snoozed";
   if (input.settled) return "settled";
   if (input.pinned) return "pinned";
+  if (input.background) return "background";
   return "active";
 }
 
@@ -139,6 +142,7 @@ export type SidebarListMarker =
   | "settled-placeholder"
   | "pinned-divider"
   | "working-header"
+  | "background-header"
   | "snoozed-header"
   | "settled-header";
 
@@ -161,6 +165,7 @@ function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number):
     if (item.kind !== "marker") continue;
     if (item.marker === "pinned-divider") section = "active";
     else if (item.marker === "working-header") section = "working";
+    else if (item.marker === "background-header") section = "background";
     else if (item.marker === "snoozed-header") section = "snoozed";
     else if (item.marker === "settled-header") section = "settled";
   }
@@ -168,7 +173,7 @@ function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number):
 }
 
 export type SidebarDropTarget = {
-  readonly section: "pinned" | "active" | "settled";
+  readonly section: "pinned" | "active" | "background" | "settled";
   readonly pinnedOrder: readonly string[];
   readonly activeOrder: readonly string[];
 };
@@ -193,6 +198,7 @@ export function resolveSidebarDropTarget(
       if (item.marker === "pinned-divider") currentSection = "active";
       else if (
         item.marker === "working-header" ||
+        item.marker === "background-header" ||
         item.marker === "snoozed-header" ||
         item.marker === "settled-header"
       )
@@ -224,9 +230,17 @@ export type SidebarThreadDropPlan =
       readonly unsettle: boolean;
       readonly unsnooze: boolean;
     }
-  | { readonly kind: "settle" };
+  | { readonly kind: "settle" }
+  | { readonly kind: "background" };
 
-export type SidebarDropVerb = "pin" | "unpin" | "settle" | "unsettle" | "wake";
+export type SidebarDropVerb =
+  | "pin"
+  | "unpin"
+  | "settle"
+  | "unsettle"
+  | "wake"
+  | "background"
+  | "front";
 
 export function resolveSidebarDropVerb(
   from: SidebarSection,
@@ -235,8 +249,10 @@ export function resolveSidebarDropVerb(
   if (to === null || to === from || to === "working" || to === "snoozed") return null;
   if (to === "pinned") return "pin";
   if (to === "settled") return "settle";
+  if (to === "background") return "background";
   if (from === "pinned") return "unpin";
   if (from === "settled") return "unsettle";
+  if (from === "background") return "front";
   return "wake";
 }
 
@@ -344,6 +360,8 @@ export function planSidebarThreadDrop(input: {
     }
     case "settled":
       return activeSection === "settled" ? { kind: "none" } : { kind: "settle" };
+    case "background":
+      return activeSection === "active" ? { kind: "background" } : { kind: "none" };
     case "pinned": {
       const order = target.pinnedOrder;
       if (

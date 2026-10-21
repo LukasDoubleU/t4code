@@ -153,6 +153,27 @@ describe("buildThreadActionMenuItems", () => {
     expect(ids(baseState)).toEqual(expect.arrayContaining(["pin", "settle", "snooze"]));
   });
 
+  it("offers the Background move the sidebar allows, after snooze, also to read-only clients", () => {
+    expect(ids(baseState)).not.toContain("move-to-background");
+    const toBackground = buildThreadActionMenuItems({
+      ...baseState,
+      backgroundPlacement: "background",
+    });
+    const snoozeIndex = toBackground.findIndex((item) => item.id === "snooze");
+    expect(toBackground[snoozeIndex + 1]).toMatchObject({
+      id: "move-to-background",
+      label: "Move to background",
+      icon: "send-to-back",
+    });
+    const toFront = buildThreadActionMenuItems({
+      ...baseState,
+      canOperate: false,
+      backgroundPlacement: "front",
+    }).find((item) => item.id === "bring-to-front");
+    expect(toFront).toMatchObject({ label: "Bring to front", icon: "bring-to-front" });
+    expect(toFront?.disabled).toBeFalsy();
+  });
+
   it("offers auto-settle as a submenu with the current option checked", () => {
     const find = (state: ThreadActionMenuState) =>
       buildThreadActionMenuItems(state).find((item) => item.id === "auto-settle");

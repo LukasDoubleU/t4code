@@ -16,6 +16,7 @@ type Layout = Parameters<SortingStrategy>[0];
 const isShelfHeader = (item: SidebarListItem | undefined) =>
   item?.kind === "marker" &&
   (item.marker === "working-header" ||
+    item.marker === "background-header" ||
     item.marker === "snoozed-header" ||
     item.marker === "settled-header");
 
@@ -58,7 +59,9 @@ export function createSidebarCollisionDetection(
       if (pointer.x >= boundary.left && pointer.x <= boundary.right) {
         if (pointer.y < previousY && pointer.y <= boundary.bottom) boundarySection = "pinned";
         else if (pointer.y > previousY && pointer.y >= boundary.top) boundarySection = "active";
-        const nextHeader = (["working-header", "snoozed-header", "settled-header"] as const)
+        const nextHeader = (
+          ["working-header", "background-header", "snoozed-header", "settled-header"] as const
+        )
           .map((marker) =>
             args.droppableContainers.find((container) => container.id === sidebarMarkerId(marker)),
           )
@@ -96,6 +99,9 @@ export function createSidebarSortingStrategy(input: {
   enabled?: boolean;
   settledOrder: readonly string[];
   activeOrder?: readonly string[];
+  backgroundOrder?: readonly string[];
+  backgroundExpanded?: boolean;
+  backgroundThreadCount?: number;
   settledExpanded: boolean;
   settledVisibleCount?: number;
   routeThreadKey?: string | null;
@@ -120,6 +126,7 @@ export function createSidebarSortingStrategy(input: {
       pinned: [],
       active: [],
       working: [],
+      background: [],
       snoozed: [],
       settled: [],
     };
@@ -150,13 +157,23 @@ export function createSidebarSortingStrategy(input: {
         ? target.pinnedOrder
         : target.section === "settled"
           ? input.settledOrder
-          : (input.activeOrder ?? target.activeOrder);
+          : target.section === "background"
+            ? (input.backgroundOrder ?? [])
+            : (input.activeOrder ?? target.activeOrder);
     const ranks = new Map(order.map((key, index) => [key, index]));
     const rank = ranks.get(active.key) ?? Number.POSITIVE_INFINITY;
     const index = group.findIndex(
       (item) => (ranks.get(item.key) ?? Number.POSITIVE_INFINITY) > rank,
     );
     group.splice(index < 0 ? group.length : index, 0, { ...active, section: target.section });
+    // Like a collapsed Settled shelf, a collapsed Background shelf hides the arriving row.
+    if (
+      target.section === "background" &&
+      !input.backgroundExpanded &&
+      active.key !== input.routeThreadKey
+    ) {
+      groups.background = groups.background.filter((item) => item.key !== active.key);
+    }
     const settledOrder = (
       input.settledOrder.length > 0 ? input.settledOrder : groups.settled.map((item) => item.key)
     ).filter((key) => key !== active.key || target.section === "settled");
@@ -181,6 +198,14 @@ export function createSidebarSortingStrategy(input: {
     if (items.some((item) => item.kind === "marker" && item.marker === "working-header")) {
       marker("working-header");
       projected.push(...groups.working);
+    }
+    if (
+      groups.background.length > 0 ||
+      ((active.section !== "background" || (input.backgroundThreadCount ?? 0) > 1) &&
+        items.some((item) => item.kind === "marker" && item.marker === "background-header"))
+    ) {
+      marker("background-header");
+      projected.push(...groups.background);
     }
     if (
       groups.snoozed.length > 0 ||

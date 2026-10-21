@@ -48,6 +48,7 @@ import {
   resolveSidebarDropTarget,
   resolveSidebarFolderDot,
   planSidebarThreadDrop,
+  sidebarMarkerId,
   sortPinnedThreadsForSidebar,
   sortScopedProjectsForSidebar,
   sortSidebarV2ProjectGroups,
@@ -2188,5 +2189,75 @@ describe("Working shelf (beta)", () => {
         unsnooze: false,
       });
     });
+  });
+});
+
+describe("dragging with the Background section", () => {
+  const marker = (name: SidebarListMarker): SidebarListItem => ({ kind: "marker", marker: name });
+  const row = (key: string, section: SidebarSection): SidebarListItem => ({
+    kind: "thread",
+    key,
+    section,
+  });
+  const items: readonly SidebarListItem[] = [
+    marker("pinned-header"),
+    row("p1", "pinned"),
+    marker("pinned-divider"),
+    row("a1", "active"),
+    row("a2", "active"),
+    marker("background-header"),
+    row("b1", "background"),
+    marker("snoozed-header"),
+    row("z1", "snoozed"),
+    marker("settled-header"),
+    row("s1", "settled"),
+  ];
+  const plan = (activeKey: string, activeSection: SidebarSection, overKey: string) =>
+    planSidebarThreadDrop({
+      activeKey,
+      activeSection,
+      target: resolveSidebarDropTarget(items, activeKey, overKey)!,
+      pinnedOrder: ["p1"],
+      pinnedKeysById: new Map([["p1", "m"]]),
+      activeOrder: ["a1", "a2"],
+      activeKeysById: new Map([
+        ["a1", "f"],
+        ["a2", "t"],
+      ]),
+      activeTimeOrdered: true,
+    });
+
+  it("drops an active thread onto the Background header, outside the active order", () => {
+    expect(resolveSidebarDropTarget(items, "a1", sidebarMarkerId("background-header"))).toEqual({
+      section: "background",
+      pinnedOrder: ["p1"],
+      activeOrder: ["a2"],
+    });
+    expect(plan("a1", "active", sidebarMarkerId("background-header"))).toEqual({
+      kind: "background",
+    });
+    expect(resolveSidebarDropVerb("active", "background")).toBe("background");
+  });
+
+  it("takes only active threads: pinned, snoozed and settled ones need a server change first", () => {
+    expect(plan("p1", "pinned", "b1")).toEqual({ kind: "none" });
+    expect(plan("z1", "snoozed", "b1")).toEqual({ kind: "none" });
+    expect(plan("s1", "settled", "b1")).toEqual({ kind: "none" });
+  });
+
+  it("lets a Background thread leave for the active list, a pin or Settled", () => {
+    expect(plan("b1", "background", "a2")).toEqual({
+      kind: "move-active",
+      order: null,
+      assignments: [],
+      unpin: false,
+      unsettle: false,
+      unsnooze: false,
+    });
+    expect(resolveSidebarDropVerb("background", "active")).toBe("front");
+    expect(plan("b1", "background", "p1").kind).toBe("pin");
+    expect(resolveSidebarDropVerb("background", "pinned")).toBe("pin");
+    expect(plan("b1", "background", "s1")).toEqual({ kind: "settle" });
+    expect(resolveSidebarDropVerb("background", "settled")).toBe("settle");
   });
 });

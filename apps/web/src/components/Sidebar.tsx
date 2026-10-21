@@ -70,6 +70,7 @@ import {
   AlarmClockIcon,
   AlarmClockOffIcon,
   ArrowRightLeftIcon,
+  BringToFrontIcon,
   ChevronRightIcon,
   CheckIcon,
   CircleAlertIcon,
@@ -84,6 +85,7 @@ import {
   PinIcon,
   PinOffIcon,
   PlusIcon,
+  SendToBackIcon,
   SettingsIcon,
   ShieldQuestionIcon,
   SquarePenIcon,
@@ -246,6 +248,12 @@ import {
   type SidebarStatusGroup,
   type SidebarThreadSort,
 } from "./Sidebar.viewOptions";
+import {
+  isInSidebarBackground,
+  sidebarBackgroundMenuPlacement,
+  useSidebarBackground,
+  type SidebarBackgroundChoices,
+} from "./Sidebar.background";
 import { SidebarGroupFolderHeader } from "./sidebar/SidebarGroupFolderHeader";
 import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
 import {
@@ -384,6 +392,7 @@ const SETTLED_TAIL_PAGE_COUNT = 25;
 const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
+const BACKGROUND_SHELF_EXPANDED_KEY = "t3code:sidebar:background-expanded";
 
 const inboxReturns = createInboxReturnTracker();
 
@@ -407,8 +416,10 @@ interface SidebarThreadPartitionInput {
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly workingShelfEnabled: boolean;
   readonly threadSort: SidebarThreadSort;
+  // This device's Background choices; null while the section is off.
+  readonly backgroundChoices: SidebarBackgroundChoices | null;
   // Visits this browser recorded, for servers that do not track them. Empty unless a
-  // status sort or grouping reads them.
+  // status sort, status grouping or the Background section reads them.
   readonly localLastVisitedAtById: Readonly<Record<string, string>>;
   // Snooze wakes and the queued-turn grace depend on the clock, so the minute
   // tick and the precise snooze-wake tick are inputs: a new key repartitions.
@@ -423,15 +434,17 @@ const NO_DRAGGED_ORDER: readonly string[] = [];
 const NO_DRAGGED_ORDERS: {
   readonly settledOrder: readonly string[];
   readonly activeOrder: readonly string[] | undefined;
-} = { settledOrder: NO_DRAGGED_ORDER, activeOrder: undefined };
+  readonly backgroundOrder: readonly string[];
+} = { settledOrder: NO_DRAGGED_ORDER, activeOrder: undefined, backgroundOrder: NO_DRAGGED_ORDER };
 
-// Where the dragged row would sort if dropped on the settled or the
-// time-ordered active shelf; the strategy previews those slots.
+// Where the dragged row would sort if dropped on the settled, the Background
+// or the time-ordered active shelf; the strategy previews those slots.
 function resolveDraggedOrders(input: {
   readonly drag: { readonly activeKey: string; readonly occurredAt: string };
   readonly threadByKey: ReadonlyMap<string, EnvironmentThreadShell>;
   readonly settledThreads: readonly EnvironmentThreadShell[];
   readonly activeThreads: readonly EnvironmentThreadShell[];
+  readonly backgroundThreads: readonly EnvironmentThreadShell[];
   readonly workingShelfEnabled: boolean;
   readonly threadSort: SidebarThreadSort;
   readonly statusGroupOf: (thread: EnvironmentThreadShell) => SidebarStatusGroup;
@@ -441,6 +454,7 @@ function resolveDraggedOrders(input: {
     threadByKey,
     settledThreads,
     activeThreads,
+    backgroundThreads,
     workingShelfEnabled,
     threadSort,
     statusGroupOf,
@@ -466,6 +480,11 @@ function resolveDraggedOrders(input: {
             statusGroupOf,
           ).map(threadShellKey)
         : undefined,
+    backgroundOrder: sortSidebarActiveThreads(
+      [...others(backgroundThreads), thread],
+      threadSort,
+      statusGroupOf,
+    ).map(threadShellKey),
   };
 }
 
@@ -518,10 +537,13 @@ function useSidebarThreads(input: {
   // Folders already separate the work, so only the flat list has a Working shelf.
   const workingShelfEnabled =
     useClientSettings((s) => s.sidebarWorkingShelfEnabled) && grouping === "none";
+  const background = useSidebarBackground();
   const machines = useEnvironmentIdentities();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  // Only a status sort or grouping repartitions when this browser records a visit.
-  const readsStatus = threadSort === "status" || grouping === "status";
+  // Only a status sort or grouping, or the Background section, repartitions when this
+  // browser records a visit.
+  const readsStatus =
+    threadSort === "status" || grouping === "status" || background.choices !== null;
   const localLastVisitedAtById = useUiStateStore((store) =>
     readsStatus ? store.threadLastVisitedAtById : NO_LOCAL_VISITS,
   );
@@ -546,6 +568,11 @@ function useSidebarThreads(input: {
   );
   const [workingShelfExpanded, setWorkingShelfExpanded] = useLocalStorage(
     WORKING_SHELF_EXPANDED_KEY,
+    false,
+    Schema.Boolean,
+  );
+  const [backgroundShelfExpanded, setBackgroundShelfExpanded] = useLocalStorage(
+    BACKGROUND_SHELF_EXPANDED_KEY,
     false,
     Schema.Boolean,
   );
@@ -575,14 +602,21 @@ function useSidebarThreads(input: {
     optimisticDrop,
     workingShelfEnabled,
     threadSort,
+    backgroundChoices: background.choices,
     localLastVisitedAtById,
     clockKey: `${nowMinute}:${snoozeWakeTick}`,
   });
   const partitionNextWakeAt = partition.snoozedThreads[0]?.snoozedUntil ?? null;
   if (partitionNextWakeAt !== nextSnoozeWakeAt) setNextSnoozeWakeAt(partitionNextWakeAt);
 
-  const { pinnedThreads, activeThreads, workingThreads, snoozedThreads, settledThreads } =
-    partition;
+  const {
+    pinnedThreads,
+    activeThreads,
+    workingThreads,
+    backgroundThreads,
+    snoozedThreads,
+    settledThreads,
+  } = partition;
   const visibleSettledThreads = (() => {
     if (settledThreads.length <= settledVisibleCount) return settledThreads;
     const visible = settledThreads.slice(0, settledVisibleCount);
@@ -603,6 +637,9 @@ function useSidebarThreads(input: {
   const visibleWorkingThreads = workingShelfExpanded
     ? workingThreads
     : routeThreadOnly(workingThreads, routeRowThreadKey);
+  const visibleBackgroundThreads = backgroundShelfExpanded
+    ? backgroundThreads
+    : routeThreadOnly(backgroundThreads, routeRowThreadKey);
   const folders =
     grouping === "none"
       ? null
@@ -644,12 +681,15 @@ function useSidebarThreads(input: {
           ...pinnedThreads,
           ...activeThreads,
           ...visibleWorkingThreads,
+          ...visibleBackgroundThreads,
           ...visibleSnoozedThreads,
           ...renderedSettledThreads,
         ]
       : [
           ...pinnedThreads,
           ...folders.flatMap((folder) => [...folder.inbox, ...folder.settled]),
+          // Background is one list below the folders, whatever they group by.
+          ...visibleBackgroundThreads,
           ...visibleSnoozedThreads,
           // Status folders hold active threads only; settled ones keep their shelf.
           ...(grouping === "status" ? renderedSettledThreads : EMPTY_THREADS),
@@ -659,6 +699,7 @@ function useSidebarThreads(input: {
     [pinnedThreads, "pinned"],
     [activeThreads, "active"],
     [workingThreads, "working"],
+    [backgroundThreads, "background"],
     [snoozedThreads, "snoozed"],
     [settledThreads, "settled"],
   ] as const) {
@@ -671,10 +712,13 @@ function useSidebarThreads(input: {
     workingShelfEnabled,
     threadSort,
     threadGrouping: grouping,
+    backgroundChoices: background.choices,
+    placeInBackground: background.place,
     searchableThreads: [
       ...pinnedThreads,
       ...activeThreads,
       ...workingThreads,
+      ...backgroundThreads,
       ...snoozedThreads,
       ...settledThreads,
     ],
@@ -691,6 +735,8 @@ function useSidebarThreads(input: {
     toggleSnoozedShelf: () => setSnoozedShelfExpanded((value) => !value),
     workingShelfExpanded,
     toggleWorkingShelf: () => setWorkingShelfExpanded((value) => !value),
+    backgroundShelfExpanded,
+    toggleBackgroundShelf: () => setBackgroundShelfExpanded((value) => !value),
     folders,
     toggleProjectFolder: (group: SidebarProjectSnapshot) => {
       const keys = sidebarFolderExpansionKeys(group);
@@ -716,6 +762,7 @@ function useSidebarThreads(input: {
     renderedSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
+    visibleBackgroundThreads,
     orderedThreadKeys: orderedThreads.map(threadShellKey),
     threadByKey: new Map(orderedThreads.map((thread) => [threadShellKey(thread), thread] as const)),
     settledThreadKeys: new Set(settledThreads.map(threadShellKey)),
@@ -741,6 +788,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     optimisticDrop,
     workingShelfEnabled,
     threadSort,
+    backgroundChoices,
     localLastVisitedAtById,
   } = input;
   const preciseNow = new Date().toISOString();
@@ -756,6 +804,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const working: EnvironmentThreadShell[] = [];
   const inbox = (thread: EnvironmentThreadShell) =>
     workingShelfEnabled && isSidebarThreadWorking(thread) ? working : active;
+  const background: EnvironmentThreadShell[] = [];
   const snoozed: EnvironmentThreadShell[] = [];
   const settled: EnvironmentThreadShell[] = [];
   const draggable = new Set<string>();
@@ -791,6 +840,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
         snoozed: supportsSnooze && effectiveSnoozed(thread, { now: preciseNow }),
         settled: supportsSettlement && thread.settledOverride === "settled",
         pinned: thread.pinnedAt != null,
+        background: isInSidebarBackground(thread, backgroundChoices, statusGroupOf),
       });
       (section === "snoozed"
         ? snoozed
@@ -798,7 +848,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
           ? settled
           : section === "pinned"
             ? pinned
-            : inbox(thread)
+            : section === "background"
+              ? background
+              : inbox(thread)
       ).push(thread);
     }
   }
@@ -832,6 +884,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
             getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
           }),
     workingThreads: sortWorkingThreadsBySend(working),
+    backgroundThreads: sortSidebarActiveThreads(background, threadSort, statusGroupOf),
     snoozedThreads: snoozed.toSorted(
       (left, right) =>
         firstValidTimestampMs(left.snoozedUntil ?? null) -
@@ -1427,7 +1480,7 @@ function SidebarDragBoundary(props: {
 }
 
 function SidebarSectionHeader(props: {
-  marker: "working-header" | "snoozed-header" | "settled-header";
+  marker: "working-header" | "background-header" | "snoozed-header" | "settled-header";
   label: string;
   className?: string;
   dragging?: boolean;
@@ -1437,9 +1490,11 @@ function SidebarSectionHeader(props: {
   const shelf =
     props.marker === "working-header"
       ? "working"
-      : props.marker === "snoozed-header"
-        ? "snoozed"
-        : "settled";
+      : props.marker === "background-header"
+        ? "background"
+        : props.marker === "snoozed-header"
+          ? "snoozed"
+          : "settled";
   const snoozed = shelf === "snoozed";
   return (
     <SortableSidebarMarker
@@ -1768,6 +1823,18 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
     <>
       <AlarmClockOffIcon aria-hidden className="size-3" />
       Wake
+    </>
+  ),
+  background: (
+    <>
+      <SendToBackIcon aria-hidden className="size-3" />
+      Background
+    </>
+  ),
+  front: (
+    <>
+      <BringToFrontIcon aria-hidden className="size-3" />
+      Bring to front
     </>
   ),
 };
@@ -3279,9 +3346,12 @@ export default function Sidebar() {
     activeReorderableThreadKeys,
     activeThreads,
     workingThreads,
+    backgroundThreads,
     snoozedThreads,
     settledThreads,
     snoozeNow,
+    backgroundChoices,
+    placeInBackground,
     searchableThreads,
     settledVisibleCount,
     hiddenSettledCount,
@@ -3292,6 +3362,8 @@ export default function Sidebar() {
     toggleSnoozedShelf,
     workingShelfExpanded,
     toggleWorkingShelf,
+    backgroundShelfExpanded,
+    toggleBackgroundShelf,
     folders,
     toggleProjectFolder,
     toggleGroupFolder,
@@ -3300,6 +3372,7 @@ export default function Sidebar() {
     renderedSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
+    visibleBackgroundThreads,
     orderedThreadKeys,
     threadByKey,
     settledThreadKeys,
@@ -3856,6 +3929,7 @@ export default function Sidebar() {
       pinnedThreads.length +
         activeThreads.length +
         workingThreads.length +
+        backgroundThreads.length +
         snoozedThreads.length +
         settledThreads.length ===
       0
@@ -3872,6 +3946,10 @@ export default function Sidebar() {
     if (workingThreads.length > 0) {
       items.push({ kind: "marker", marker: "working-header" });
       items.push(...rowsOf(visibleWorkingThreads, "working"));
+    }
+    if (backgroundThreads.length > 0) {
+      items.push({ kind: "marker", marker: "background-header" });
+      items.push(...rowsOf(visibleBackgroundThreads, "background"));
     }
     if (snoozedThreads.length > 0) {
       items.push({ kind: "marker", marker: "snoozed-header" });
@@ -3944,24 +4022,31 @@ export default function Sidebar() {
   const sortableIds = sidebarListItems.map(sidebarListItemId);
   // Outside a drag the orders are constants, so the strategy, and with it
   // every sortable row, keeps its identity while thread shells stream in.
-  const { settledOrder: draggedSettledOrder, activeOrder: draggedActiveOrder } =
-    dragState === null
-      ? NO_DRAGGED_ORDERS
-      : resolveDraggedOrders({
-          drag: dragState,
-          threadByKey,
-          settledThreads,
-          activeThreads,
-          workingShelfEnabled,
-          threadSort,
-          statusGroupOf,
-        });
+  const {
+    settledOrder: draggedSettledOrder,
+    activeOrder: draggedActiveOrder,
+    backgroundOrder: draggedBackgroundOrder,
+  } = dragState === null
+    ? NO_DRAGGED_ORDERS
+    : resolveDraggedOrders({
+        drag: dragState,
+        threadByKey,
+        settledThreads,
+        activeThreads,
+        backgroundThreads,
+        workingShelfEnabled,
+        threadSort,
+        statusGroupOf,
+      });
   const sidebarSortingStrategy = createSidebarSortingStrategy({
     items: sidebarListItems,
     enabled: !isContextDrag,
     boundaryLabelHeight: SIDEBAR_DRAG_LABEL_HEIGHT,
     settledOrder: draggedSettledOrder,
     ...(draggedActiveOrder === undefined ? {} : { activeOrder: draggedActiveOrder }),
+    backgroundOrder: draggedBackgroundOrder,
+    backgroundExpanded: backgroundShelfExpanded,
+    backgroundThreadCount: backgroundThreads.length,
     settledExpanded: settledShelfExpanded,
     settledVisibleCount,
     routeThreadKey: routeRowThreadKey,
@@ -4033,6 +4118,11 @@ export default function Sidebar() {
       activeTimeOrdered: workingShelfEnabled || threadSort !== "manual",
     });
     if (plan.kind === "none") return;
+    // Background is this device's view, so dropping into it changes nothing on the server.
+    if (plan.kind === "background" || target.section === "background") {
+      placeInBackground([activeThread], "background");
+      return;
+    }
     if (plan.kind === "settle" && settlingThreadKeysRef.current.has(activeKey)) return;
     const assignments =
       plan.kind === "pin"
@@ -4052,9 +4142,14 @@ export default function Sidebar() {
       )
     )
       return;
-    const drop = {
+    // A thread dropped into the active list stays there.
+    if (plan.kind === "move-active" && backgroundChoices !== null) {
+      placeInBackground([activeThread], "front");
+    }
+    const drop: SidebarOptimisticDrop = {
       key: activeKey,
-      sourceSection: activeSection,
+      // The server keeps Background's threads active.
+      sourceSection: activeSection === "background" ? "active" : activeSection,
       section: target.section,
       occurredAt: new Date().toISOString(),
       clearsSnooze:
@@ -4242,6 +4337,17 @@ export default function Sidebar() {
       const unpinMenuItem = buildBulkUnpinContextMenuItem({
         pinnedCount: pinnedSelectedThreads.length,
       });
+      const backgroundMoves = (placement: "background" | "front") =>
+        selectedThreads.filter((thread) => {
+          const section = sectionByThreadKeyRef.current.get(threadShellKey(thread));
+          const parked = section === "pinned" || section === "snoozed" || section === "settled";
+          return (
+            sidebarBackgroundMenuPlacement({ thread, choices: backgroundChoices, parked }) ===
+            placement
+          );
+        });
+      const toBackground = backgroundMoves("background");
+      const toFront = backgroundMoves("front");
       const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
       const clicked = await settlePromise(() =>
         api.contextMenu.show(
@@ -4276,6 +4382,12 @@ export default function Sidebar() {
                   },
                 ]
               : []),
+            ...(toBackground.length > 0
+              ? [{ id: "move-to-background", label: `Move to background (${toBackground.length})` }]
+              : []),
+            ...(toFront.length > 0
+              ? [{ id: "bring-to-front", label: `Bring to front (${toFront.length})` }]
+              : []),
             ...(titleRegenerationMenuItem
               ? [
                   {
@@ -4298,6 +4410,15 @@ export default function Sidebar() {
         ),
       );
       if (clicked._tag === "Failure" || clicked.value === null) return;
+      if (clicked.value === "move-to-background" || clicked.value === "bring-to-front") {
+        const toFrontClicked = clicked.value === "bring-to-front";
+        placeInBackground(
+          toFrontClicked ? toFront : toBackground,
+          toFrontClicked ? "front" : "background",
+        );
+        clearSelection();
+        return;
+      }
       const actionTargets =
         clicked.value === "unpin"
           ? pinnedSelectedThreads
@@ -4535,6 +4656,11 @@ export default function Sidebar() {
         const isSettled = settledThreadKeysRef.current.has(threadKey);
         const isSnoozed = snoozedThreadKeysRef.current.has(threadKey);
         const isPinned = thread.pinnedAt != null;
+        const backgroundPlacement = sidebarBackgroundMenuPlacement({
+          thread,
+          choices: backgroundChoices,
+          parked: isPinned || isSettled || isSnoozed,
+        });
         const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
         const threadProjectGroup =
           projectGroupsRef.current.find((project) =>
@@ -4563,6 +4689,7 @@ export default function Sidebar() {
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
               isSnoozed,
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
+              backgroundPlacement,
               isRegeneratingTitle,
               isRunning: !threadRuntimeCanArchive(thread.runtime),
               supports: {
@@ -4633,6 +4760,13 @@ export default function Sidebar() {
             return;
           case "unsnooze":
             attemptUnsnooze(threadRef);
+            return;
+          case "move-to-background":
+          case "bring-to-front":
+            placeInBackground(
+              [thread],
+              clicked.value === "bring-to-front" ? "front" : "background",
+            );
             return;
           case "pin":
             attemptPin(threadRef);
@@ -5309,12 +5443,33 @@ export default function Sidebar() {
                             );
                           }
                         }
+                        if (backgroundThreads.length > 0) {
+                          items.push(
+                            <SidebarSectionHeader
+                              key="background-shelf-header"
+                              marker="background-header"
+                              className="mt-2"
+                              label={
+                                backgroundShelfExpanded
+                                  ? "Background"
+                                  : `Background (${backgroundThreads.length})`
+                              }
+                              toggle={{
+                                expanded: backgroundShelfExpanded,
+                                onToggle: toggleBackgroundShelf,
+                              }}
+                            />,
+                          );
+                          for (const thread of visibleBackgroundThreads) {
+                            items.push(renderThreadRow(thread, "background"));
+                          }
+                        }
                         if (snoozedThreads.length > 0) {
                           items.push(
                             <SidebarSectionHeader
                               key="snoozed-shelf-header"
                               marker="snoozed-header"
-                              className="mt-2"
+                              className={cn(backgroundThreads.length === 0 && "mt-2")}
                               label={
                                 snoozedShelfExpanded
                                   ? "Snoozed"
@@ -5335,7 +5490,9 @@ export default function Sidebar() {
                             <SidebarSectionHeader
                               key="settled-shelf-header"
                               marker="settled-header"
-                              className={cn(snoozedThreads.length === 0 && "mt-2")}
+                              className={cn(
+                                backgroundThreads.length + snoozedThreads.length === 0 && "mt-2",
+                              )}
                               label={
                                 settledShelfExpanded
                                   ? "Settled"
@@ -5417,12 +5574,35 @@ export default function Sidebar() {
                               />,
                             );
                             break;
+                          case "background-header":
+                            items.push(
+                              <SidebarSectionHeader
+                                key="background-shelf-header"
+                                marker="background-header"
+                                className={cn(workingThreads.length === 0 && "mt-auto")}
+                                label={
+                                  backgroundShelfExpanded
+                                    ? "Background"
+                                    : `Background (${backgroundThreads.length})`
+                                }
+                                dragging={from === "active"}
+                                isDropTarget={dragTargetSection === "background"}
+                                toggle={{
+                                  expanded: backgroundShelfExpanded,
+                                  onToggle: toggleBackgroundShelf,
+                                }}
+                              />,
+                            );
+                            break;
                           case "snoozed-header":
                             items.push(
                               <SidebarSectionHeader
                                 key="snoozed-shelf-header"
                                 marker="snoozed-header"
-                                className={cn(workingThreads.length === 0 && "mt-auto")}
+                                className={cn(
+                                  workingThreads.length + backgroundThreads.length === 0 &&
+                                    "mt-auto",
+                                )}
                                 label={
                                   snoozedShelfExpanded
                                     ? "Snoozed"
@@ -5441,7 +5621,10 @@ export default function Sidebar() {
                                 key="settled-shelf-header"
                                 marker="settled-header"
                                 className={cn(
-                                  workingThreads.length + snoozedThreads.length === 0 && "mt-auto",
+                                  workingThreads.length +
+                                    backgroundThreads.length +
+                                    snoozedThreads.length ===
+                                    0 && "mt-auto",
                                 )}
                                 label={
                                   settledShelfExpanded
@@ -5505,6 +5688,7 @@ export default function Sidebar() {
           pinnedThreads.length +
             activeThreads.length +
             workingThreads.length +
+            backgroundThreads.length +
             snoozedThreads.length +
             settledThreads.length ===
             0 ? (

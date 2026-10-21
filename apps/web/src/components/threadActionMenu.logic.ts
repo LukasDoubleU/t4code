@@ -15,6 +15,8 @@ export type ThreadActionMenuId =
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
+  | "move-to-background"
+  | "bring-to-front"
   | "rename"
   | "regenerate-title"
   | "mark-unread"
@@ -75,6 +77,8 @@ export interface ThreadActionMenuState {
   readonly autoSettleEnabled: boolean;
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
+  /** Where the sidebar's Background section lets this thread move; null hides both items. */
+  readonly backgroundPlacement?: "background" | "front" | null;
   readonly isRegeneratingTitle: boolean;
   /** Archive rejects a thread with an attached provider, so disable it here rather than let the action fail. */
   readonly isRunning: boolean;
@@ -88,12 +92,17 @@ export interface ThreadActionMenuState {
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
 }
 
-/** Local navigation, read markers, and copying remain available to read-only clients. */
+/**
+ * Local navigation, read markers, sidebar placement, and copying remain available to
+ * read-only clients.
+ */
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
   return ![
     "new-thread-on-branch",
     "project-settings",
     "mark-unread",
+    "move-to-background",
+    "bring-to-front",
     "copy",
     "copy-path",
     "copy-branch",
@@ -147,6 +156,11 @@ export function buildThreadActionMenuItems(
               },
         ]
       : []),
+    ...(state.backgroundPlacement === "background"
+      ? [{ id: "move-to-background" as const, label: "Move to background", icon: "send-to-back" }]
+      : state.backgroundPlacement === "front"
+        ? [{ id: "bring-to-front" as const, label: "Bring to front", icon: "bring-to-front" }]
+        : []),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },
     ...(state.supports.titleRegeneration
       ? [

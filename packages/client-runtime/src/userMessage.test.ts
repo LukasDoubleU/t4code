@@ -1,7 +1,7 @@
 import { ScheduledTaskId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveUserMessagePresentation } from "./userMessage.ts";
+import { agentMessageSenderLabel, resolveUserMessagePresentation } from "./userMessage.ts";
 
 describe("resolveUserMessagePresentation", () => {
   const legacyText = "[Triggered by schedule task: Daily audit]\n\nCheck for crashes.\n";
@@ -87,5 +87,32 @@ describe("resolveUserMessagePresentation", () => {
         scheduledTaskId: "task:daily-audit",
       });
     }
+  });
+});
+
+describe("agentMessageSenderLabel", () => {
+  const sentFrom = { title: "Review the migration", label: "Build server" };
+
+  it("names a sender here by its title, or as an agent when this client cannot see it", () => {
+    expect(agentMessageSenderLabel({ senderTitle: " Docs pass ", sentFrom: undefined })).toBe(
+      "Docs pass",
+    );
+    expect(agentMessageSenderLabel({ senderTitle: undefined, sentFrom: undefined })).toBe("Agent");
+  });
+
+  it("names a sender on a linked machine with that machine", () => {
+    expect(agentMessageSenderLabel({ senderTitle: undefined, sentFrom })).toBe(
+      "Review the migration · Build server",
+    );
+  });
+
+  it("prefers the title and machine name this client knows", () => {
+    expect(
+      agentMessageSenderLabel({
+        senderTitle: "Migration review",
+        sentFrom,
+        environmentLabel: "Office PC",
+      }),
+    ).toBe("Migration review · Office PC");
   });
 });

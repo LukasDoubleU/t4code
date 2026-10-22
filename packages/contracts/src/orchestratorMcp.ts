@@ -35,6 +35,7 @@ import {
 import { ThreadTitleRegeneration } from "./threadTitle.ts";
 import {
   OrchestrationV2Actor,
+  OrchestrationV2SentFrom,
   OrchestrationV2CreationSource,
   OrchestrationV2MessageReactionEmoji,
   OrchestrationV2RunStatus,
@@ -535,6 +536,8 @@ export const OrchestratorMcpThreadSendInput = Schema.Struct({
   message: OrchestratorMcpPrompt,
   mode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart"])),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
+  /** Set by a linked environment forwarding its agent's message here; ignored otherwise. */
+  sentFrom: Schema.optional(OrchestrationV2SentFrom),
 });
 export type OrchestratorMcpThreadSendInput = typeof OrchestratorMcpThreadSendInput.Type;
 

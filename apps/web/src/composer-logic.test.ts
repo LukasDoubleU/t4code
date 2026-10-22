@@ -100,7 +100,9 @@ describe("formatAssistantCitationForComposer", () => {
     const boundCitation = { ...citation, comment };
     expect(text).toBe(`${serializeAssistantCitation(boundCitation)} `);
     expect(collectAssistantCitations(text).map((entry) => entry.citation)).toEqual([boundCitation]);
-    expect(expandAssistantCitationsForProvider(text)).toMatch(/^\[assistant-quote-1\] \n\n/);
+    expect(expandAssistantCitationsForProvider(text)).toBe(
+      `Quoted from an earlier assistant reply:\n> ${citation.text}\n\nUser comment: ${comment}`,
+    );
   });
 });
 

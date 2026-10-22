@@ -52,6 +52,10 @@ From a clone, `pwsh -File scripts/t4/install-t4.ps1` does the same in one step: 
 
 Versions read `0.1.2-t4.N`: the upstream patch after the base, plus the fork's build number.
 
+### Linux server
+
+Each release also has the server for Linux x64, `t3-<version>-linux-x64.tar.gz`, to run headless on a machine that keeps threads running while the desktop app connects to it. `scripts/t4/install-t4.sh` installs and updates it for the current user; [`scripts/t4/README.md`](./scripts/t4/README.md#linux-server-install-t4sh) covers the background service and pairing.
+
 ### Back to T3 Code
 
 Install the official `v0.1.1` over T4 Code: everything stays, and it only warns about the three database migrations the fork adds. For a later official release, rehearse the switch first; [`scripts/t4/README.md`](./scripts/t4/README.md) explains how.

@@ -420,6 +420,67 @@ layer("ProviderEventIngestorV2", (it) => {
     }),
   );
 
+  it.effect("keeps the user's reaction when a provider sends a reply again", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const threadEvent = yield* threadCreatedEvent(now);
+      const threadId = threadEvent.threadId;
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      const reply: OrchestrationV2TurnItem = {
+        id: TurnItemId.make(`${threadId}:reply`),
+        threadId,
+        runId: null,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 1,
+        status: "completed",
+        title: null,
+        startedAt: now,
+        completedAt: now,
+        updatedAt: now,
+        type: "assistant_message",
+        messageId: MessageId.make(`${threadId}:reply`),
+        text: "Ship it.",
+        streaming: false,
+      };
+      const reactions = [{ emoji: "👍" as const, reactedAt: now }];
+      yield* eventSink.write({
+        events: [
+          threadEvent,
+          {
+            id: yield* idAllocator.allocate.event({ threadId }),
+            type: "turn-item.updated",
+            threadId,
+            occurredAt: now,
+            payload: { ...reply, reactions },
+          },
+        ],
+      });
+
+      const [stored] = yield* ingestor.ingestNormalized({
+        providerSessionId,
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+        event: { type: "turn_item.updated", driver: CODEX_DRIVER, turnItem: reply },
+      });
+
+      const sent = stored?.event.type === "turn-item.updated" ? stored.event.payload : undefined;
+      assert.deepEqual(sent?.type === "assistant_message" ? sent.reactions : undefined, reactions);
+      const item = yield* projectionStore.getTurnItem({ threadId, itemId: reply.id });
+      assert.deepEqual(item?.type === "assistant_message" ? item.reactions : undefined, reactions);
+    }),
+  );
+
   it.effect("rolls back runs a provider rewound off its active branch", () =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;

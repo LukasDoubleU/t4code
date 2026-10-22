@@ -425,6 +425,8 @@ import {
 } from "./chat/ChatOverlayHosts";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { selectedAssistantCitation } from "./chat/AssistantSelectionToolbar";
+import { goAheadTarget } from "./chat/AssistantReactions.logic";
+import { useReplyReactions } from "./chat/AssistantReactions";
 import { MessagesTimeline, type MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
@@ -1709,6 +1711,7 @@ export default function ChatView(props: ChatViewProps) {
     return labels;
   })();
   const activeThreadRef = useActiveThreadRef(activeThread);
+  const replyReactions = useReplyReactions(environmentId);
   const terminalActions = useThreadTerminalActions(activeThreadRef);
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
   const activeEnvironmentServerBrowser = useEnvironmentSupportsServerBrowser(
@@ -5891,6 +5894,14 @@ export default function ChatView(props: ChatViewProps) {
           return false;
         }
         window.getSelection()?.removeAllRanges();
+      },
+      "chat.goAhead": ({ event }) => {
+        const target =
+          isServerThread && serverProjection !== null && replyReactions.available
+            ? goAheadTarget(serverProjection, serverProjection.thread.id)
+            : null;
+        if (target === null) return false;
+        if (!event.repeat) void replyReactions.goAhead(target, timestampFormat);
       },
       "rightPanel.toggle": () => toggleRightPanelStable(),
       "rightPanel.toggleMaximized": ({ event }) => {

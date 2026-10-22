@@ -144,6 +144,7 @@ import {
   ThreadForkServiceV2,
 } from "./ThreadForkService.ts";
 import { planThreadDeletion } from "./ThreadDeletion.ts";
+import { withReaction } from "./messageReactions.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ServerSettings from "../serverSettings.ts";
 
@@ -470,6 +471,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.model-selection.set":
     case "provider-session.detach":
     case "message.dispatch":
+    case "message.reaction.set":
     case "notification.delivery.accept":
     case "prepared-run.release":
     case "prepared-run.progress":
@@ -8770,6 +8772,54 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
   });
 
+  // A reaction changes the reply only. The agent learns it with the next input it gets, so a
+  // reaction starts no turn, and the reply keeps its updatedAt, which clients show as its time.
+  const dispatchMessageReaction = Effect.fn("Orchestrator.dispatchMessageReaction")(function* (
+    command: Extract<OrchestrationV2Command, { readonly type: "message.reaction.set" }>,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+  ) {
+    const { thread, reply } = yield* Effect.all({
+      thread: projectionStore.getThread(command.threadId),
+      reply: projectionStore.getTurnItem({ threadId: command.threadId, itemId: command.itemId }),
+    }).pipe(
+      Effect.mapError(
+        (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
+      ),
+    );
+    if (
+      thread.deletedAt !== null ||
+      reply?.type !== "assistant_message" ||
+      reply.threadId !== command.threadId ||
+      reply.streaming
+    ) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: `Item ${command.itemId} is not a finished assistant reply in thread ${command.threadId}.`,
+      });
+    }
+    const now = yield* DateTime.now;
+    const updated = withReaction(reply, {
+      emoji: command.emoji,
+      reacted: command.reacted,
+      goAhead: command.goAhead === true,
+      at: now,
+    });
+    if (updated === null) return;
+    yield* emit(
+      events,
+      command,
+    )({
+      type: "turn-item.updated",
+      threadId: command.threadId,
+      ...(reply.runId === null ? {} : { runId: reply.runId }),
+      ...(reply.nodeId === null ? {} : { nodeId: reply.nodeId }),
+      providerInstanceId: thread.providerInstanceId,
+      occurredAt: now,
+      payload: updated,
+    });
+  });
+
   const dispatchQueuedRunEdit = Effect.fn("Orchestrator.dispatchQueuedRunEdit")(function* (
     command: Extract<OrchestrationV2Command, { readonly type: "queued-run.edit" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
@@ -11844,6 +11894,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* recordSubagentFollowup(command, events).pipe(mapDispatchError(command));
         break;
       }
+      case "message.reaction.set":
+        yield* dispatchMessageReaction(command, events);
+        break;
       case "notification.delivery.accept":
         yield* dispatchNotificationAccepted(command, events);
         break;
@@ -12086,7 +12139,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         planned.events.length > 0 ||
         command.type === "thread.background-work.settle" ||
         command.type === "thread.stop" ||
-        command.type === "subagent.stop"
+        command.type === "subagent.stop" ||
+        command.type === "message.reaction.set"
           ? Effect.succeed(planned)
           : Effect.fail(
               new OrchestratorDispatchError({

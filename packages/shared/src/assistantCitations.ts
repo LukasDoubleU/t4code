@@ -132,14 +132,16 @@ export function assistantCitationsToPlainText(prompt: string): string {
   });
 }
 
+/** How an agent reads the time of one of its replies, e.g. `2026-09-04 11:58 UTC`. */
+export function formatReplyTimeForProvider(repliedAt: DateTime.Utc): string {
+  return `${DateTime.formatIso(repliedAt).slice(0, 16).replace("T", " ")} UTC`;
+}
+
 function formatAssistantCitationForProvider(
   citation: AssistantCitation,
   repliedAt: DateTime.Utc | undefined,
 ): string {
-  const time =
-    repliedAt === undefined
-      ? null
-      : `${DateTime.formatIso(repliedAt).slice(0, 16).replace("T", " ")} UTC`;
+  const time = repliedAt === undefined ? null : formatReplyTimeForProvider(repliedAt);
   const quote = citation.text
     .replace(/^(?:[ \t]*\r?\n)+/, "")
     .trimEnd()

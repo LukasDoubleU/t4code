@@ -6,6 +6,7 @@ import type {
   MessageId,
   OrchestrationV2Actor,
   OrchestrationV2CreationSource,
+  OrchestrationV2MessageReactionEmoji,
   OrchestrationV2PlanArtifact,
   OrchestrationV2UserMessageInputIntent,
   PlanId,
@@ -95,6 +96,8 @@ export interface ChatMessage {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly inputIntent?: OrchestrationV2UserMessageInputIntent | undefined;
+  /** The user's reactions on an assistant reply. */
+  readonly reactions?: ReadonlyArray<OrchestrationV2MessageReactionEmoji> | undefined;
 }
 
 export interface ProposedPlan {

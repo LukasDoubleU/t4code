@@ -188,6 +188,7 @@ import {
   rememberTimelinePosition,
   timelineContentOverflowsViewport,
 } from "./timelineScrollAnchoring";
+import { AssistantReactionActions, AssistantReactionChips } from "./AssistantReactions";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { promptLinkFor } from "../promptLinks/copyPromptLink";
 import { PierreEntryIcon } from "./PierreEntryIcon";
@@ -2862,7 +2863,9 @@ function AssistantMessageMeta({
   alwaysVisible?: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
-  const revealButtonsOnly = !alwaysVisible && ctx.alwaysShowMessageTimes;
+  // A reaction chip stays visible, so its footer does too; the buttons still wait for hover.
+  const reacted = (message.reactions?.length ?? 0) > 0;
+  const revealButtonsOnly = !alwaysVisible && (ctx.alwaysShowMessageTimes || reacted);
   // A reply taller than the chat area keeps its time here too: its header is out of view.
   const timeOnlyInTurnFold =
     ctx.turnFoldReplies.get(message.runId ?? "")?.messageId === message.id &&
@@ -2881,6 +2884,11 @@ function AssistantMessageMeta({
           {projectedItem.item.status}
         </span>
       ) : null}
+      <AssistantReactionChips
+        environmentId={ctx.activeThreadEnvironmentId}
+        projectedItem={projectedItem}
+        reactions={message.reactions}
+      />
       <div
         className={cn(
           "flex items-center gap-2 transition-opacity duration-200 empty:hidden",
@@ -2895,6 +2903,14 @@ function AssistantMessageMeta({
         {projectedItem?.item.type === "assistant_message" ? (
           <AssistantForkButton projectedItem={projectedItem} />
         ) : null}
+        {copyStreaming ? null : (
+          <AssistantReactionActions
+            environmentId={ctx.activeThreadEnvironmentId}
+            projectedItem={projectedItem}
+            reactions={message.reactions}
+            timestampFormat={ctx.timestampFormat}
+          />
+        )}
       </div>
       {!message.streaming && !timeOnlyInTurnFold && (
         <MessageTime
@@ -2904,6 +2920,10 @@ function AssistantMessageMeta({
           className={cn(
             "text-muted-foreground text-xs",
             ctx.alwaysShowMessageTimes && "order-first",
+            reacted &&
+              !alwaysVisible &&
+              !ctx.alwaysShowMessageTimes &&
+              ASSISTANT_MESSAGE_META_REVEAL,
           )}
         />
       )}

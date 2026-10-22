@@ -153,6 +153,9 @@ shortcut; assign one in **Settings → Keybindings**.
 `chat.citeSelection` [cites the text you selected](./composer.md#quote-an-assistant-response)
 in an assistant response, like the **Cite** button. It has no default shortcut either.
 
+`chat.goAhead` [approves the latest response](./composer.md#react-to-a-response) like its
+**Go ahead** button. It has no default shortcut either.
+
 `thread.undo` (`mod+z` by default) reverses the actions shown in the notice at the
 bottom of the sidebar, such as unpin, settle, snooze, archive, or discarding a
 draft. Consecutive

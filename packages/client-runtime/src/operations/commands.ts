@@ -13,6 +13,7 @@ import {
   type NodeId,
   type OrchestrationV2Command,
   type OrchestrationV2CreationSource,
+  type OrchestrationV2MessageReactionEmoji,
   type PlanId,
   type ProjectId,
   type ProjectIconOverride,
@@ -25,6 +26,7 @@ import {
   type RuntimeRequestId,
   type ThreadId,
   type ThreadEnvMode,
+  type TurnItemId,
   type UploadChatAttachment,
 } from "@t3tools/contracts";
 import { modelSelectionCommandType } from "@t3tools/shared/model";
@@ -117,6 +119,13 @@ export interface VisitThreadInput extends ThreadCommandInput {
 }
 
 export type MarkThreadUnreadInput = ThreadCommandInput;
+
+export interface SetMessageReactionInput extends ThreadCommandInput {
+  readonly itemId: TurnItemId;
+  readonly emoji: OrchestrationV2MessageReactionEmoji;
+  readonly reacted: boolean;
+  readonly goAhead?: boolean;
+}
 
 export interface UpdateThreadMetadataInput extends ThreadCommandInput {
   readonly limitRecovery?: import("@t3tools/contracts").OrchestrationV2LimitRecoveryUpdate | null;
@@ -547,6 +556,20 @@ export const markThreadUnread = Effect.fn("EnvironmentCommands.markThreadUnread"
     type: "thread.mark-unread",
     commandId: yield* allocateCommandId(input),
     threadId: input.threadId,
+  });
+});
+
+export const setMessageReaction = Effect.fn("EnvironmentCommands.setMessageReaction")(function* (
+  input: SetMessageReactionInput,
+) {
+  return yield* dispatch({
+    type: "message.reaction.set",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    itemId: input.itemId,
+    emoji: input.emoji,
+    reacted: input.reacted,
+    ...(input.goAhead === true ? { goAhead: true } : {}),
   });
 });
 

@@ -36,6 +36,7 @@ import { ThreadTitleRegeneration } from "./threadTitle.ts";
 import {
   OrchestrationV2Actor,
   OrchestrationV2CreationSource,
+  OrchestrationV2MessageReactionEmoji,
   OrchestrationV2RunStatus,
   OrchestrationV2TurnItemStatus,
 } from "./orchestrationV2.ts";
@@ -498,6 +499,12 @@ export const OrchestratorMcpThreadTimelineItem = Schema.Struct({
   textTruncated: Schema.Boolean,
   nextTextOffset: Schema.optional(Schema.NullOr(NonNegativeInt)),
   updatedAt: IsoDateTime,
+  /** The user's reactions on an assistant reply. */
+  reactions: Schema.optional(
+    Schema.Array(
+      Schema.Struct({ emoji: OrchestrationV2MessageReactionEmoji, reactedAt: IsoDateTime }),
+    ),
+  ),
 });
 export type OrchestratorMcpThreadTimelineItem = typeof OrchestratorMcpThreadTimelineItem.Type;
 

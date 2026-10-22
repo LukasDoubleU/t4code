@@ -903,6 +903,14 @@ function timelineItem(input: {
     textTruncated,
     nextTextOffset: textTruncated ? end : null,
     updatedAt: DateTime.formatIso(input.row.item.updatedAt),
+    ...(input.row.item.type === "assistant_message" && input.row.item.reactions !== undefined
+      ? {
+          reactions: input.row.item.reactions.map((reaction) => ({
+            emoji: reaction.emoji,
+            reactedAt: DateTime.formatIso(reaction.reactedAt),
+          })),
+        }
+      : {}),
   };
 }
 

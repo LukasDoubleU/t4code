@@ -523,6 +523,23 @@ describe("CodexAdapterV2 runtime policy", () => {
     }),
   );
 
+  it.effect("sends the reminder to save the memory next to the memory line", () =>
+    Effect.gen(function* () {
+      const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
+        nativeThreadId: "native-thread-memory-reminder",
+        codexInput: [{ type: "text", text: "continue" }],
+        runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: null },
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+        memoryInstructions: "MEMORY LINE",
+        memoryReminder: "SAVE YOUR MEMORY",
+      });
+      assert.deepEqual(params.additionalContext, {
+        t3_thread_memory: { kind: "application", value: "MEMORY LINE" },
+        t3_memory_reminder: { kind: "application", value: "SAVE YOUR MEMORY" },
+      });
+    }),
+  );
+
   it.effect("adds default-mode developer instructions when the T3 MCP server is attached", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({

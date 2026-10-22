@@ -454,6 +454,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.auto-settle.set":
     case "thread.pin":
     case "thread.unpin":
+    case "thread.fresh-start":
     case "thread.pin.reorder":
     case "thread.active.reorder":
     case "thread.visit":
@@ -544,6 +545,20 @@ function withoutPreparationResult(
 ) {
   const { output: _output, exitCode: _exitCode, outputIndicatesFailure: _failure, ...rest } = item;
   return rest;
+}
+
+/** The server's turn count alone, which must not move the thread in update-time order. */
+function isMemoryTurnCount(
+  command: Extract<OrchestrationV2Command, { readonly type: "thread.metadata.update" }>,
+): boolean {
+  const {
+    type: _type,
+    commandId: _commandId,
+    threadId: _threadId,
+    memoryUnchangedTurns,
+    ...rest
+  } = command;
+  return memoryUnchangedTurns !== undefined && Object.values(rest).every((v) => v === undefined);
 }
 
 function isBlockingRun(run: OrchestrationV2Run): boolean {
@@ -2441,6 +2456,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ...(command.linkOrigin === undefined || command.delegatedFrom === undefined
         ? {}
         : { delegatedFrom: command.delegatedFrom }),
+      ...(command.continuedFrom === undefined ? {} : { continuedFrom: command.continuedFrom }),
       lineage: {
         parentThreadId: null,
         relationshipToParent: null,
@@ -3221,7 +3237,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               : command.regenerateTitle === false || command.title !== undefined
                 ? { titleRegeneration: null }
                 : {}),
-            updatedAt: now,
+            ...(command.continuedIn === undefined ? {} : { continuedIn: command.continuedIn }),
+            ...(command.memoryUnchangedTurns === undefined
+              ? {}
+              : { memoryUnchangedTurns: command.memoryUnchangedTurns }),
+            updatedAt: isMemoryTurnCount(command) ? thread.updatedAt : now,
           };
         }
         case "thread.pull-request.link":

@@ -62,6 +62,7 @@ const layerTest = RunExecutionService.layer.pipe(
 const startTurnOf = (
   appThread: OrchestrationV2AppThread,
   nativeForkSource?: RunExecutionService.RunExecutionServiceV2StartRootRunInput["nativeForkSource"],
+  contextNearlyFull?: boolean,
 ) =>
   Effect.gen(function* () {
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
@@ -96,6 +97,7 @@ const startTurnOf = (
       attemptId,
       providerTurnOrdinal: 1,
       ...(nativeForkSource === undefined ? {} : { nativeForkSource }),
+      ...(contextNearlyFull === undefined ? {} : { contextNearlyFull }),
       message: {
         messageId: MessageId.make(`message:${appThread.id}`),
         text: "Carry on.",
@@ -181,5 +183,45 @@ it.effect("hands a native fork of a pinned thread the note about its source's me
       { id: ThreadId.make("thread:never-pinned"), pinned: false },
     );
     assert.isUndefined(quietSource.forkedMemoryNote);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("tells a pinned thread near a full context to save its memory, and no other", () =>
+  Effect.gen(function* () {
+    const pinnedId = ThreadId.make("thread:pinned-near-full");
+    const pinned = yield* startTurnOf(
+      {
+        id: pinnedId,
+        pinnedAt: yield* DateTime.now,
+        lineage: ownLineage(pinnedId),
+      } as OrchestrationV2AppThread,
+      undefined,
+      true,
+    );
+    assert.isDefined(pinned.threadMemory);
+    assert.equal(
+      pinned.memoryReminder,
+      ThreadMemory.threadMemoryNudge(pinned.threadMemory?.path ?? ""),
+    );
+
+    const unpinnedId = ThreadId.make("thread:unpinned-near-full");
+    const unpinned = yield* startTurnOf(
+      {
+        id: unpinnedId,
+        pinnedAt: null,
+        lineage: ownLineage(unpinnedId),
+      } as OrchestrationV2AppThread,
+      undefined,
+      true,
+    );
+    assert.isUndefined(unpinned.memoryReminder);
+
+    const roomyId = ThreadId.make("thread:pinned-roomy");
+    const roomy = yield* startTurnOf({
+      id: roomyId,
+      pinnedAt: yield* DateTime.now,
+      lineage: ownLineage(roomyId),
+    } as OrchestrationV2AppThread);
+    assert.isUndefined(roomy.memoryReminder);
   }).pipe(Effect.provide(layerTest)),
 );

@@ -731,6 +731,7 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
     readonly appContext?: ProviderAdapter.ProviderAdapterV2TurnInput["appContext"];
     readonly memoryInstructions?: string;
     readonly forkedMemoryNote?: string;
+    readonly memoryReminder?: string;
   }) {
     const runtimeModeDefaults = codexRuntimeModeTurnDefaults(input.runtimePolicy.runtimeMode);
     const approvalPolicy =
@@ -781,6 +782,9 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
       ...(input.forkedMemoryNote === undefined
         ? {}
         : { t3_forked_memory: { kind: "application" as const, value: input.forkedMemoryNote } }),
+      ...(input.memoryReminder === undefined
+        ? {}
+        : { t3_memory_reminder: { kind: "application" as const, value: input.memoryReminder } }),
     };
     const additionalContext =
       t3Context === undefined &&
@@ -6353,6 +6357,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               ...(turnInput.forkedMemoryNote === undefined
                 ? {}
                 : { forkedMemoryNote: turnInput.forkedMemoryNote }),
+              ...(turnInput.memoryReminder === undefined
+                ? {}
+                : { memoryReminder: turnInput.memoryReminder }),
             });
             yield* Ref.update(pendingRootTurns, (current) => {
               const updated = new Map(current);

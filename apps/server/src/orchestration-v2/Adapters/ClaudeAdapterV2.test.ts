@@ -6233,6 +6233,7 @@ ${threadMemory.instructions}
         readonly pinned: boolean;
         readonly nativeThreadHasTurns?: boolean;
         readonly forkedMemoryNote?: string;
+        readonly memoryReminder?: string;
       },
     ) {
       yield* harness.runtime.startTurn({
@@ -6257,6 +6258,7 @@ ${threadMemory.instructions}
         ...(input.forkedMemoryNote === undefined
           ? {}
           : { forkedMemoryNote: input.forkedMemoryNote }),
+        ...(input.memoryReminder === undefined ? {} : { memoryReminder: input.memoryReminder }),
       });
       const offered = harness.offeredMessages.at(-1)?.message.content;
       yield* harness.offerAndWait(
@@ -6323,6 +6325,29 @@ ${reminder}
       ]);
 
       assert.deepEqual(yield* runTurn(2, { pinned }), ["Turn 2."]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect("passes the reminder to save the memory with the one turn that carries it", () =>
+    Effect.gen(function* () {
+      const { threadMemory, runTurn } = yield* makeMemoryHarness;
+      const memoryReminder = "REMINDER: update the memory file before compaction.";
+
+      assert.deepEqual(yield* runTurn(1, { pinned: true }), ["Turn 1."]);
+      // The session already has the memory line, so the reminder travels alone.
+      assert.deepEqual(yield* runTurn(2, { pinned: true, memoryReminder }), [
+        `<system-reminder>
+${memoryReminder}
+</system-reminder>`,
+        "Turn 2.",
+      ]);
+      assert.deepEqual(yield* runTurn(3, { pinned: true }), ["Turn 3."]);
+      assert.include(threadMemory.instructions, "MEMORY LINE");
     }).pipe(
       Effect.scoped,
       Effect.provide(

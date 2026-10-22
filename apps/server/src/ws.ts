@@ -195,6 +195,7 @@ import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
+import * as ThreadFreshStart from "./memory/ThreadFreshStart.ts";
 import * as ThreadMemory from "./memory/ThreadMemory.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
@@ -1222,6 +1223,7 @@ export const layerWsRpc = (
         }
       };
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
+      const threadFreshStart = yield* ThreadFreshStart.ThreadFreshStart;
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
@@ -1832,16 +1834,27 @@ export const layerWsRpc = (
             Effect.andThen(
               startup
                 .enqueueCommand(
-                  (command.type === "prepared-run.retry"
-                    ? threadLaunch.retryPreparation(command)
-                    : ThreadMessageIntake.dispatchCommand(
-                        ThreadManagementService.withCreationProvenance(command, {
-                          createdBy: "user",
-                          creationSource:
-                            "creationSource" in command ? command.creationSource : "web",
-                        }),
-                      )
-                  ).pipe(Effect.provide(intakeContext)),
+                  Effect.gen(function* () {
+                    if (command.type === "prepared-run.retry") {
+                      return yield* threadLaunch.retryPreparation(command);
+                    }
+                    if (command.type === "thread.fresh-start") {
+                      return yield* threadFreshStart.freshStart({
+                        commandId: command.commandId,
+                        threadId: command.threadId,
+                        newThreadId: command.newThreadId,
+                        createdBy: "user",
+                        creationSource: "web",
+                      });
+                    }
+                    return yield* ThreadMessageIntake.dispatchCommand(
+                      ThreadManagementService.withCreationProvenance(command, {
+                        createdBy: "user",
+                        creationSource:
+                          "creationSource" in command ? command.creationSource : "web",
+                      }),
+                    );
+                  }).pipe(Effect.provide(intakeContext)),
                 )
                 .pipe(
                   Effect.tap(() => recordClientCommandAnalytics(command)),

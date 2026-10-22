@@ -567,6 +567,8 @@ export interface RunExecutionServiceV2StartRootRunInput {
   readonly nativeThreadHasTurns?: boolean;
   /** The thread whose native history this run's fork copies, on the fork's first run. */
   readonly nativeForkSource?: { readonly id: ThreadId; readonly pinned: boolean };
+  /** The context came close to its limit since the previous turn. */
+  readonly contextNearlyFull?: boolean;
   readonly loadInheritedBackgroundTurnItems?: () => Effect.Effect<
     ReadonlyArray<InheritedBackgroundTurnItemRoute>,
     unknown
@@ -1559,6 +1561,9 @@ export const layer: Layer.Layer<
           ...(appContext.length === 0 ? {} : { appContext }),
           ...(memory === undefined ? {} : { threadMemory: memory }),
           ...(forkedMemoryNote === undefined ? {} : { forkedMemoryNote }),
+          ...(memory === undefined || input.contextNearlyFull !== true
+            ? {}
+            : { memoryReminder: ThreadMemory.threadMemoryNudge(memory.path) }),
         };
         // Check after the context read: ingestion can settle the run while
         // it awaits. A failed ownership read fails the start below.

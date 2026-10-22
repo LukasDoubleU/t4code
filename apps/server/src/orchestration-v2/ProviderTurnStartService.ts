@@ -30,6 +30,7 @@ import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
+import * as ThreadMemory from "../memory/ThreadMemory.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { makeIsManagedWorktreePath } from "../worktreesDirectory.ts";
 import * as EventSink from "./EventSink.ts";
@@ -1260,6 +1261,10 @@ export const layer: Layer.Layer<
               .map((turn) => turn.ordinal),
           ) + 1,
         ...(nativeForkSource === undefined ? {} : { nativeForkSource }),
+        ...(isUserPinnedThread(projection.thread) &&
+        ThreadMemory.memoryNudgeDue(projection.providerTurns, providerThread.id)
+          ? { contextNearlyFull: true }
+          : {}),
         nativeThreadHasTurns:
           nativeInputRunIds.size > 0 ||
           (legacyInputRunIds.size > 0 &&

@@ -1,5 +1,5 @@
 import type { LegendListRef } from "@legendapp/list/react";
-import type { AssistantCitation, MessageId, ScopedThreadRef } from "@t3tools/contracts";
+import type { AssistantCitation, MessageId, ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import {
   resolveAssistantCitationRange,
@@ -335,6 +335,7 @@ export function observeAssistantCitationSource({
 export function AssistantCitationSource({
   messageId,
   threadRef,
+  reactionItemId,
   itemKey,
   request,
   listRef,
@@ -342,6 +343,8 @@ export function AssistantCitationSource({
 }: {
   messageId: MessageId;
   threadRef?: ScopedThreadRef;
+  /** The reply's turn item when the user can react to a passage of it. */
+  reactionItemId?: TurnItemId | undefined;
   itemKey: string;
   request: AssistantCitationTarget | null;
   listRef: RefObject<LegendListRef | null>;
@@ -361,6 +364,7 @@ export function AssistantCitationSource({
       data-assistant-citation-source={messageId}
       data-assistant-citation-environment={threadRef?.environmentId}
       data-assistant-citation-thread={threadRef?.threadId}
+      data-assistant-reaction-item={reactionItemId}
     >
       {children}
     </div>

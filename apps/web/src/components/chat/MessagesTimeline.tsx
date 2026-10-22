@@ -188,7 +188,9 @@ import {
   rememberTimelinePosition,
   timelineContentOverflowsViewport,
 } from "./timelineScrollAnchoring";
+import { AssistantPassageReactionChips } from "./AssistantPassageReactions";
 import { AssistantReactionActions, AssistantReactionChips } from "./AssistantReactions";
+import { reactableReply } from "./AssistantReactions.logic";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { promptLinkFor } from "../promptLinks/copyPromptLink";
 import { PierreEntryIcon } from "./PierreEntryIcon";
@@ -2744,6 +2746,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           <AssistantCitationSource
             messageId={row.message.id}
             {...(ctx.threadRef ? { threadRef: ctx.threadRef } : {})}
+            reactionItemId={reactableReply(row.projectedItem)?.itemId}
             itemKey={row.id}
             request={ctx.citationRequest}
             listRef={ctx.listRef}
@@ -2864,7 +2867,8 @@ function AssistantMessageMeta({
 }) {
   const ctx = use(TimelineRowCtx);
   // A reaction chip stays visible, so its footer does too; the buttons still wait for hover.
-  const reacted = (message.reactions?.length ?? 0) > 0;
+  const reacted =
+    (message.reactions?.length ?? 0) > 0 || (message.passageReactions?.length ?? 0) > 0;
   const revealButtonsOnly = !alwaysVisible && (ctx.alwaysShowMessageTimes || reacted);
   // A reply taller than the chat area keeps its time here too: its header is out of view.
   const timeOnlyInTurnFold =
@@ -2888,6 +2892,13 @@ function AssistantMessageMeta({
         environmentId={ctx.activeThreadEnvironmentId}
         projectedItem={projectedItem}
         reactions={message.reactions}
+      />
+      <AssistantPassageReactionChips
+        environmentId={ctx.activeThreadEnvironmentId}
+        threadRef={ctx.threadRef}
+        messageId={message.id}
+        projectedItem={projectedItem}
+        reactions={message.passageReactions}
       />
       <div
         className={cn(

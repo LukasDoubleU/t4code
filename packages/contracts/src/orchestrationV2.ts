@@ -147,6 +147,18 @@ export const OrchestrationV2AppThreadLineage = Schema.Struct({
 });
 export type OrchestrationV2AppThreadLineage = typeof OrchestrationV2AppThreadLineage.Type;
 
+/**
+ * Whether the user pinned this thread. Subagents and delegated tasks have no
+ * sidebar row to pin from, and ones created by older builds copied their
+ * parent's `pinnedAt`, so their pin is never the user's.
+ */
+export function isUserPinnedThread(thread: {
+  readonly pinnedAt?: unknown;
+  readonly lineage: Pick<OrchestrationV2AppThreadLineage, "relationshipToParent">;
+}): boolean {
+  return thread.pinnedAt != null && thread.lineage.relationshipToParent !== "subagent";
+}
+
 export const OrchestrationV2ContextTransferType = Schema.Literals([
   "fork",
   "provider_handoff",

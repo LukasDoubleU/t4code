@@ -26,6 +26,7 @@ import {
   type OrchestrationV2ThreadTranscript,
   type OrchestrationV2ThreadShell,
   type OrchestrationV2TurnItem,
+  isUserPinnedThread,
   ProjectId,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   ProviderInstanceId,
@@ -390,9 +391,10 @@ export interface ThreadManagementServiceShape {
     readonly includeSubagents: boolean;
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2ThreadShell>, ThreadManagementError>;
   /** The pinned threads of every project, newest first. */
-  readonly listPinnedThreads: (input: {
-    readonly includeSubagents: boolean;
-  }) => Effect.Effect<ReadonlyArray<OrchestrationV2ThreadShell>, Orchestrator.OrchestratorV2Error>;
+  readonly listPinnedThreads: () => Effect.Effect<
+    ReadonlyArray<OrchestrationV2ThreadShell>,
+    Orchestrator.OrchestratorV2Error
+  >;
   readonly sendToThread: (
     input: ThreadManagementSendInput,
   ) => Effect.Effect<ThreadManagementSendResult, ThreadManagementFailure>;
@@ -769,10 +771,12 @@ const make = Effect.gen(function* () {
       Effect.map((snapshot) => newestFirst(snapshot.threads, input.includeSubagents)),
     );
 
-  const listPinnedThreads: ThreadManagementServiceShape["listPinnedThreads"] = (input) =>
+  const listPinnedThreads: ThreadManagementServiceShape["listPinnedThreads"] = () =>
     orchestrator
       .getShellSnapshot({ location: "active", pinnedOnly: true })
-      .pipe(Effect.map((snapshot) => newestFirst(snapshot.threads, input.includeSubagents)));
+      .pipe(
+        Effect.map((snapshot) => newestFirst(snapshot.threads.filter(isUserPinnedThread), false)),
+      );
 
   const sendToThread: ThreadManagementServiceShape["sendToThread"] = Effect.fn(
     "ThreadManagementService.sendToThread",

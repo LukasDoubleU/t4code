@@ -313,7 +313,10 @@ const make = Effect.gen(function* () {
   )(function* (scope, input) {
     if (!(yield* asksLinks(scope))) return { threads: [], total: 0, unlisted: [] };
     const { answering, silent } = yield* answeringLinks;
-    const { cursor: _cursor, ...listing } = input;
+    const { cursor: _cursor, ...rest } = input;
+    // A linked environment on an older build still lists children that copied
+    // their parent's pin, unless it is told to leave children out.
+    const listing = { ...rest, includeSubagents: false };
     const listed = yield* Effect.forEach(
       answering,
       (link) =>

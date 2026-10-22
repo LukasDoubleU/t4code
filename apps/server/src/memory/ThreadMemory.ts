@@ -1,4 +1,8 @@
-import { threadMemoryFilePath, type OrchestrationV2AppThread } from "@t3tools/contracts";
+import {
+  isUserPinnedThread,
+  threadMemoryFilePath,
+  type OrchestrationV2AppThread,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -28,7 +32,7 @@ export class ThreadMemory extends Context.Service<
     readonly directory: string;
     /** The memory a turn of this thread carries, or undefined while it sleeps. */
     readonly forTurn: (
-      thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt">,
+      thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt" | "lineage">,
     ) => Effect.Effect<{ readonly path: string; readonly instructions: string } | undefined>;
   }
 >()("t3/memory/ThreadMemory") {}
@@ -43,9 +47,9 @@ const make = Effect.gen(function* () {
   const directory = path.join(config.stateDir, "memory");
 
   const forTurn = Effect.fn("ThreadMemory.forTurn")(function* (
-    thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt">,
+    thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt" | "lineage">,
   ) {
-    if (thread.pinnedAt == null) return undefined;
+    if (!isUserPinnedThread(thread)) return undefined;
     const current = yield* settings.getSettings.pipe(
       Effect.catch((cause) =>
         Effect.logWarning("Thread memory could not read the server settings.", { cause }).pipe(

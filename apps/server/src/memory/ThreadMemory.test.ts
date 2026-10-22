@@ -20,6 +20,7 @@ const layerWithSetting = (pinnedThreadsKeepMemory: boolean) =>
   );
 
 const threadId = ThreadId.make("thread:pinned-expert");
+const lineage = { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId };
 
 describe("ThreadMemory", () => {
   it.effect("gives a pinned thread its memory file and the line that points at it", () =>
@@ -30,7 +31,7 @@ describe("ThreadMemory", () => {
       const path = yield* Path.Path;
       const expectedPath = path.join(config.stateDir, "memory", "thread_pinned-expert.md");
 
-      const turn = yield* memory.forTurn({ id: threadId, pinnedAt: yield* DateTime.now });
+      const turn = yield* memory.forTurn({ id: threadId, pinnedAt: yield* DateTime.now, lineage });
 
       assert.deepEqual(turn, {
         path: expectedPath,
@@ -48,15 +49,33 @@ describe("ThreadMemory", () => {
   it.effect("lets the memory of an unpinned thread sleep", () =>
     Effect.gen(function* () {
       const memory = yield* ThreadMemory.ThreadMemory;
-      assert.isUndefined(yield* memory.forTurn({ id: threadId, pinnedAt: null }));
-      assert.isUndefined(yield* memory.forTurn({ id: threadId }));
+      assert.isUndefined(yield* memory.forTurn({ id: threadId, pinnedAt: null, lineage }));
+      assert.isUndefined(yield* memory.forTurn({ id: threadId, lineage }));
+    }).pipe(Effect.provide(layerWithSetting(true))),
+  );
+
+  it.effect("gives no memory to a delegated task or subagent that copied its parent's pin", () =>
+    Effect.gen(function* () {
+      const memory = yield* ThreadMemory.ThreadMemory;
+      const child = yield* memory.forTurn({
+        id: ThreadId.make("thread:delegated-task"),
+        pinnedAt: yield* DateTime.now,
+        lineage: {
+          parentThreadId: threadId,
+          relationshipToParent: "subagent",
+          rootThreadId: threadId,
+        },
+      });
+      assert.isUndefined(child);
     }).pipe(Effect.provide(layerWithSetting(true))),
   );
 
   it.effect("lets every memory sleep while the setting is off", () =>
     Effect.gen(function* () {
       const memory = yield* ThreadMemory.ThreadMemory;
-      assert.isUndefined(yield* memory.forTurn({ id: threadId, pinnedAt: yield* DateTime.now }));
+      assert.isUndefined(
+        yield* memory.forTurn({ id: threadId, pinnedAt: yield* DateTime.now, lineage }),
+      );
     }).pipe(Effect.provide(layerWithSetting(false))),
   );
 });

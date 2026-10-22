@@ -8,6 +8,7 @@ import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as SqlClient from "effect/sql/SqlClient";
+import { clampThreadTailLimit, threadTailMessage } from "@t3tools/shared/threadTail";
 
 import {
   annotateEnvironmentRequest,
@@ -219,6 +220,34 @@ export const layer = HttpApiBuilder.group(
             ...boundedSnapshotResponseFields({
               bounded,
               compactTurnItems: args.query.compactTurnItems === "1",
+            }),
+          };
+        }),
+      )
+      .handle(
+        "threadTail",
+        Effect.fn("environment.orchestration.threadTail")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          const page = yield* threadManagement
+            .getTimelinePage(args.params.threadId, {
+              tail: true,
+              limit: clampThreadTailLimit(args.query.limit),
+            })
+            .pipe(
+              traceLocalHandlerWork,
+              Effect.catch(
+                Effect.fnUntraced(function* (cause) {
+                  if (isThreadNotFound(cause))
+                    return yield* failEnvironmentNotFound("thread_not_found");
+                  return yield* failEnvironmentInternal("orchestration_thread_tail_failed", cause);
+                }),
+              ),
+            );
+          return {
+            messages: page.items.flatMap((row) => {
+              const message = threadTailMessage(row);
+              return message === null ? [] : [message];
             }),
           };
         }),

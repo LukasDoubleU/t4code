@@ -88,6 +88,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
 
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
+import { selectThreadTailRows } from "@t3tools/shared/threadTail";
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
 import {
   isThreadHistoryUserTurn,
@@ -373,6 +374,8 @@ export interface ProjectionTimelinePageOptions {
   readonly itemId?: TurnItemId;
   readonly view?: "messages" | "activity";
   readonly limit: number;
+  /** The last `limit` user messages and run replies instead, as `selectThreadTailRows` picks them. */
+  readonly tail?: boolean;
 }
 export interface ProjectionTimelinePage {
   readonly items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>;
@@ -5573,17 +5576,18 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         .withTransaction(
           Effect.gen(function* () {
             const index = yield* readTimelineIndex(threadId, new Set());
-            const matching = index.visible
-              .map((row, position) => ({ ...row, position }))
-              .filter((row) =>
-                options.itemId === undefined
-                  ? row.position > (options.afterPosition ?? -1) &&
-                    (options.view === "activity" ||
-                      ["user_message", "assistant_message", "proposed_plan"].includes(
-                        row.item.type,
-                      ))
-                  : row.sourceItemId === options.itemId,
-              );
+            const visible = index.visible.map((row, position) => ({ ...row, position }));
+            const matching = options.tail
+              ? selectThreadTailRows(visible, options.limit)
+              : visible.filter((row) =>
+                  options.itemId === undefined
+                    ? row.position > (options.afterPosition ?? -1) &&
+                      (options.view === "activity" ||
+                        ["user_message", "assistant_message", "proposed_plan"].includes(
+                          row.item.type,
+                        ))
+                    : row.sourceItemId === options.itemId,
+                );
             const page = matching.slice(0, options.limit);
             const items = yield* Effect.forEach(page, (row) =>
               Effect.gen(function* () {
@@ -7385,13 +7389,17 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
       getTimelinePage: (threadId, options) =>
         service.getThreadProjection(threadId).pipe(
           Effect.map((projection) => {
-            const matching = projection.visibleTurnItems.filter((row) =>
-              options.itemId === undefined
-                ? row.position > (options.afterPosition ?? -1) &&
-                  (options.view === "activity" ||
-                    ["user_message", "assistant_message", "proposed_plan"].includes(row.item.type))
-                : row.sourceItemId === options.itemId,
-            );
+            const matching = options.tail
+              ? selectThreadTailRows(projection.visibleTurnItems, options.limit)
+              : projection.visibleTurnItems.filter((row) =>
+                  options.itemId === undefined
+                    ? row.position > (options.afterPosition ?? -1) &&
+                      (options.view === "activity" ||
+                        ["user_message", "assistant_message", "proposed_plan"].includes(
+                          row.item.type,
+                        ))
+                    : row.sourceItemId === options.itemId,
+                );
             return {
               items: matching.slice(0, options.limit),
               totalItems: projection.visibleTurnItems.length,

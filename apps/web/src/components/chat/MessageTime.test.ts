@@ -6,6 +6,7 @@ import {
   messageTimeLabel,
   parseTurnFoldReplyKey,
   subscribeToRelativeTimeChanges,
+  tallTurnFoldReplyKey,
   turnFoldReplyKey,
 } from "./MessageTime";
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
@@ -157,5 +158,31 @@ describe("turn fold replies", () => {
     const streaming = replyRow(assistantMessage("next", OTHER_RUN, true));
     expect(turnFoldReplyKey([...settled, streaming])).toBe(turnFoldReplyKey(settled));
     expect(turnFoldReplyKey([replyRow(assistantMessage("reply", RUN))])).toBe("");
+  });
+});
+
+describe("tallTurnFoldReplyKey", () => {
+  const replies = parseTurnFoldReplyKey(
+    turnFoldReplyKey([
+      foldRow(RUN),
+      replyRow(assistantMessage("long", RUN)),
+      foldRow(OTHER_RUN),
+      replyRow(assistantMessage("short", OTHER_RUN)),
+    ]),
+  );
+
+  it("keeps the end time for replies taller than the visible area only", () => {
+    const heights = new Map([
+      ["long", 900],
+      ["short", 400],
+    ]);
+    expect(tallTurnFoldReplyKey(replies, (id) => heights.get(id), 600)).toBe("long");
+    expect(tallTurnFoldReplyKey(replies, (id) => heights.get(id), 900)).toBe("");
+    expect(tallTurnFoldReplyKey(replies, (id) => heights.get(id), 300)).toBe("long\nshort");
+  });
+
+  it("treats unmeasured rows and an unmeasured viewport as fitting", () => {
+    expect(tallTurnFoldReplyKey(replies, () => undefined, 600)).toBe("");
+    expect(tallTurnFoldReplyKey(replies, () => 900, 0)).toBe("");
   });
 });

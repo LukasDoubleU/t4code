@@ -27,7 +27,7 @@ import type * as Tool from "effect/ai/Tool";
 
 import { assertNotLinked, callerLinkOrigin } from "../mcp/linkOrigin.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
-import { readCaller, unavailable } from "../mcp/threadAccess.ts";
+import { readCaller, receivedMessage, unavailable } from "../mcp/threadAccess.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as PeerLinks from "./PeerLinks.ts";
 import * as PeerMcpClient from "./PeerMcpClient.ts";
@@ -74,7 +74,10 @@ export class PeerForwarding extends Context.Service<
       environmentId: EnvironmentId,
       input: OrchestratorMcpThreadInterruptInput,
     ) => Effect.Effect<OrchestratorMcpThreadInterruptResult, OrchestratorMcpFailure>;
-    /** `t3_thread_wait` there, in pieces short enough to survive any route. */
+    /**
+     * `t3_thread_wait` there, in pieces short enough to survive any route.
+     * Unlike `call`, a message for the caller's thread does not end it.
+     */
     readonly waitForThread: (
       scope: Scope,
       environmentId: EnvironmentId,
@@ -235,9 +238,37 @@ const make = Effect.gen(function* () {
     }
   });
 
+  /**
+   * An agent's own `t3_thread_wait` blocks its turn here, so a message for its
+   * thread ends the wait here, whatever the run there does. The run there is
+   * read once more for its state then.
+   */
+  const waitAsCaller = Effect.fn("PeerForwarding.waitAsCaller")(function* (
+    scope: Scope,
+    environmentId: EnvironmentId,
+    input: OrchestratorMcpThreadWaitInput,
+  ) {
+    const settles = waitForThread(scope, environmentId, input);
+    if (scope.thread === undefined) return yield* settles;
+    const woken = threads.awaitIncomingMessage(scope.thread.threadId).pipe(
+      Effect.mapError(unavailable),
+      Effect.flatMap((incoming) =>
+        Effect.all(
+          [
+            waitForThread(scope, environmentId, { ...input, timeoutMs: 1 }),
+            receivedMessage(threads, incoming),
+          ],
+          { concurrency: 2 },
+        ),
+      ),
+      Effect.map(([result, messageReceived]) => ({ ...result, timedOut: false, messageReceived })),
+    );
+    return yield* Effect.raceFirst(settles, woken);
+  });
+
   const call: PeerForwarding["Service"]["call"] = (scope, tool, environmentId, params) =>
     tool.name === "t3_thread_wait"
-      ? (waitForThread(
+      ? (waitAsCaller(
           scope,
           environmentId,
           params as OrchestratorMcpThreadWaitInput,

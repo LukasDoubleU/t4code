@@ -2,6 +2,7 @@ import type { ProjectionRecordField } from "../orchestration-v2/ProjectionStore.
 import {
   CommandId,
   OrchestratorMcpFailure,
+  type OrchestratorMcpThreadWaitMessage,
   type ProjectId,
   type ProviderInstanceId,
   type ProviderInteractionMode,
@@ -9,6 +10,7 @@ import {
   type ThreadId,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
+import { truncate } from "@t3tools/shared/String";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 
@@ -200,4 +202,30 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
 export const newCommandId = Effect.fn("mcp.newCommandId")(function* () {
   const crypto = yield* Crypto.Crypto;
   return CommandId.make(`mcp:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`);
+});
+
+const WAIT_MESSAGE_PREVIEW_CHARS = 200;
+
+/**
+ * What a wait reports about the message that ended it. The steer or the next
+ * turn carries the whole text, so a preview is enough to decide on.
+ */
+export const receivedMessage = Effect.fn("mcp.receivedMessage")(function* (
+  threads: ThreadManagement.ThreadManagementService["Service"],
+  { message, delivery }: ThreadManagement.ThreadManagementIncomingMessage,
+) {
+  const sender =
+    message.senderThreadId === undefined
+      ? null
+      : yield* threads
+          .getThreadShell(message.senderThreadId)
+          .pipe(Effect.orElseSucceed(() => null));
+  return {
+    messageId: message.id,
+    createdBy: message.createdBy,
+    ...(message.senderThreadId === undefined ? {} : { senderThreadId: message.senderThreadId }),
+    ...(sender === null ? {} : { senderTitle: sender.title }),
+    preview: truncate(message.text.replace(/\s+/g, " "), WAIT_MESSAGE_PREVIEW_CHARS),
+    delivery,
+  } satisfies OrchestratorMcpThreadWaitMessage;
 });

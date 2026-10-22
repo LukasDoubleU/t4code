@@ -20,6 +20,7 @@ import {
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2CreationSource,
+  type OrchestrationV2DomainEvent,
   type OrchestrationV2Run,
   type OrchestrationV2ThreadShellSnapshot,
   type OrchestrationV2ThreadProjection,
@@ -170,6 +171,17 @@ export interface ThreadManagementWaitInput {
    * completion delivery will wake it again, as a delegated task's result does.
    */
   readonly untilDelegatedWorkSettled?: boolean;
+  /**
+   * The thread whose turn is blocked in this wait. A message that reaches it
+   * ends the wait (`awaitIncomingMessage`).
+   */
+  readonly waitingThreadId?: ThreadId;
+}
+
+export interface ThreadManagementIncomingMessage {
+  readonly message: OrchestrationV2ConversationMessage;
+  /** `steered` joined the waiting thread's running turn; `queued` starts its next one. */
+  readonly delivery: "steered" | "queued";
 }
 
 export interface ThreadManagementWaitResult {
@@ -178,6 +190,8 @@ export interface ThreadManagementWaitResult {
   readonly timedOut: boolean;
   /** With `untilDelegatedWorkSettled`, once settled: the run with the thread's final answer. */
   readonly resultRun?: OrchestrationV2Run;
+  /** The message for `waitingThreadId` that ended the wait before the run settled. */
+  readonly messageReceived?: ThreadManagementIncomingMessage;
 }
 
 export interface ThreadManagementInterruptInput {
@@ -423,6 +437,16 @@ export interface ThreadManagementServiceShape {
     input: ThreadManagementWaitInput,
   ) => Effect.Effect<ThreadManagementWaitResult, ThreadManagementError>;
   /**
+   * The first message that reaches `threadId` from now on, from the user, an
+   * agent or T3 itself, or one already queued during its running turn that
+   * the turn can take. A queued one joins the running turn as a steer when
+   * that turn can take one, so the agent blocked in a wait gets it once
+   * instead of again as its next turn.
+   */
+  readonly awaitIncomingMessage: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ThreadManagementIncomingMessage, Orchestrator.OrchestratorV2Error>;
+  /**
    * Settling stops the provider session, so an agent that settles its own
    * thread uses this to wait for its turn to end. A run that ends any other
    * way leaves the thread active, as does anything `thread.settle` refuses
@@ -530,6 +554,31 @@ function latestSteerableRun(
     )
     .toSorted((left, right) => right.ordinal - left.ordinal)[0];
 }
+
+/**
+ * The running turn a queued message can join now. Only active steering
+ * counts: a provider that would restart the turn for it keeps it queued.
+ */
+function activeSteeringTarget(
+  projection: Pick<
+    OrchestrationV2ThreadProjection,
+    "runs" | "providerTurns" | "providerThreads" | "providerSessions"
+  >,
+): OrchestrationV2Run | undefined {
+  const run = latestSteerableRun(projection);
+  const providerThread = projection.providerThreads.find(
+    (candidate) => candidate.id === run?.providerThreadId,
+  );
+  const session = projection.providerSessions.find(
+    (candidate) => candidate.id === providerThread?.providerSessionId,
+  );
+  return session?.capabilities.turns.supportsActiveSteering === true ? run : undefined;
+}
+
+type MessageUpdatedEvent = Extract<
+  OrchestrationV2DomainEvent,
+  { readonly type: "message.updated" }
+>;
 
 const SETTLE_AFTER_RUN_WAIT_MS = 24 * 60 * 60 * 1_000;
 
@@ -867,6 +916,133 @@ const make = Effect.gen(function* () {
     return { dispatch: dispatched, projection, message, run, turnItem, delivery };
   });
 
+  const deliverIncomingMessage = Effect.fn("ThreadManagementService.deliverIncomingMessage")(
+    function* (threadId: ThreadId, received: OrchestrationV2ConversationMessage) {
+      const records = yield* orchestrator.getThreadRecords(
+        threadId,
+        ["runs", "messages", "providerTurns", "providerThreads", "providerSessions"],
+        { messageIds: [received.id] },
+      );
+      const message =
+        records.messages.find((candidate) => candidate.id === received.id) ?? received;
+      const run = records.runs.find((candidate) => candidate.id === message.runId);
+      // It started a turn of its own, so no turn of the thread was blocked:
+      // the caller is, say, a background subagent whose run has ended.
+      if (run?.userMessageId === message.id && run.status !== "queued") return undefined;
+      if (run?.status !== "queued") return { message, delivery: "steered" as const };
+      const target = activeSteeringTarget(records);
+      // A delegated task's report or a notification cannot be promoted: it
+      // wakes the thread once the turn it is queued behind ends.
+      if (
+        target === undefined ||
+        message.delegatedCompletion !== undefined ||
+        message.notification !== undefined
+      ) {
+        return { message, delivery: "queued" as const };
+      }
+      return yield* dispatch({
+        type: "queued-message.promote-to-steer",
+        // Stable, so two waits of one turn steer it once.
+        commandId: CommandId.make(`server:wait-wake-steer:${run.id}`),
+        threadId,
+        queuedRunId: run.id,
+        targetRunId: target.id,
+      }).pipe(
+        Effect.as({ message, delivery: "steered" as const }),
+        // The turn ended or stopped meanwhile: the message starts the next one.
+        Effect.catch((cause) =>
+          Effect.logDebug("thread-management.wait-wake-steer-refused", { threadId, cause }).pipe(
+            Effect.as({ message, delivery: "queued" as const }),
+          ),
+        ),
+      );
+    },
+  );
+
+  /**
+   * The oldest message queued during the thread's running turn that the turn
+   * can take as a steer now. One that would stay queued is left out: it would
+   * end every later wait of the turn the moment it starts.
+   */
+  const queuedForRunningTurn = Effect.fn("ThreadManagementService.queuedForRunningTurn")(function* (
+    threadId: ThreadId,
+  ) {
+    const records = yield* orchestrator.getThreadRecords(threadId, [
+      "runs",
+      "providerTurns",
+      "providerThreads",
+      "providerSessions",
+    ]);
+    const turn = activeSteeringTarget(records);
+    const queued = records.runs.filter((run) => run.status === "queued");
+    if (turn?.startedAt == null || queued.length === 0) return undefined;
+    const turnStartedAt = turn.startedAt;
+    const { messages } = yield* orchestrator.getThreadRecords(threadId, ["messages"], {
+      messageIds: queued.map((run) => run.userMessageId),
+    });
+    return messages
+      .filter(
+        (message) =>
+          message.role === "user" &&
+          queued.some((run) => run.userMessageId === message.id) &&
+          message.delegatedCompletion === undefined &&
+          message.notification === undefined &&
+          // One queued before the turn started waits for a turn of its own.
+          DateTime.isGreaterThanOrEqualTo(message.createdAt, turnStartedAt),
+      )
+      .toSorted((left, right) => DateTime.Order(left.createdAt, right.createdAt))[0];
+  });
+
+  /**
+   * Marks where `threadId`'s messages stand now and returns the wait for the
+   * next one, so a message that arrives while the caller still reads counts.
+   * A message already queued during the running turn counts as well: it
+   * reached the thread just before the wait did.
+   */
+  const watchIncomingMessages = Effect.fn("ThreadManagementService.watchIncomingMessages")(
+    function* (threadId: ThreadId) {
+      const since = yield* DateTime.now;
+      const afterSequence = yield* orchestrator.getThreadEventSequence(threadId);
+      const alreadyQueued = queuedForRunningTurn(threadId).pipe(
+        Effect.flatMap((message) =>
+          message === undefined
+            ? Effect.succeed(undefined)
+            : deliverIncomingMessage(threadId, message),
+        ),
+      );
+      const arriving = orchestrator
+        .streamStoredEventsFrom({ threadId, afterSequence, eventType: "message.updated" })
+        .pipe(
+          Stream.map((stored) => stored.event),
+          // Edits and promotions of older messages update them too; only one
+          // created since the mark is new.
+          Stream.filter(
+            (event): event is MessageUpdatedEvent =>
+              event.type === "message.updated" &&
+              event.payload.role === "user" &&
+              DateTime.isGreaterThanOrEqualTo(event.payload.createdAt, since),
+          ),
+          Stream.mapEffect((event) => deliverIncomingMessage(threadId, event.payload)),
+          Stream.filter((incoming) => incoming !== undefined),
+          Stream.runHead,
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.never,
+              onSome: (incoming) => Effect.succeed(incoming),
+            }),
+          ),
+        );
+      return alreadyQueued.pipe(
+        Effect.flatMap((incoming) =>
+          incoming === undefined ? arriving : Effect.succeed(incoming),
+        ),
+      );
+    },
+  );
+
+  const awaitIncomingMessage: ThreadManagementServiceShape["awaitIncomingMessage"] = (threadId) =>
+    Effect.flatten(watchIncomingMessages(threadId));
+
   const waitForThread: ThreadManagementServiceShape["waitForThread"] = Effect.fn(
     "ThreadManagementService.waitForThread",
   )(function* (input) {
@@ -876,6 +1052,10 @@ const make = Effect.gen(function* () {
         threadId: input.threadId,
         cause,
       });
+    const incomingMessage =
+      input.waitingThreadId === undefined
+        ? Effect.never
+        : yield* watchIncomingMessages(input.waitingThreadId).pipe(Effect.mapError(loadError));
     // Taken before the first read, so a run update between that read and
     // the subscription below still replays.
     const afterSequence = yield* orchestrator
@@ -946,7 +1126,7 @@ const make = Effect.gen(function* () {
 
     // A declined continuation records no event, so its effect settling wakes
     // the wait too.
-    const wait = Stream.merge(
+    const settles = Stream.merge(
       Stream.mergeAll(
         (
           [
@@ -987,10 +1167,26 @@ const make = Effect.gen(function* () {
       ),
       Stream.filter((current) => current.settled),
       Stream.runHead,
-      Effect.timeoutOption(Duration.millis(Math.max(1, input.timeoutMs))),
+      Effect.map(Option.map(settledResult)),
     );
-    const waited = Option.flatten(yield* wait);
-    if (Option.isSome(waited)) return settledResult(waited.value);
+    // The message is delivered by now; the run's state then goes with it.
+    const woken = incomingMessage.pipe(
+      Effect.mapError(loadError),
+      Effect.flatMap((messageReceived) =>
+        getProjectThreadRecords(input, ["runs"]).pipe(
+          Effect.flatMap((current) => evaluate(current.runs)),
+          Effect.map((current) =>
+            Option.some({ ...settledResult(current), timedOut: false, messageReceived }),
+          ),
+        ),
+      ),
+    );
+    const waited = Option.flatten(
+      yield* Effect.raceFirst(settles, woken).pipe(
+        Effect.timeoutOption(Duration.millis(Math.max(1, input.timeoutMs))),
+      ),
+    );
+    if (Option.isSome(waited)) return waited.value;
     // The run may have reached a terminal status while the timeout was
     // winning the race; the final projection read decides what actually
     // happened, so only a still-active run counts as timed out.
@@ -1286,6 +1482,7 @@ const make = Effect.gen(function* () {
     isProviderInstanceEnabledForProject,
     hasReceipt,
     waitForThread,
+    awaitIncomingMessage,
     settleAfterRun,
     settleThread,
     interruptThread,

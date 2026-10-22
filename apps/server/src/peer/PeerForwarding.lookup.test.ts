@@ -117,6 +117,8 @@ const environmentThreads = (
           run: { id: run, status: "completed" },
           timedOut: false,
         } as never),
+      // No message reaches a waiting agent here.
+      awaitIncomingMessage: () => Effect.never,
     }),
     Layer.mock(ProjectService.ProjectService)({
       getById: (projectId) =>

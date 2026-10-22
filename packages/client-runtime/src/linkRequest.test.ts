@@ -241,6 +241,43 @@ describe("linkableMachines", () => {
     ).toEqual([]);
   });
 
+  it("never offers another machine's loopback address, and adds its Connect address last", () => {
+    const remote = presentation("environment-remote", "Remote", {
+      saved: ["https://remote.ts.net"],
+    });
+    const app = presentation("environment-app", "App", {
+      saved: ["http://localhost:3773"],
+      reported: ["http://127.0.0.1:3773", "http://[::1]:3773"],
+    });
+    const vps = presentation("environment-vps", "VPS", {
+      saved: ["http://127.0.0.2:3773"],
+      reported: ["https://vps.ts.net"],
+    });
+    const listed = (connect: ReadonlyMap<string, RelayDiscoveredEnvironment>) =>
+      linkableMachines({
+        environments: [remote, app, vps],
+        threadEnvironmentId: remote.environmentId,
+        linkedIds: new Set(),
+        connect,
+      }).map((machine) => [machine.label, machine.urls]);
+    expect(
+      listed(
+        new Map([
+          [app.environmentId, discovered(app.environmentId, "App")],
+          [vps.environmentId, discovered(vps.environmentId, "VPS")],
+        ]),
+      ),
+    ).toEqual([
+      ["App", ["https://environment-app.t3.example"]],
+      ["VPS", ["https://vps.ts.net", "https://environment-vps.t3.example"]],
+    ]);
+    // With nothing usable left, the dialog asks for an address.
+    expect(listed(new Map())).toEqual([
+      ["App", []],
+      ["VPS", ["https://vps.ts.net"]],
+    ]);
+  });
+
   it("offers machines only on T3 Connect after the saved ones, at their Connect address", () => {
     const here = presentation("environment-here", "Here", { saved: ["http://localhost:3773"] });
     const vps = presentation("environment-vps", "VPS", { saved: ["https://vps.ts.net"] });

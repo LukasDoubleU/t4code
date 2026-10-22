@@ -41,7 +41,7 @@ sh install-t4.sh --dry-run   # download and check only, show the rest
 6. Switches the background service to the new version with that version's `t3 service install`, which starts it again.
 7. Removes old install backups, keeping the newest three; `--keep-backups <n>` keeps another number.
 
-**First install.** Run `t3 service install` afterwards: a systemd user service that starts at boot and keeps running after logout. Upstream's [background service](../../docs/user/background-service.md) guide covers it, including `~/.t3/service.env` for the address and port the server listens on.
+**First install.** Run `t3 service install` afterwards: a systemd user service that starts at boot and keeps running after logout. It listens on `127.0.0.1:3773`; for other machines to reach it, set `T3CODE_HOST` in `~/.t3/service.env` to an address they can reach, such as the LAN or tailnet address, and run `t3 service restart`. Upstream's [background service](../../docs/user/background-service.md) guide covers the service and that file. On minimal images the `t3` executable also needs `libatomic1`; the script says so when it is missing.
 
 **Pair the desktop app.** On the server, `t3 pair` prints a one-time pairing link, `t3 pair --tailscale` one with a Tailscale HTTPS address. In the desktop app, open **Settings → Connections**, choose **Add environment** and paste it. See upstream's [remote access](../../docs/user/remote-access.md) guide for the other ways to connect.
 

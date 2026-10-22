@@ -278,8 +278,13 @@ else
   mkdir -p "$versions_dir"
   staging="$(mktemp -d "$versions_dir/.staging-XXXXXX")"
   tar -xzf "$work/$archive" -C "$staging" --strip-components=1
-  "$staging/t3" --version 2> /dev/null | grep -qF "$release_version" ||
-    fail "the downloaded t3 does not run on this machine"
+  version_output="$("$staging/t3" --version 2>&1)" || true
+  case "$version_output" in
+    *"$release_version"*) ;;
+    # The executable is Node's official build, which links libatomic.
+    *libatomic*) fail "the downloaded t3 needs libatomic, which minimal images lack (Debian and Ubuntu: sudo apt install libatomic1): $version_output" ;;
+    *) fail "the downloaded t3 does not run on this machine: $version_output" ;;
+  esac
   printf '%s\n' "$release_version" > "$staging/.install-complete"
   rm -rf "$target_dir"
   mv "$staging" "$target_dir"
@@ -320,7 +325,10 @@ if ! "$dry_run"; then say "Installed the T4 Code server $release_version."; fi
 keep="$keep_backups"
 if "$dry_run" && "$backed_up"; then keep=$((keep - 1)); fi
 if [ -d "$backups_dir" ]; then
-  ls -1 "$backups_dir" | grep -E '^[0-9]{8}-[0-9]{6}(-[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*)?$' |
+  for folder in "$backups_dir"/*/; do
+    folder="${folder%/}"
+    printf '%s\n' "${folder##*/}"
+  done | grep -E '^[0-9]{8}-[0-9]{6}(-[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*)?$' |
     grep -v -- '-undo-peer-links$' | sort -r | tail -n +"$((keep + 1))" |
     while IFS= read -r name; do
       if "$dry_run"; then

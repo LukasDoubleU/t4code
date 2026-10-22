@@ -50,7 +50,11 @@ Pin a thread from its menu to keep it above your active work. Pinned threads for
 which shows how many there are, to collapse or expand it; each device remembers its choice.
 Collapsed, the section keeps only the thread you have open, and a thread dropped onto the
 header is pinned as the menu's **Pin** would. Experts lists the pinned threads of every
-environment the app is connected to, and a row from another machine names that machine.
+environment the app is connected to.
+
+Each expert takes one line: its project, title, status or last activity, a machine icon for a
+thread on another machine, and the memory icon. Hover the row to see its machine, branch, pull
+request, account, and memory.
 
 On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
 a notification with **Undo** for five seconds. Undo restores the thread's previous
@@ -129,7 +133,7 @@ start of a session and after every compaction, and keeps it current with the thr
 the current state, decisions and their reasons, your preferences, and open points. The history
 stays in the thread, and secrets stay out of the file.
 
-While the memory is active, the pinned card shows a brain icon. Hover it to see when the file last
+While the memory is active, the expert's row shows a brain icon. Hover it to see when the file last
 changed, or **No notes yet** before the agent has written it. Choose **Open memory** in the
 thread's menu to open the file in your editor; for a thread on another machine, its path is
 copied instead. You can edit the file yourself.

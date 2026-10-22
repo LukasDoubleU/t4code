@@ -62,7 +62,7 @@ files directly; see [Attach files](./composer.md#attach-files).
 On web and desktop, pinning or unpinning a thread keeps the sidebar at your current
 scroll position instead of following the thread to its new place in the list.
 
-Pinning does not prevent automatic settlement. Settling a thread removes its pin.
+Automatic settlement skips pinned threads. Settling a thread yourself removes its pin.
 
 On web and desktop, drag a thread between sections to change its state. Drag a thread up into
 the pinned section to pin it at the spot you drop it; drag a pinned thread down into the active
@@ -100,7 +100,7 @@ position, so using **Un-settle** returns it to the top. Pinning and snoozing pre
 position until you move it again. Thread activity does not change the order. The settled shelf
 continues to use settlement time.
 
-To order active threads by recent messages or by status instead, see
+To order pinned and active threads by recent messages or by status instead, see
 [Sort and group threads](#sort-and-group-threads).
 
 If dragging is unavailable for one environment, update the T3 Code server running in that
@@ -140,7 +140,8 @@ turn. Claude, Codex, and OpenCode threads use the memory; other providers work a
 On web and desktop, the sort button at the top of the sidebar sets how threads are sorted and
 grouped. Each device keeps its own choice.
 
-**Sort** orders active threads. **Manual** keeps the arrangement you dragged into place. **Last
+**Sort** orders pinned and active threads, each section on its own. **Manual** keeps the
+arrangement you dragged into place. **Last
 message** puts recent conversations first, matching the age shown on the row; threads without
 messages use their update time. **Status** puts threads in this order, newest message first within
 each:
@@ -151,8 +152,8 @@ each:
 4. **Working**: the agent is running or waiting on background work.
 5. **Idle**: everything else.
 
-With **Last message** or **Status** you cannot rearrange active threads, but you can still drag
-them between sections. **Manual** brings your saved arrangement back. While the Working section is
+With **Last message** or **Status** you cannot rearrange pinned or active threads, but you can
+still drag them between sections; the sort decides where a dropped thread lands. **Manual** brings your saved arrangement back. While the Working section is
 on, it orders an ungrouped list by itself.
 
 **Group** puts active threads in folders: one per **Project** (see below), one per **Machine**

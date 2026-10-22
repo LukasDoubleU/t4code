@@ -842,7 +842,7 @@ it("readThread shows citations the way the agent received them", async () => {
   }).pipe(Effect.provide(layer), Effect.runPromise);
 });
 
-it("readThread lists the user's reactions on an assistant reply", async () => {
+it("readThread lists the user's reactions on an assistant reply and its passages", async () => {
   const shell = liveThreadShell(parentThreadId);
   const reactedAt = DateTime.makeUnsafe("2026-08-04T12:01:00.000Z");
   const projection = {
@@ -866,7 +866,18 @@ it("readThread lists the user's reactions on an assistant reply", async () => {
           title: null,
           text: "Ship it.",
           updatedAt: now,
-          ...(position === 0 ? { reactions: [{ emoji: "👍", reactedAt, goAhead: true }] } : {}),
+          ...(position === 0
+            ? {
+                reactions: [
+                  { emoji: "👍", reactedAt, goAhead: true },
+                  {
+                    emoji: "👎",
+                    reactedAt,
+                    passage: { text: "Ship", start: 0, end: 4, prefix: "", suffix: " it." },
+                  },
+                ],
+              }
+            : {}),
         },
       }),
     ),
@@ -898,6 +909,7 @@ it("readThread lists the user's reactions on an assistant reply", async () => {
     const result = yield* service.readThread(makeScope(), { threadId: parentThreadId });
     expect(result.items[0]?.reactions).toEqual([
       { emoji: "👍", reactedAt: "2026-08-04T12:01:00.000Z" },
+      { emoji: "👎", reactedAt: "2026-08-04T12:01:00.000Z", passage: "Ship" },
     ]);
     expect(result.items[1]).not.toHaveProperty("reactions");
   }).pipe(Effect.provide(layer), Effect.runPromise);

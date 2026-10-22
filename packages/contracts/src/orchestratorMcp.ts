@@ -499,10 +499,14 @@ export const OrchestratorMcpThreadTimelineItem = Schema.Struct({
   textTruncated: Schema.Boolean,
   nextTextOffset: Schema.optional(Schema.NullOr(NonNegativeInt)),
   updatedAt: IsoDateTime,
-  /** The user's reactions on an assistant reply. */
+  /** The user's reactions on an assistant reply. `passage` quotes the part a reaction is about. */
   reactions: Schema.optional(
     Schema.Array(
-      Schema.Struct({ emoji: OrchestrationV2MessageReactionEmoji, reactedAt: IsoDateTime }),
+      Schema.Struct({
+        emoji: OrchestrationV2MessageReactionEmoji,
+        reactedAt: IsoDateTime,
+        passage: Schema.optional(Schema.String),
+      }),
     ),
   ),
 });

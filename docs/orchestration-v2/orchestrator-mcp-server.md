@@ -451,6 +451,11 @@ promoted into the caller's running turn when that turn takes active steering,
 so it is not delivered again as a later turn; delegated-completion deliveries,
 notifications and turns that could only restart stay queued.
 
+A message queued during the caller's running turn before the wait started
+ends the wait at once as well, so an answer that lands between a send and the
+wait is not waited out. Only one the turn can take as a steer counts: one that
+stays queued would end every later wait of the turn the moment it starts.
+
 ### `t3_thread_interrupt`
 
 Interrupts a selected active run through the normal V2 `run.interrupt` command.

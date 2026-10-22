@@ -1,4 +1,5 @@
 import type {
+  AssistantPassage,
   MessageId,
   OrchestrationV2ConversationMessage,
   OrchestrationV2MessageReaction,
@@ -6,7 +7,10 @@ import type {
   OrchestrationV2Run,
   OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
-import { formatReplyTimeForProvider } from "@t3tools/shared/assistantCitations";
+import {
+  formatQuoteForProvider,
+  formatReplyTimeForProvider,
+} from "@t3tools/shared/assistantCitations";
 import * as DateTime from "effect/DateTime";
 
 const REPLY_EXCERPT_LENGTH = 60;
@@ -16,29 +20,52 @@ export type AssistantReplyItem = Extract<
   { readonly type: "assistant_message" }
 >;
 
-/** `reply` after the user sets or clears `emoji` on it, or null when nothing changes. */
+function samePassage(left: AssistantPassage | undefined, right: AssistantPassage | undefined) {
+  return left === undefined || right === undefined
+    ? left === right
+    : left.start === right.start && left.end === right.end && left.text === right.text;
+}
+
+/**
+ * `reply` after the user sets or clears `emoji` on it, or on `passage` of it, or null when
+ * nothing changes.
+ */
 export function withReaction(
   reply: AssistantReplyItem,
   change: {
     readonly emoji: OrchestrationV2MessageReactionEmoji;
     readonly reacted: boolean;
     readonly goAhead: boolean;
+    readonly passage?: AssistantPassage | undefined;
     readonly at: DateTime.Utc;
   },
 ): AssistantReplyItem | null {
   const { reactions: current = [], ...rest } = reply;
-  const existing = current.find((reaction) => reaction.emoji === change.emoji);
+  const onTarget = (reaction: OrchestrationV2MessageReaction) =>
+    samePassage(reaction.passage, change.passage);
+  const existing = current.find(
+    (reaction) => onTarget(reaction) && reaction.emoji === change.emoji,
+  );
   // Setting a reaction again keeps its time, so the agent is told once. Go ahead takes over a
   // silent one because its own message tells the agent.
   const unchanged = change.reacted
     ? existing !== undefined && (existing.goAhead === true || !change.goAhead)
     : existing === undefined;
   if (unchanged) return null;
-  const others = current.filter((reaction) => reaction.emoji !== change.emoji);
+  // A passage holds one reaction, so 👎 on it replaces a 👍.
+  const others = current.filter(
+    (reaction) =>
+      !onTarget(reaction) || (change.passage === undefined && reaction.emoji !== change.emoji),
+  );
   const reactions: ReadonlyArray<OrchestrationV2MessageReaction> = change.reacted
     ? [
         ...others,
-        { emoji: change.emoji, reactedAt: change.at, ...(change.goAhead ? { goAhead: true } : {}) },
+        {
+          emoji: change.emoji,
+          reactedAt: change.at,
+          ...(change.goAhead ? { goAhead: true } : {}),
+          ...(change.passage === undefined ? {} : { passage: change.passage }),
+        },
       ]
     : others;
   return reactions.length === 0 ? rest : { ...rest, reactions };
@@ -131,8 +158,20 @@ function replyExcerpt(text: string): string {
 
 export function reactionNote(input: {
   readonly reply: AssistantReplyItem;
-  readonly reaction: Pick<OrchestrationV2MessageReaction, "emoji">;
+  readonly reaction: Pick<OrchestrationV2MessageReaction, "emoji" | "passage">;
 }): string {
   const time = formatReplyTimeForProvider(repliedAt(input.reply));
-  return `The user reacted ${input.reaction.emoji} to your reply from ${time} ("${replyExcerpt(input.reply.text)}").`;
+  const { emoji, passage } = input.reaction;
+  return passage === undefined
+    ? `The user reacted ${emoji} to your reply from ${time} ("${replyExcerpt(input.reply.text)}").`
+    : `The user reacted ${emoji} to this passage of your reply from ${time}:\n${formatQuoteForProvider(passage.text)}`;
+}
+
+/** Notes on one line each, and a quoted passage set apart so the next note leaves its quote. */
+export function joinReactionNotes(notes: ReadonlyArray<string>): string {
+  return notes.reduce((joined, note, index) => {
+    if (index === 0) return note;
+    const quoted = note.includes("\n") || notes[index - 1]!.includes("\n");
+    return `${joined}${quoted ? "\n\n" : "\n"}${note}`;
+  }, "");
 }

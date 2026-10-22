@@ -7,7 +7,13 @@ import { projectComposerContextForProvider } from "@t3tools/shared/composerConte
 import type * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
-import { lastInputAt, pendingReactions, previousRun, reactionNote } from "./messageReactions.ts";
+import {
+  joinReactionNotes,
+  lastInputAt,
+  pendingReactions,
+  previousRun,
+  reactionNote,
+} from "./messageReactions.ts";
 import type * as ProjectionStore from "./ProjectionStore.ts";
 
 /** The replies in `threadId` that `text` cites; the readable form shows their times. */
@@ -34,7 +40,7 @@ export function readableCitations(
   });
 }
 
-/** One line per reaction the user set since the provider last got input in this thread. */
+/** A note per reaction the user set since the provider last got input in this thread. */
 const pendingReactionNotes = Effect.fn("orchestrationV2.pendingReactionNotes")(function* (
   projections: ProjectionStore.ProjectionStoreV2Shape,
   message: Pick<OrchestrationV2ConversationMessage, "id" | "threadId">,
@@ -87,5 +93,5 @@ export const providerMessageText = Effect.fn("orchestrationV2.providerMessageTex
     records: message.context?.records ?? [],
   });
   const reactions = yield* pendingReactionNotes(projections, message, deliveredAt);
-  return reactions.length === 0 ? text : `${reactions.join("\n")}\n\n${text}`;
+  return reactions.length === 0 ? text : `${joinReactionNotes(reactions)}\n\n${text}`;
 });

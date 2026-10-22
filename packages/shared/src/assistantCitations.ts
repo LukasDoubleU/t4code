@@ -137,21 +137,25 @@ export function formatReplyTimeForProvider(repliedAt: DateTime.Utc): string {
   return `${DateTime.formatIso(repliedAt).slice(0, 16).replace("T", " ")} UTC`;
 }
 
-function formatAssistantCitationForProvider(
-  citation: AssistantCitation,
-  repliedAt: DateTime.Utc | undefined,
-): string {
-  const time = repliedAt === undefined ? null : formatReplyTimeForProvider(repliedAt);
-  const quote = citation.text
+/** Text of an assistant reply as the Markdown blockquote an agent reads. */
+export function formatQuoteForProvider(text: string): string {
+  return text
     .replace(/^(?:[ \t]*\r?\n)+/, "")
     .trimEnd()
     .split(/\r?\n/)
     .map((line) => (line.trim() ? `> ${line}` : ">"))
     .join("\n");
+}
+
+function formatAssistantCitationForProvider(
+  citation: AssistantCitation,
+  repliedAt: DateTime.Utc | undefined,
+): string {
+  const time = repliedAt === undefined ? null : formatReplyTimeForProvider(repliedAt);
   const comment = citation.comment?.trim();
   return [
     `Quoted from an earlier assistant reply${time ? ` (${time})` : ""}:`,
-    quote,
+    formatQuoteForProvider(citation.text),
     ...(comment ? ["", `User comment: ${comment}`] : []),
   ].join("\n");
 }

@@ -73,10 +73,11 @@ export function withCreationProvenance(
 ): OrchestrationV2Command {
   switch (command.type) {
     case "thread.create": {
-      // Only the server stamps a link's origin or a continuation, so a client cannot set one.
+      // Only the server stamps a link's origin, a launcher or a continuation, so a client cannot set one.
       const {
         linkOrigin: _linkOrigin,
         delegatedFrom: _delegatedFrom,
+        launchedBy: _launchedBy,
         continuedFrom: _continuedFrom,
         ...rest
       } = command;

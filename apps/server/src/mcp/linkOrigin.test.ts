@@ -95,6 +95,7 @@ const layerLaunches = Layer.effect(
             worktreePath: null,
             ...(input.linkOrigin === undefined ? {} : { linkOrigin: input.linkOrigin }),
             ...(input.delegatedFrom === undefined ? {} : { delegatedFrom: input.delegatedFrom }),
+            ...(input.launchedBy === undefined ? {} : { launchedBy: input.launchedBy }),
             createdBy: input.createdBy,
             creationSource: input.creationSource,
           })
@@ -330,6 +331,17 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
       assert.deepEqual((yield* projections.getThreadShell(task))?.delegatedFrom, delegatedFrom);
       const claimed = yield* launch(claudeCode, "Claims a parent", { delegatedFrom });
       assert.equal((yield* projections.getThreadShell(claimed))?.delegatedFrom, undefined);
+
+      // A link's launch names its launching thread there, so the thread nests under it.
+      const launchedBy = {
+        environmentId: "environment-laptop",
+        threadId: "thread:laptop-expert",
+        title: "Laptop expert",
+      };
+      const topic = yield* launch(laptop, "A topic from the laptop", { launchedBy });
+      assert.deepEqual((yield* projections.getThreadShell(topic))?.launchedBy, launchedBy);
+      const unlinked = yield* launch(claudeCode, "Claims an expert", { launchedBy });
+      assert.equal((yield* projections.getThreadShell(unlinked))?.launchedBy, undefined);
     }),
   );
 

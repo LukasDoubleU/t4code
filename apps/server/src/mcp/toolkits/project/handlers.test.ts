@@ -30,7 +30,7 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as ProjectHandlers from "./handlers.ts";
 import { ProjectToolkit } from "./tools.ts";
 
-it.effect("attributes a launched thread's first message to the calling thread", () =>
+it.effect("attributes a launched thread and its first message to the calling thread", () =>
   Effect.gen(function* () {
     const sourceThreadId = ThreadId.make("source-thread");
     const projectId = ProjectId.make("project");
@@ -38,6 +38,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
     const modelSelection = { instanceId: providerInstanceId, model: "gpt-5" };
     const caller = {
       id: sourceThreadId,
+      title: "Expert",
       projectId,
       providerInstanceId,
       modelSelection,
@@ -48,6 +49,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       deletedAt: null,
     } as OrchestrationV2ThreadShell;
     let launchedSender: ThreadId | undefined;
+    let launchedBy: ThreadLaunch.ThreadLaunchInput["launchedBy"];
     const layerDependencies = Layer.mergeAll(
       ServerSettings.layerTest(),
       NodeCrypto.layer,
@@ -69,6 +71,7 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       Layer.mock(ThreadLaunch.ThreadLaunchService)({
         launch: (input) => {
           launchedSender = input.initialMessage?.senderThreadId;
+          launchedBy = input.launchedBy;
           return Effect.succeed({
             threadId: input.threadId,
             projection: {
@@ -96,10 +99,24 @@ it.effect("attributes a launched thread's first message to the calling thread", 
       ),
     );
     const result = yield* toolkit
-      .handle("t3_thread_launch", { title: "Audit", message: "Review the change" })
+      .handle("t3_thread_launch", {
+        title: "Audit",
+        message: "Review the change",
+        // Only a linked environment's launch names its own launcher.
+        launchedBy: {
+          environmentId: EnvironmentId.make("environment-elsewhere"),
+          threadId: ThreadId.make("claimed-thread"),
+          title: "Claimed",
+        },
+      })
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(layerDependencies));
     expect(result.at(-1)?.result).toMatchObject({ projectId, modelSelection });
     expect(launchedSender).toBe(sourceThreadId);
+    expect(launchedBy).toEqual({
+      environmentId: EnvironmentId.make("environment"),
+      threadId: sourceThreadId,
+      title: "Expert",
+    });
   }),
 );
 

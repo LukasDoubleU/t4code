@@ -129,6 +129,14 @@ export const OrchestrationV2DelegatedFrom = Schema.Struct({
 });
 export type OrchestrationV2DelegatedFrom = typeof OrchestrationV2DelegatedFrom.Type;
 
+/**
+ * The thread whose agent started this one with `t3_thread_launch`, here or in
+ * a linked environment. Unlike `delegatedFrom`, this thread is not its
+ * subagent but a top-level thread of its own; a pinned launcher's are its topics.
+ */
+export const OrchestrationV2LaunchedBy = OrchestrationV2DelegatedFrom;
+export type OrchestrationV2LaunchedBy = typeof OrchestrationV2LaunchedBy.Type;
+
 export const OrchestrationV2NativeRefStrength = Schema.Literals(["strong", "weak", "none"]);
 export type OrchestrationV2NativeRefStrength = typeof OrchestrationV2NativeRefStrength.Type;
 
@@ -435,6 +443,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  launchedBy: Schema.optional(OrchestrationV2LaunchedBy),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(
     Schema.Union([
@@ -1992,6 +2001,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  launchedBy: Schema.optional(OrchestrationV2LaunchedBy),
   latestRunId: Schema.NullOr(RunId),
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -2771,6 +2781,8 @@ export const OrchestrationV2Command = Schema.Union([
     linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
     /** Only the server sets this, with `linkOrigin`, for a linked environment's delegated task. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+    /** Only the server sets this, for a thread an agent's launch starts. */
+    launchedBy: Schema.optional(OrchestrationV2LaunchedBy),
     /** Only the server sets this, for a fresh start's new thread. */
     continuedFrom: Schema.optional(ThreadId),
     importedNativeThread: Schema.optional(

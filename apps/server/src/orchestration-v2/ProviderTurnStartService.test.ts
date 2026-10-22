@@ -612,6 +612,9 @@ function makeLocalCommandHarness(input: {
   const getThreadRecords = vi.fn<ProjectionStore.ProjectionStoreV2Shape["getThreadRecords"]>(() =>
     Effect.succeed(projection),
   );
+  const getThread = vi.fn<ProjectionStore.ProjectionStoreV2Shape["getThread"]>(() =>
+    Effect.succeed(projection.thread),
+  );
   const getTurnStartContext = vi.fn(() =>
     Effect.succeed({
       ...projection,
@@ -644,6 +647,7 @@ function makeLocalCommandHarness(input: {
         }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getThreadRecords,
+          getThread,
           getTurnStartContext,
           getRuntimeRecoveryProjection: () =>
             Effect.as(failReadIfRunning, {
@@ -673,6 +677,7 @@ function makeLocalCommandHarness(input: {
   );
   return {
     getThreadRecords,
+    getThread,
     getTurnStartContext,
     setProjection: (next: OrchestrationV2ThreadProjection) => {
       projection = next;
@@ -828,6 +833,84 @@ effectIt.effect("reads current startup state after waiting for the workspace lea
     yield* Fiber.join(startup);
     expect(harness.open).not.toHaveBeenCalled();
     expect(harness.startRootRun).not.toHaveBeenCalled();
+  }),
+);
+
+effectIt.effect.each([
+  { source: "a pinned source", pinned: true },
+  { source: "an unpinned source", pinned: false },
+])("tells a native fork's first run whether $source kept a memory", ({ pinned }) =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({ text: "Continue", failReadsAfterRunning: true });
+    const projection = harness.projection();
+    const run = projection.runs[0]!;
+    const sourceThreadId = ThreadId.make("fork-source");
+    harness.getThreadRecords.mockReturnValue(
+      Effect.succeed({ ...projection, thread: { ...projection.thread, id: sourceThreadId } }),
+    );
+    harness.getThread.mockReturnValue(
+      Effect.succeed({
+        ...projection.thread,
+        id: sourceThreadId,
+        pinnedAt: pinned ? projection.updatedAt : null,
+        lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: sourceThreadId },
+      }),
+    );
+    harness.setProjection({
+      ...projection,
+      contextTransfers: [
+        {
+          id: ContextTransferId.make("pending-fork"),
+          type: "fork",
+          sourceThreadId,
+          targetThreadId: projection.thread.id,
+          sourcePoint: { threadId: sourceThreadId, runId: run.id },
+          basePoint: null,
+          sourceProviderInstanceId: run.providerInstanceId,
+          targetProviderInstanceId: run.providerInstanceId,
+          targetRunId: run.id,
+          status: "pending",
+          resolution: null,
+          createdBy: "user",
+          error: null,
+          createdAt: projection.updatedAt,
+          updatedAt: projection.updatedAt,
+          consumedAt: null,
+        },
+      ],
+    });
+    const open = harness.open.getMockImplementation()!;
+    const forkThread = vi.fn(() =>
+      Effect.succeed({
+        ...projection.providerThreads[0]!,
+        nativeThreadRef: {
+          driver: projection.providerThreads[0]!.driver,
+          nativeId: "forked",
+          strength: "strong" as const,
+        },
+      }),
+    );
+    harness.open.mockImplementation(() =>
+      open().pipe(Effect.map((session) => ({ ...(session as object), forkThread }) as never)),
+    );
+
+    yield* harness.start;
+
+    expect(forkThread).toHaveBeenCalledOnce();
+    expect(harness.getThread).toHaveBeenCalledWith(sourceThreadId);
+    expect(harness.startRootRun).toHaveBeenCalledWith(
+      expect.objectContaining({ nativeForkSource: { id: sourceThreadId, pinned } }),
+    );
+  }),
+);
+
+effectIt.effect("names no fork source for a run that forks nothing", () =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({ text: "Continue", failReadsAfterRunning: true });
+    yield* harness.start;
+    expect(harness.startRootRun).toHaveBeenCalledOnce();
+    expect(harness.startRootRun.mock.calls[0]![0]).not.toHaveProperty("nativeForkSource");
+    expect(harness.getThread).not.toHaveBeenCalled();
   }),
 );
 

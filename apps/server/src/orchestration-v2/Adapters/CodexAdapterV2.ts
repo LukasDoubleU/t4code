@@ -730,6 +730,7 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
     readonly omitServiceTier?: boolean;
     readonly appContext?: ProviderAdapter.ProviderAdapterV2TurnInput["appContext"];
     readonly memoryInstructions?: string;
+    readonly forkedMemoryNote?: string;
   }) {
     const runtimeModeDefaults = codexRuntimeModeTurnDefaults(input.runtimePolicy.runtimeMode);
     const approvalPolicy =
@@ -772,12 +773,19 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
             },
           )
         : undefined;
-    const memoryContext =
-      input.memoryInstructions === undefined
-        ? undefined
-        : { t3_thread_memory: { kind: "application" as const, value: input.memoryInstructions } };
+    const memoryContext = {
+      ...(input.memoryInstructions === undefined
+        ? {}
+        : { t3_thread_memory: { kind: "application" as const, value: input.memoryInstructions } }),
+      // A fork's copied history holds its source's t3_thread_memory entries.
+      ...(input.forkedMemoryNote === undefined
+        ? {}
+        : { t3_forked_memory: { kind: "application" as const, value: input.forkedMemoryNote } }),
+    };
     const additionalContext =
-      t3Context === undefined && memoryContext === undefined && Object.keys(appContext).length === 0
+      t3Context === undefined &&
+      Object.keys(memoryContext).length === 0 &&
+      Object.keys(appContext).length === 0
         ? undefined
         : { ...t3Context, ...memoryContext, ...appContext };
     const collaborationMode: CodexSchema.ClientRequest__CollaborationMode | undefined =
@@ -6342,6 +6350,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               ...(turnInput.threadMemory === undefined
                 ? {}
                 : { memoryInstructions: turnInput.threadMemory.instructions }),
+              ...(turnInput.forkedMemoryNote === undefined
+                ? {}
+                : { forkedMemoryNote: turnInput.forkedMemoryNote }),
             });
             yield* Ref.update(pendingRootTurns, (current) => {
               const updated = new Map(current);

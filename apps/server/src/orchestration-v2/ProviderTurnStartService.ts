@@ -2,6 +2,7 @@ import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
   CommandId,
+  isUserPinnedThread,
   latestProviderTurnForAttempt,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ExecutionNode,
@@ -1219,6 +1220,20 @@ export const layer: Layer.Layer<
         !noteContinuation
           ? session
           : makeDeliverySession(session, startWithHandoffs);
+      const nativeForkSource =
+        nativeForkTransfer === undefined
+          ? undefined
+          : {
+              id: nativeForkTransfer.sourceThreadId,
+              pinned: yield* projectionStore.getThread(nativeForkTransfer.sourceThreadId).pipe(
+                Effect.map(isUserPinnedThread),
+                Effect.catch((cause) =>
+                  Effect.logWarning("Could not read a fork's source thread.", { cause }).pipe(
+                    Effect.as(false),
+                  ),
+                ),
+              ),
+            };
       return runExecution.startRootRun({
         commandId: CommandId.make(`command:effect:provider-turn.start:${run.id}`),
         appThread: projection.thread,
@@ -1244,6 +1259,7 @@ export const layer: Layer.Layer<
               .filter((turn) => turn.providerThreadId === providerThread.id)
               .map((turn) => turn.ordinal),
           ) + 1,
+        ...(nativeForkSource === undefined ? {} : { nativeForkSource }),
         nativeThreadHasTurns:
           nativeInputRunIds.size > 0 ||
           (legacyInputRunIds.size > 0 &&

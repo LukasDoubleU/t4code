@@ -508,6 +508,21 @@ describe("CodexAdapterV2 runtime policy", () => {
     }),
   );
 
+  it.effect("sends a fork's note about its source's memory as application context", () =>
+    Effect.gen(function* () {
+      const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
+        nativeThreadId: "native-thread-fork",
+        codexInput: [{ type: "text", text: "continue" }],
+        runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: null },
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+        forkedMemoryNote: "FORK NOTE",
+      });
+      assert.deepEqual(params.additionalContext, {
+        t3_forked_memory: { kind: "application", value: "FORK NOTE" },
+      });
+    }),
+  );
+
   it.effect("adds default-mode developer instructions when the T3 MCP server is attached", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({

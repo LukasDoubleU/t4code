@@ -6215,16 +6215,27 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
-  it.effect("carries a pinned thread's memory line until the thread is unpinned", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeWakeHarnessWithOptions({ freshQueueOnReopen: true });
-      const threadMemory = {
-        path: NodePath.join(harness.attachmentsDir, "memory", "thread-claude-wake.md"),
-        instructions: "MEMORY LINE for thread-claude-wake",
-      };
-      const appended = (options: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions | undefined) =>
-        (options?.systemPrompt as { readonly append?: string } | undefined)?.append ?? "";
-      const turnInput = (attempt: number, pinned: boolean) => ({
+  const makeMemoryHarness = Effect.gen(function* () {
+    const harness = yield* makeWakeHarnessWithOptions({ freshQueueOnReopen: true });
+    const threadMemory = {
+      path: NodePath.join(harness.attachmentsDir, "memory", "thread-claude-wake.md"),
+      instructions: "MEMORY LINE for thread-claude-wake",
+    };
+    const reminder = `<system-reminder>
+${threadMemory.instructions}
+</system-reminder>`;
+    const appended = () =>
+      (harness.getOpenedOptions()?.systemPrompt as { readonly append?: string } | undefined)
+        ?.append ?? "";
+    const runTurn = Effect.fnUntraced(function* (
+      attempt: number,
+      input: {
+        readonly pinned: boolean;
+        readonly nativeThreadHasTurns?: boolean;
+        readonly forkedMemoryNote?: string;
+      },
+    ) {
+      yield* harness.runtime.startTurn({
         ...makeClaudeTestTurnInput({
           threadId: harness.threadId,
           providerThread: harness.providerThread,
@@ -6233,32 +6244,124 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           providerTurnOrdinal: attempt,
           text: `Turn ${attempt}.`,
           attachments: [],
+          // Without an ultrathink effort, so the prompt keeps the turn's text as it is.
+          modelSelection: {
+            instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+            model: "claude-haiku-4-5-20251001",
+          },
+          ...(input.nativeThreadHasTurns === undefined
+            ? {}
+            : { nativeThreadHasTurns: input.nativeThreadHasTurns }),
         }),
-        ...(pinned ? { threadMemory } : {}),
+        ...(input.pinned ? { threadMemory } : {}),
+        ...(input.forkedMemoryNote === undefined
+          ? {}
+          : { forkedMemoryNote: input.forkedMemoryNote }),
       });
-
-      yield* harness.runtime.startTurn(turnInput(1, true));
-      const pinnedOptions = harness.getOpenedOptions();
-      assert.include(appended(pinnedOptions), threadMemory.instructions);
-      assert.include(
-        pinnedOptions?.additionalDirectories ?? [],
-        NodePath.dirname(threadMemory.path),
+      const offered = harness.offeredMessages.at(-1)?.message.content;
+      yield* harness.offerAndWait(
+        makeResultFrame({ uuid: `memory-result-${attempt}`, result: "Done." }),
       );
-      yield* harness.offerAndWait(wakeTurnInit);
-      yield* Queue.offer(harness.sdkMessages, turnOneResult);
       yield* Queue.take(harness.terminalReceipts);
+      return typeof offered === "string"
+        ? [offered]
+        : (offered ?? []).map((block) => (block.type === "text" ? block.text : block.type));
+    });
+    return { harness, threadMemory, reminder, appended, runTurn };
+  });
 
-      // Unpinning changes the system prompt, so the next turn opens a new process.
-      yield* harness.runtime.startTurn(turnInput(2, false));
-      const unpinnedOptions = harness.getOpenedOptions();
-      assert.notStrictEqual(unpinnedOptions, pinnedOptions);
+  it.effect.each([
+    { session: "a new session", nativeThreadHasTurns: false, prompted: false },
+    { session: "a resumed session", nativeThreadHasTurns: true, prompted: true },
+  ])(
+    "gives the memory line of $session to the first prompt only when the system prompt can't carry it",
+    ({ nativeThreadHasTurns, prompted }) =>
+      Effect.gen(function* () {
+        const { harness, threadMemory, reminder, appended, runTurn } = yield* makeMemoryHarness;
+
+        const first = yield* runTurn(1, { pinned: true, nativeThreadHasTurns });
+        assert.include(appended(), threadMemory.instructions);
+        assert.include(
+          harness.getOpenedOptions()?.additionalDirectories ?? [],
+          NodePath.dirname(threadMemory.path),
+        );
+        assert.equal(harness.getOpenedOptions()?.resume !== undefined, nativeThreadHasTurns);
+        // Claude records a new session's system prompt, append included, on its
+        // first request; a resumed session keeps the one it recorded before.
+        assert.deepEqual(first, prompted ? [reminder, "Turn 1."] : ["Turn 1."]);
+
+        assert.deepEqual(yield* runTurn(2, { pinned: true }), ["Turn 2."]);
+        assert.lengthOf(harness.processQueues, 1);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
+  it.effect.each([
+    { fork: "an unpinned fork", pinned: false },
+    { fork: "a pinned fork", pinned: true },
+  ])("warns $fork off its source's memory file once, ahead of its own line", ({ pinned }) =>
+    Effect.gen(function* () {
+      const { threadMemory, runTurn } = yield* makeMemoryHarness;
+      const forkedMemoryNote = "FORK NOTE: the source's memory file is not this thread's.";
+
+      // A native fork resumes the history it copied from its source.
+      const first = yield* runTurn(1, { pinned, nativeThreadHasTurns: true, forkedMemoryNote });
+      const reminder = pinned
+        ? `${forkedMemoryNote}
+
+${threadMemory.instructions}`
+        : forkedMemoryNote;
+      assert.deepEqual(first, [
+        `<system-reminder>
+${reminder}
+</system-reminder>`,
+        "Turn 1.",
+      ]);
+
+      assert.deepEqual(yield* runTurn(2, { pinned }), ["Turn 2."]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
+  it.effect("gives the memory line again after each pin, never to an unpinned thread", () =>
+    Effect.gen(function* () {
+      const { harness, threadMemory, reminder, appended, runTurn } = yield* makeMemoryHarness;
+
+      assert.deepEqual(yield* runTurn(1, { pinned: false }), ["Turn 1."]);
+      assert.notInclude(appended(), "MEMORY LINE");
+
+      // Pinned after its first turn: the folder and the append need a new
+      // process, and the session's recorded prompt has no line.
+      assert.deepEqual(yield* runTurn(2, { pinned: true }), [reminder, "Turn 2."]);
       assert.lengthOf(harness.processQueues, 2);
-      assert.equal(unpinnedOptions?.resume, WAKE_NATIVE_SESSION);
-      assert.notInclude(appended(unpinnedOptions), "MEMORY LINE");
-      assert.notInclude(
-        unpinnedOptions?.additionalDirectories ?? [],
+      assert.equal(harness.getOpenedOptions()?.resume, WAKE_NATIVE_SESSION);
+      assert.include(appended(), threadMemory.instructions);
+      assert.include(
+        harness.getOpenedOptions()?.additionalDirectories ?? [],
         NodePath.dirname(threadMemory.path),
       );
+
+      assert.deepEqual(yield* runTurn(3, { pinned: true }), ["Turn 3."]);
+      assert.lengthOf(harness.processQueues, 2);
+
+      assert.deepEqual(yield* runTurn(4, { pinned: false }), ["Turn 4."]);
+      assert.lengthOf(harness.processQueues, 3);
+      assert.notInclude(appended(), "MEMORY LINE");
+      assert.notInclude(
+        harness.getOpenedOptions()?.additionalDirectories ?? [],
+        NodePath.dirname(threadMemory.path),
+      );
+
+      assert.deepEqual(yield* runTurn(5, { pinned: true }), [reminder, "Turn 5."]);
+      assert.lengthOf(harness.processQueues, 4);
     }).pipe(
       Effect.scoped,
       Effect.provide(

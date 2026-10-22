@@ -1821,6 +1821,31 @@ export function makeClaudeUserMessage(input: {
   };
 }
 
+/**
+ * Claude Code records a session's system prompt on its first request and
+ * resends that record on every resume until the next compaction, so a memory
+ * line appended after the session began never reaches the model. It travels
+ * with a prompt instead, ahead of the user's blocks: a skill or slash command
+ * runs only from the last text block.
+ */
+function withClaudeSystemReminder(message: SDKUserMessage, text: string): SDKUserMessage {
+  const content = message.message.content;
+  return {
+    ...message,
+    message: {
+      ...message.message,
+      content: [
+        { type: "text", text: `<system-reminder>\n${text}\n</system-reminder>` },
+        ...(typeof content !== "string"
+          ? content
+          : content.length === 0
+            ? []
+            : [{ type: "text" as const, text: content }]),
+      ],
+    },
+  };
+}
+
 const makeClaudeUserMessageWithAttachments = Effect.fnUntraced(function* (input: {
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
@@ -3414,6 +3439,9 @@ interface ClaudeLiveQueryContext {
   stopping: boolean;
   readonly subagentsFromEarlierProcesses: ReadonlySet<ActiveClaudeSubagent>;
   readonly memoryInstructions: string | undefined;
+  // The memory line this process's model has seen: a new session records its
+  // system prompt with it, a resumed one only gets it with a prompt.
+  memorySeen: string | undefined;
 }
 
 interface ActiveClaudeToolCall {
@@ -9089,8 +9117,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             existing.nativeThreadId === nativeThreadId &&
             existing.queryPolicyKey === queryPolicyKey &&
             existing.selection.queryIdentity === compiledSelection.queryIdentity &&
-            // Pinning or unpinning changes the system prompt, which only a new process
-            // takes. Background work keeps the old prompt until the process next opens.
+            // Pinning or unpinning changes the memory folder and the append the next
+            // compaction records, which only a new process takes. Background work keeps
+            // the old ones until the process next opens.
             (existing.memoryInstructions === memoryInstructions ||
               (yield* liveProcessRunsBackgroundWork(existing)))
           ) {
@@ -9239,6 +9268,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ),
             ),
             memoryInstructions,
+            memorySeen: shouldResume ? undefined : memoryInstructions,
           };
           yield* Ref.set(queryContext, context);
           yield* querySession.messages.pipe(
@@ -9466,7 +9496,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             if (userMessage !== null) {
               yield* attachTurn;
               yield* startUserTurnForWakeReports(nativeThreadId);
-              yield* querySession.query.offer(userMessage);
+              const memory = turnInput.threadMemory?.instructions;
+              const reminder = [
+                turnInput.forkedMemoryNote,
+                memory === querySession.memorySeen ? undefined : memory,
+              ]
+                .filter((part) => part !== undefined)
+                .join("\n\n");
+              yield* querySession.query.offer(
+                reminder === "" ? userMessage : withClaudeSystemReminder(userMessage, reminder),
+              );
+              querySession.memorySeen = memory;
               return;
             }
             // Transcript reads suspend replay. Hold live SDK frames until the whole

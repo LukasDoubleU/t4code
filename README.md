@@ -28,7 +28,9 @@ It is based on upstream `v0.1.1` and follows upstream releases. Only Windows bui
 
 **Chat**
 
-- Every message shows its time, relative by default (`Worked for 26s · 10m ago`).
+- Every message shows its time, relative by default (`Worked for 26s · 10m ago`). A reply longer than the screen shows it at its end too.
+- **Readable citations.** Cite a passage of a reply and comment on it: the agent receives the quote in place with your comment after it, and your sent message shows the quote. [Quote an assistant response](./docs/user/composer.md#quote-an-assistant-response)
+- **Reactions.** React 👍 to a reply without starting a turn; the agent learns it with your next message. **Go ahead** approves the reply and starts a turn. [React to a response](./docs/user/composer.md#react-to-a-response)
 - The new-thread picker (<kbd>Ctrl</kbd>+<kbd>N</kbd>) lists projects by name.
 
 **Windows desktop**

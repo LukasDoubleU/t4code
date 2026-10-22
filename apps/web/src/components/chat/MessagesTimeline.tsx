@@ -38,7 +38,10 @@ import {
 import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useAtomValue } from "@effect/atom-react";
 import { environmentThreadDetails } from "../../state/threads";
-import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
+import {
+  agentMessageSenderLabel,
+  resolveUserMessagePresentation,
+} from "@t3tools/client-runtime/user-message";
 import { Link } from "@tanstack/react-router";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
 import { notificationChildThreadId } from "@t3tools/client-runtime/state/thread-execution";
@@ -183,6 +186,7 @@ import { McpAppFrame } from "./McpAppFrame";
 import { ChangedFilesCard } from "./ChangedFilesTree";
 import { useFileContextMenuHandler } from "../../fileContextMenu";
 import { useProject, useQuietThreadShell, useThreadShell } from "../../state/entities";
+import { useEnvironment } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import {
@@ -2425,10 +2429,15 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const folded = userMessage.attribution === "agent";
   const [expanded, setExpanded] = useState(false);
   const revealFoldRef = findRevealRef(() => setExpanded(true));
+  // A sender on a linked machine opens there only when this client is connected to it too.
+  const sentFrom = folded && senderThreadId === undefined ? row.message.sentFrom : undefined;
+  const senderEnvironment = useEnvironment(sentFrom?.environmentId ?? null);
   const senderShell = useQuietThreadShell(
     folded && senderThreadId
       ? { environmentId: ctx.activeThreadEnvironmentId, threadId: senderThreadId }
-      : null,
+      : sentFrom && senderEnvironment
+        ? { environmentId: sentFrom.environmentId, threadId: sentFrom.threadId }
+        : null,
   );
   const resolvedContext = resolveUserMessageContext(row.message);
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
@@ -2568,7 +2577,11 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         {folded ? (
           <FoldedMessageHeader
             icon={MessagesSquareIcon}
-            label={senderShell?.title.trim() || "Agent"}
+            label={agentMessageSenderLabel({
+              senderTitle: senderShell?.title,
+              sentFrom,
+              environmentLabel: senderEnvironment?.label,
+            })}
             summary={foldSummary}
             expanded={expanded}
             onToggle={() => setExpanded((value) => !value)}
@@ -2715,6 +2728,14 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             <InlineButton onClick={() => ctx.onOpenThread(senderThreadId)} tone="muted">
               Open thread
             </InlineButton>
+          ) : sentFrom && senderEnvironment ? (
+            <Link
+              to="/$environmentId/$threadId"
+              params={{ environmentId: sentFrom.environmentId, threadId: sentFrom.threadId }}
+              className="rounded-sm text-xs text-muted-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              Open thread
+            </Link>
           ) : null
         }
       >

@@ -41,6 +41,7 @@ import type {
   MessageId,
   OrchestrationV2Actor,
   OrchestrationV2CreationSource,
+  OrchestrationV2SentFrom,
   OrchestrationV2ExecutionNode,
   OrchestrationMessageContext,
   OrchestrationV2ProjectedTurnItem,
@@ -140,6 +141,7 @@ export interface ThreadFeedMessage {
   readonly creationSource?: OrchestrationV2CreationSource;
   readonly scheduledTaskId?: ScheduledTaskId;
   readonly senderThreadId?: ThreadId;
+  readonly sentFrom?: OrchestrationV2SentFrom;
   readonly visibility: OrchestrationV2ProjectedTurnItem["visibility"];
   readonly sourceThreadId: ThreadId;
   readonly createdAt: string;
@@ -2101,6 +2103,7 @@ export function buildThreadFeed(
                 creationSource: item.creationSource,
                 ...(item.scheduledTaskId ? { scheduledTaskId: item.scheduledTaskId } : {}),
                 ...(item.senderThreadId ? { senderThreadId: item.senderThreadId } : {}),
+                ...(item.sentFrom ? { sentFrom: item.sentFrom } : {}),
               }
             : {}),
           visibility: row.visibility,

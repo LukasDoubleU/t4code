@@ -25,7 +25,10 @@ import { KeyboardAwareLegendList } from "@legendapp/list/keyboard";
 import { useViewabilityAmount, type LegendListRef } from "@legendapp/list/react-native";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { HandoffEndpoints } from "@t3tools/client-runtime/handoff";
-import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
+import {
+  agentMessageSenderLabel,
+  resolveUserMessagePresentation,
+} from "@t3tools/client-runtime/user-message";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
 import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
@@ -37,6 +40,7 @@ import {
   type EnvironmentId,
   type MessageId,
   type OrchestrationV2ProjectedTurnItem,
+  type OrchestrationV2SentFrom,
   type RunId,
   type ScheduledTaskId,
 } from "@t3tools/contracts";
@@ -223,6 +227,7 @@ import {
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { usePreparedConnection } from "../../state/session";
 import { useLiveThreadLinkLabels, useQuietThreadShell } from "../../state/entities";
+import { useEnvironmentPresentation } from "../../state/presentation";
 import { useThreadSelection } from "../../state/use-thread-selection";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
@@ -946,15 +951,28 @@ function useMarkdownStyles(): MarkdownStyleSets {
 function AgentMessageFoldHeader(props: {
   readonly environmentId: EnvironmentId;
   readonly senderThreadId?: ThreadId;
+  readonly sentFrom?: OrchestrationV2SentFrom;
   readonly summary: string;
   readonly expanded: boolean;
   readonly onToggle: () => void;
   readonly iconSubtleColor: ColorValue;
 }) {
+  const sentFrom = props.senderThreadId ? undefined : props.sentFrom;
+  const senderEnvironment = useEnvironmentPresentation(
+    sentFrom?.environmentId ?? null,
+  ).presentation;
   const senderShell = useQuietThreadShell(
-    props.senderThreadId ? scopeThreadRef(props.environmentId, props.senderThreadId) : null,
+    props.senderThreadId
+      ? scopeThreadRef(props.environmentId, props.senderThreadId)
+      : sentFrom && senderEnvironment
+        ? scopeThreadRef(sentFrom.environmentId, sentFrom.threadId)
+        : null,
   );
-  const label = senderShell?.title.trim() || "Agent";
+  const label = agentMessageSenderLabel({
+    senderTitle: senderShell?.title,
+    sentFrom,
+    environmentLabel: senderEnvironment?.entry.target.label,
+  });
   return (
     <Pressable
       accessibilityRole="button"
@@ -991,6 +1009,17 @@ function AgentMessageFoldHeader(props: {
         tintColor={props.iconSubtleColor}
       />
     </Pressable>
+  );
+}
+
+/** A sender on a linked machine opens there only when this client is connected to it too. */
+function OpenRemoteSenderThreadButton(props: { readonly sentFrom: OrchestrationV2SentFrom }) {
+  const { presentation } = useEnvironmentPresentation(props.sentFrom.environmentId);
+  return presentation === null ? null : (
+    <OpenSenderThreadButton
+      environmentId={props.sentFrom.environmentId}
+      senderThreadId={props.sentFrom.threadId}
+    />
   );
 }
 
@@ -1413,6 +1442,7 @@ function renderFeedEntry(
               <AgentMessageFoldHeader
                 environmentId={props.environmentId}
                 senderThreadId={message.senderThreadId}
+                {...(message.sentFrom ? { sentFrom: message.sentFrom } : {})}
                 summary={
                   replaceComposerContextReferences(presentation.text, (ref) => ref.label)
                     .split(/\r?\n/)
@@ -1518,6 +1548,8 @@ function renderFeedEntry(
                   environmentId={props.environmentId}
                   senderThreadId={message.senderThreadId}
                 />
+              ) : foldRowId !== null && message.sentFrom ? (
+                <OpenRemoteSenderThreadButton sentFrom={message.sentFrom} />
               ) : null}
               {intentBadge ? (
                 <View

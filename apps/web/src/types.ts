@@ -7,6 +7,7 @@ import type {
   MessageId,
   OrchestrationV2Actor,
   OrchestrationV2CreationSource,
+  OrchestrationV2SentFrom,
   OrchestrationV2MessageReactionEmoji,
   OrchestrationV2PlanArtifact,
   OrchestrationV2UserMessageInputIntent,
@@ -94,6 +95,7 @@ export interface ChatMessage {
   readonly creationSource?: OrchestrationV2CreationSource;
   readonly scheduledTaskId?: ScheduledTaskId;
   readonly senderThreadId?: ThreadId;
+  readonly sentFrom?: OrchestrationV2SentFrom;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly inputIntent?: OrchestrationV2UserMessageInputIntent | undefined;

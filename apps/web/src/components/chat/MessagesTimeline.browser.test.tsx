@@ -1753,6 +1753,26 @@ describe("MessagesTimeline agent messages", () => {
     expect(screen.text()).not.toContain("drops the index");
   });
 
+  it("names a sender on a linked machine with that machine", async () => {
+    setup();
+    const sentFrom = {
+      environmentId: EnvironmentId.make("environment-laptop"),
+      threadId: ThreadId.make("thread-laptop"),
+      title: "Review the migration",
+      label: "Laptop",
+    };
+    await using screen = await renderTimeline([
+      message(AGENT_MESSAGE, { createdBy: "agent", creationSource: "mcp", sentFrom }),
+    ]);
+    const row = screen.button(/^Review the migration · Laptop/);
+    expect(row.textContent).toContain("Review finished");
+
+    await click(row);
+    expect(screen.text()).toContain("drops the index");
+    // This client is not connected to the laptop, so the sender does not open from here.
+    expect(screen.text()).not.toContain("Open thread");
+  });
+
   it("leaves messages sent by T3 Code as full bubbles", async () => {
     setup();
     await using screen = await renderTimeline([

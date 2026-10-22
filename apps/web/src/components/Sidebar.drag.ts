@@ -99,6 +99,7 @@ export function createSidebarSortingStrategy(input: {
   enabled?: boolean;
   settledOrder: readonly string[];
   pinnedOrder?: readonly string[];
+  pinnedExpanded?: boolean;
   activeOrder?: readonly string[];
   backgroundOrder?: readonly string[];
   backgroundExpanded?: boolean;
@@ -175,6 +176,9 @@ export function createSidebarSortingStrategy(input: {
     ) {
       groups.background = groups.background.filter((item) => item.key !== active.key);
     }
+    if (input.pinnedExpanded === false && active.key !== input.routeThreadKey) {
+      groups.pinned = groups.pinned.filter((item) => item.key !== active.key);
+    }
     const settledOrder = (
       input.settledOrder.length > 0 ? input.settledOrder : groups.settled.map((item) => item.key)
     ).filter((key) => key !== active.key || target.section === "settled");
@@ -227,14 +231,16 @@ export function createSidebarSortingStrategy(input: {
           ? cardHeight
           : slimHeight;
       const moved = item.kind === "thread" && item.key === active.key;
-      return item.kind === "marker" &&
-        (item.marker === "pinned-header" || item.marker === "pinned-divider")
-        ? labelHeight
-        : item.kind === "marker" && item.marker.endsWith("placeholder")
-          ? slimHeight
-          : moved
-            ? fallback
-            : (rect?.height ?? fallback);
+      // With pins, the Experts header is a full row that labels its section itself.
+      return item.kind === "marker" && item.marker === "pinned-header"
+        ? Math.max(rect?.height ?? 0, labelHeight)
+        : item.kind === "marker" && item.marker === "pinned-divider"
+          ? labelHeight
+          : item.kind === "marker" && item.marker.endsWith("placeholder")
+            ? slimHeight
+            : moved
+              ? fallback
+              : (rect?.height ?? fallback);
     });
     const firstShelf = items.findIndex(isShelfHeader);
     const shelfRect = rects[firstShelf];

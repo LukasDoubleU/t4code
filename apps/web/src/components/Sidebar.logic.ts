@@ -134,6 +134,25 @@ export function resolveSidebarThreadSection(input: {
   return "active";
 }
 
+/**
+ * Pinned threads form the Experts section. Collapsed, it keeps only the open thread, as a
+ * collapsed shelf does, and hides its order: a drop onto its header pins like the thread
+ * menu's Pin instead of at a spot nobody can see.
+ */
+export function resolveSidebarExpertsSection<T>(input: {
+  readonly pinned: readonly T[];
+  readonly collapsed: boolean;
+  readonly routeThreadKey: string | null;
+  readonly keyOf: (thread: T) => string;
+}): { readonly rows: readonly T[]; readonly label: string; readonly expanded: boolean } {
+  const { pinned, collapsed, routeThreadKey, keyOf } = input;
+  return {
+    rows: collapsed ? pinned.filter((thread) => keyOf(thread) === routeThreadKey) : pinned,
+    label: `Experts (${pinned.length})`,
+    expanded: !collapsed,
+  };
+}
+
 const SIDEBAR_MARKER_PREFIX = "sidebar-marker-";
 
 export type SidebarListMarker =

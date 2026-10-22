@@ -85,7 +85,7 @@ If any of this fails, the rehearsal stops before starting on the copy. The serve
 
 ### The fork's migrations: `undo-peer-link-migrations.ps1`
 
-The peer-link stack adds three migrations: `PeerLinks` (`peer_environment_links`), `PeerLinkFence` (its `fenced` column) and `WaitingLinkRequestIndex` (the index `orchestration_v2_projection_turn_items_waiting_link_idx`), currently 068–070. They always follow upstream's. When an update moves them to make room for upstream's, the fork's build forgets their rows at the old ids on start, runs upstream's, then runs the stack's again at the new ids, which changes nothing.
+The peer-link stack adds three migrations: `PeerLinks` (`peer_environment_links`), `PeerLinkFence` (its `fenced` column) and `WaitingLinkRequestIndex` (the index `orchestration_v2_projection_turn_items_waiting_link_idx`), currently 069–071. They always follow upstream's. When an update moves them to make room for upstream's, the fork's build forgets their rows at the old ids on start, runs upstream's, then runs the stack's again at the new ids, which changes nothing.
 
 An official release only warns about ids it doesn't know, so one whose migrations end below the stack's starts. An official release that uses one of the stack's ids for its own refuses to start, because the database "would skip required schema migrations". If upstream ships the stack with the same ids and names, nothing is needed.
 

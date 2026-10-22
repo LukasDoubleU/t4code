@@ -71,9 +71,10 @@ import Migration0064 from "./Migrations/064_CanonicalizeThreadPullRequestLinks.t
 import Migration0065 from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
 import Migration0066 from "./Migrations/066_RepairClientSettlementTimestamps.ts";
 import Migration0067 from "./Migrations/067_WebhookDedupe.ts";
-import Migration0068 from "./Migrations/068_PeerLinks.ts";
-import Migration0069 from "./Migrations/069_PeerLinkFence.ts";
-import Migration0070 from "./Migrations/070_WaitingLinkRequestIndex.ts";
+import Migration0068 from "./Migrations/068_ShellStopRequestIndex.ts";
+import Migration0069 from "./Migrations/069_PeerLinks.ts";
+import Migration0070 from "./Migrations/070_PeerLinkFence.ts";
+import Migration0071 from "./Migrations/071_WaitingLinkRequestIndex.ts";
 
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -144,10 +145,11 @@ export const migrationEntries = [
   [65, "CodexUsageNativeTurnIndex", Migration0065],
   [66, "RepairClientSettlementTimestamps", Migration0066],
   [67, "WebhookDedupe", Migration0067],
+  [68, "ShellStopRequestIndex", Migration0068],
   // This fork's own migrations stay after upstream's: see reconcileForkMigrations.ts.
-  [68, "PeerLinks", Migration0068],
-  [69, "PeerLinkFence", Migration0069],
-  [70, "WaitingLinkRequestIndex", Migration0070],
+  [69, "PeerLinks", Migration0069],
+  [70, "PeerLinkFence", Migration0070],
+  [71, "WaitingLinkRequestIndex", Migration0071],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

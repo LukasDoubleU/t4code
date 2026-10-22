@@ -34,10 +34,10 @@ sh install-t4.sh --dry-run   # download and check only, show the rest
 ```
 
 1. Finds the newest release of this repository, or the one named with `--version`, as a tag or a version, like `install-t4.ps1`.
-2. Downloads its Linux archive, `t3-<version>-linux-x64.tar.gz`, and checks it against the release's `SHA256SUMS`.
+2. Downloads its Linux archive, `t3-<version>-linux-x64.tar.gz`, checks it against the release's `SHA256SUMS` and unpacks it into `~/.t3/runtime/versions/<version>`, beside the running version: the layout of upstream's `install.sh` and `t3 update`, so `t3 service install` and `t3 update` reuse it. A version already unpacked there isn't downloaded again.
 3. Stops the background service if it runs. If agents or terminals are running in it, it asks first; `--force` skips the question. From a terminal or agent inside T3 Code on that machine it refuses, because the restart would end it halfway: run it over SSH.
 4. Backs up the files in `userdata` to `~/.t3/backups/<time>-<installed version>/userdata`, as `install-t4.ps1` does; `--skip-backup` skips this. It stops if a `t3` server started by hand still has the database open.
-5. Unpacks the archive into `~/.t3/runtime/versions/<version>` and points `~/.local/bin/t3` at it: the layout of upstream's `install.sh` and `t3 update`, so `t3 service install` and `t3 update` reuse it. `T3CODE_INSTALL_BIN_DIR` puts the launcher elsewhere.
+5. Points the `t3` launcher, `~/.local/bin/t3`, at the new version. `T3CODE_INSTALL_BIN_DIR` puts the launcher elsewhere.
 6. Switches the background service to the new version with that version's `t3 service install`, which starts it again.
 7. Removes old install backups, keeping the newest three; `--keep-backups <n>` keeps another number.
 

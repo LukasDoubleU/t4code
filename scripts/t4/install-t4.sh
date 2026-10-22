@@ -6,13 +6,13 @@
 #   sh install-t4.sh --version 0.1.2-t4.14  a given release, as a version or tag
 #   sh install-t4.sh --dry-run              download and check only, show the rest
 #
-# Finds a release of the fork, downloads its Linux archive and checks it
-# against the release's SHA256SUMS, stops the background service, backs up the
-# files in the T3 home's userdata, unpacks the archive into
-# <T3 home>/runtime/versions/<version> with a `t3` launcher, the layout of
-# upstream's install.sh and `t3 update`, switches the service to the new
-# version and removes all but the newest install backups. scripts/t4/README.md
-# describes each step.
+# Finds a release of the fork, downloads its Linux archive, checks it against
+# the release's SHA256SUMS and unpacks it into
+# <T3 home>/runtime/versions/<version>, the layout of upstream's install.sh and
+# `t3 update`. Then it stops the background service, backs up the files in
+# the T3 home's userdata, points the `t3` launcher at the new version,
+# switches the service to it and removes all but the newest install backups.
+# scripts/t4/README.md describes each step.
 #
 # Environment: T3CODE_HOME (default ~/.t3), T3CODE_INSTALL_BIN_DIR, where the
 # `t3` launcher goes (default ~/.local/bin).
@@ -168,8 +168,12 @@ if [ -f "$service_unit" ]; then
   fi
 fi
 
-if [ "$installed" = "$release_version" ] &&
-  [ "$(cat "$target_dir/.install-complete" 2> /dev/null)" = "$release_version" ] &&
+# A version already unpacked there, by this script, `t3 update` or the service,
+# is used as it is, as they do.
+unpacked=false
+if [ "$(cat "$target_dir/.install-complete" 2> /dev/null)" = "$release_version" ]; then unpacked=true; fi
+
+if [ "$installed" = "$release_version" ] && "$unpacked" &&
   { ! "$service_installed" || [ "$service_version" = "$release_version" ]; }; then
   say "The T4 Code server $release_version is already installed."
   exit 0
@@ -182,26 +186,52 @@ if "$service_installed" && [ "${T3_BOOT_SERVICE_UNIT:-}" = t3code.service ]; the
   fail "this runs inside T3 Code's background service, which the update restarts. Run it from an SSH session or another terminal outside T3 Code."
 fi
 
-# --- Download and check -----------------------------------------------------
+# --- Download, check and unpack ---------------------------------------------
 
-say "Downloading $archive..."
-get "$download_url/$checksums_asset" "$work/$checksums_asset"
-case "$http_status" in
-  200) ;;
-  404) fail "release $tag has no $checksums_asset" ;;
-  *) fail "could not download $checksums_asset (HTTP $http_status)" ;;
-esac
-get "$download_url/$archive" "$work/$archive" progress
-case "$http_status" in
-  200) ;;
-  404) fail "release $tag has no Linux build ($archive)" ;;
-  *) fail "could not download $archive (HTTP $http_status)" ;;
-esac
-expected="$(awk -v name="$archive" '($2 == name || $2 == "*" name) && length($1) == 64 { print tolower($1); exit }' "$work/$checksums_asset")"
-[ -n "$expected" ] || fail "$archive is not listed in $checksums_asset"
-actual="$(sha256sum "$work/$archive" | cut -d ' ' -f 1)"
-[ "$actual" = "$expected" ] || fail "checksum mismatch for $archive"
-say "Checksum OK."
+if "$unpacked"; then
+  say "Version $release_version is already unpacked in $target_dir."
+else
+  say "Downloading $archive..."
+  get "$download_url/$checksums_asset" "$work/$checksums_asset"
+  case "$http_status" in
+    200) ;;
+    404) fail "release $tag has no $checksums_asset" ;;
+    *) fail "could not download $checksums_asset (HTTP $http_status)" ;;
+  esac
+  get "$download_url/$archive" "$work/$archive" progress
+  case "$http_status" in
+    200) ;;
+    404) fail "release $tag has no Linux build ($archive)" ;;
+    *) fail "could not download $archive (HTTP $http_status)" ;;
+  esac
+  expected="$(awk -v name="$archive" '($2 == name || $2 == "*" name) && length($1) == 64 { print tolower($1); exit }' "$work/$checksums_asset")"
+  [ -n "$expected" ] || fail "$archive is not listed in $checksums_asset"
+  actual="$(sha256sum "$work/$archive" | cut -d ' ' -f 1)"
+  [ "$actual" = "$expected" ] || fail "checksum mismatch for $archive"
+  say "Checksum OK."
+
+  # Beside the running version, so a build that doesn't run here stops the
+  # install before anything else changes.
+  if "$dry_run"; then
+    say "Would unpack $archive into $target_dir"
+  else
+    mkdir -p "$versions_dir"
+    staging="$(mktemp -d "$versions_dir/.staging-XXXXXX")"
+    tar -xzf "$work/$archive" -C "$staging" --strip-components=1
+    version_output="$("$staging/t3" --version 2>&1)" || true
+    case "$version_output" in
+      *"$release_version"*) ;;
+      # The executable is Node's official build, which links libatomic.
+      *libatomic*) fail "the downloaded t3 needs libatomic, which minimal images lack (Debian and Ubuntu: sudo apt install libatomic1): $version_output" ;;
+      *) fail "the downloaded t3 does not run on this machine: $version_output" ;;
+    esac
+    printf '%s\n' "$release_version" > "$staging/.install-complete"
+    rm -rf "$target_dir"
+    mv "$staging" "$target_dir"
+    staging=
+    say "Unpacked it into $target_dir"
+  fi
+fi
 
 # --- Stop the service -------------------------------------------------------
 
@@ -268,28 +298,7 @@ if ! "$skip_backup" && [ -d "$userdata" ]; then
   fi
 fi
 
-# --- Install ----------------------------------------------------------------
-
-if [ "$(cat "$target_dir/.install-complete" 2> /dev/null)" = "$release_version" ]; then
-  say "Version $release_version is already unpacked in $target_dir."
-elif "$dry_run"; then
-  say "Would unpack $archive into $target_dir"
-else
-  mkdir -p "$versions_dir"
-  staging="$(mktemp -d "$versions_dir/.staging-XXXXXX")"
-  tar -xzf "$work/$archive" -C "$staging" --strip-components=1
-  version_output="$("$staging/t3" --version 2>&1)" || true
-  case "$version_output" in
-    *"$release_version"*) ;;
-    # The executable is Node's official build, which links libatomic.
-    *libatomic*) fail "the downloaded t3 needs libatomic, which minimal images lack (Debian and Ubuntu: sudo apt install libatomic1): $version_output" ;;
-    *) fail "the downloaded t3 does not run on this machine: $version_output" ;;
-  esac
-  printf '%s\n' "$release_version" > "$staging/.install-complete"
-  rm -rf "$target_dir"
-  mv "$staging" "$target_dir"
-  staging=
-fi
+# --- Switch to the new version ----------------------------------------------
 
 if "$dry_run"; then
   say "Would point $bin_dir/t3 at $target_dir/t3"

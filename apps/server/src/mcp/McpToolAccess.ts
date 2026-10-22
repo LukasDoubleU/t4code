@@ -30,7 +30,6 @@ import {
   assertLiveCaller,
   assertTargetWithinLimits,
   type Caller,
-  launcherOf,
   loadCaller,
   readCaller,
   unavailable,
@@ -358,19 +357,6 @@ const takesLinkedEnvironment = (tool: Tool.Any) => {
   );
 };
 
-/**
- * A tool that starts threads takes the thread that started them as
- * `launchedBy`, which the linked environment records. It is the calling thread
- * here, never what the agent passed.
- */
-const takesLauncher = (tool: Tool.Any) => {
-  const parameters: unknown = tool.parametersSchema;
-  return (
-    Predicate.hasProperty(parameters, "fields") &&
-    Predicate.hasProperty(parameters.fields, "launchedBy")
-  );
-};
-
 const linksUnavailable = new OrchestratorMcpFailure({
   code: "orchestration_error",
   message: "This environment cannot reach linked environments.",
@@ -422,11 +408,8 @@ const routed = Effect.fn("McpToolAccess.routed")(function* <Tools extends Record
     ) {
       yield* (remote as RemoteCheck<typeof params>)(params);
       if (Option.isNone(forwarding)) return yield* linksUnavailable;
-      const { launchedBy: _claimed, ...forwarded } = params as { readonly launchedBy?: unknown };
-      const launchedBy = takesLauncher(tool) ? launcherOf(yield* loadCaller()) : undefined;
       return yield* forwarding.value.call(scope, tool, target, {
-        ...forwarded,
-        ...(launchedBy === undefined ? {} : { launchedBy }),
+        ...params,
         environmentId: target,
       });
     });

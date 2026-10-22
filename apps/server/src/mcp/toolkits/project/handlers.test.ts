@@ -50,6 +50,7 @@ it.effect("attributes a launched thread and its first message to the calling thr
     } as OrchestrationV2ThreadShell;
     let launchedSender: ThreadId | undefined;
     let launchedBy: ThreadLaunch.ThreadLaunchInput["launchedBy"];
+    let launchedSentFrom: ThreadLaunch.ThreadLaunchInitialMessage["sentFrom"];
     const layerDependencies = Layer.mergeAll(
       ServerSettings.layerTest(),
       NodeCrypto.layer,
@@ -72,6 +73,7 @@ it.effect("attributes a launched thread and its first message to the calling thr
         launch: (input) => {
           launchedSender = input.initialMessage?.senderThreadId;
           launchedBy = input.launchedBy;
+          launchedSentFrom = input.initialMessage?.sentFrom;
           return Effect.succeed({
             threadId: input.threadId,
             projection: {
@@ -102,11 +104,12 @@ it.effect("attributes a launched thread and its first message to the calling thr
       .handle("t3_thread_launch", {
         title: "Audit",
         message: "Review the change",
-        // Only a linked environment's launch names its own launcher.
-        launchedBy: {
+        // Only a linked environment's launch names a thread elsewhere.
+        sentFrom: {
           environmentId: EnvironmentId.make("environment-elsewhere"),
           threadId: ThreadId.make("claimed-thread"),
           title: "Claimed",
+          label: "Elsewhere",
         },
       })
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(layerDependencies));
@@ -117,6 +120,7 @@ it.effect("attributes a launched thread and its first message to the calling thr
       threadId: sourceThreadId,
       title: "Expert",
     });
+    expect(launchedSentFrom).toBeUndefined();
   }),
 );
 

@@ -155,9 +155,18 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
             message:
               "Pass modelSelection: the project has no default model. orchestrator_capabilities lists providers and models.",
           });
-        // The calling thread, or for a launch a linked environment forwards, its thread there.
+        // Only a link forwards a launch from a thread on another machine; its delegated
+        // task is that thread's subagent, anything else its launched thread.
+        const sentFrom = scope.client?.linked === true ? input.sentFrom : undefined;
         const launchedBy =
-          launcherOf(context) ?? (linkOrigin === undefined ? undefined : input.launchedBy);
+          launcherOf(context) ??
+          (sentFrom === undefined || input.delegatedFrom !== undefined
+            ? undefined
+            : {
+                environmentId: sentFrom.environmentId,
+                threadId: sentFrom.threadId,
+                title: sentFrom.title,
+              });
         const result = yield* ThreadMessageIntake.launchThread({
           commandId,
           threadId,
@@ -173,6 +182,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
                 initialMessage: {
                   messageId,
                   ...(caller === undefined ? {} : { senderThreadId: caller.id }),
+                  ...(sentFrom === undefined ? {} : { sentFrom }),
                   text: input.message ?? "",
                   attachments,
                 },

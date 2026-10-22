@@ -254,6 +254,7 @@ import {
   resolveSidebarExpertsSection,
   resolveSidebarRowThreadId,
   resolveSidebarRowVariant,
+  resolveSidebarTopicExpert,
 } from "./Sidebar.logic";
 import {
   groupSidebarThreads,
@@ -411,6 +412,10 @@ const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
 const BACKGROUND_SHELF_EXPANDED_KEY = "t3code:sidebar:background-expanded";
+// Experts whose topics this device shows.
+const OPEN_TOPICS_KEY = "t3code:sidebar:open-topics";
+const NO_OPEN_TOPICS: readonly string[] = [];
+const OpenTopicKeys = Schema.Array(Schema.String);
 
 const inboxReturns = createInboxReturnTracker();
 
@@ -611,6 +616,11 @@ function useSidebarThreads(input: {
     false,
     Schema.Boolean,
   );
+  const [openTopicKeys, setOpenTopicKeys] = useLocalStorage(
+    OPEN_TOPICS_KEY,
+    NO_OPEN_TOPICS,
+    OpenTopicKeys,
+  );
   // Shared with the old per-project sidebar, so folders keep their open state.
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
@@ -646,6 +656,7 @@ function useSidebarThreads(input: {
 
   const {
     pinnedThreads,
+    topicsByExpert,
     activeThreads,
     workingThreads,
     backgroundThreads,
@@ -654,10 +665,13 @@ function useSidebarThreads(input: {
   } = partition;
   const experts = resolveSidebarExpertsSection({
     pinned: pinnedThreads,
+    topicsByExpert,
+    openTopicKeys: new Set(openTopicKeys),
     collapsed: expertsCollapsed,
     routeThreadKey: routeRowThreadKey,
     keyOf: threadShellKey,
   });
+  const topicThreads = [...topicsByExpert.values()].flat();
   const visibleSettledThreads = (() => {
     if (settledThreads.length <= settledVisibleCount) return settledThreads;
     const visible = settledThreads.slice(0, settledVisibleCount);
@@ -716,10 +730,11 @@ function useSidebarThreads(input: {
               settledCount === undefined ? 0 : folder.settled.length - shownSettled.length,
           };
         });
+  const expertRows = experts.rows.map((row) => row.thread);
   const orderedThreads =
     folders === null
       ? [
-          ...experts.rows,
+          ...expertRows,
           ...activeThreads,
           ...visibleWorkingThreads,
           ...visibleBackgroundThreads,
@@ -727,7 +742,7 @@ function useSidebarThreads(input: {
           ...renderedSettledThreads,
         ]
       : [
-          ...experts.rows,
+          ...expertRows,
           ...folders.flatMap((folder) => [...folder.inbox, ...folder.settled]),
           // Background is one list below the folders, whatever they group by.
           ...visibleBackgroundThreads,
@@ -738,6 +753,7 @@ function useSidebarThreads(input: {
   const sectionByThreadKey = new Map<string, SidebarSection>();
   for (const [list, section] of [
     [pinnedThreads, "pinned"],
+    [topicThreads, "topic"],
     [activeThreads, "active"],
     [workingThreads, "working"],
     [backgroundThreads, "background"],
@@ -757,6 +773,7 @@ function useSidebarThreads(input: {
     placeInBackground: background.place,
     searchableThreads: [
       ...pinnedThreads,
+      ...topicThreads,
       ...activeThreads,
       ...workingThreads,
       ...backgroundThreads,
@@ -772,6 +789,11 @@ function useSidebarThreads(input: {
       })),
     experts,
     toggleExperts: () => void updateClientSettings({ sidebarExpertsCollapsed: !expertsCollapsed }),
+    openTopicKeys,
+    toggleTopics: (expertKey: string) =>
+      setOpenTopicKeys((keys) =>
+        keys.includes(expertKey) ? keys.filter((key) => key !== expertKey) : [...keys, expertKey],
+      ),
     settledShelfExpanded,
     toggleSettledShelf: () => setSettledShelfExpanded((value) => !value),
     snoozedShelfExpanded,
@@ -852,11 +874,18 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const settled: EnvironmentThreadShell[] = [];
   const draggable = new Set<string>();
   const activeReorderable = new Set<string>();
+  const continuedIn = new Map<string, string>();
   for (const thread of visible) {
     const capabilities = serverConfigs.get(thread.environmentId)?.environment.capabilities;
     const supportsSettlement = capabilities?.threadSettlement === true;
     const supportsSnooze = capabilities?.threadSnooze === true;
     const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+    if (thread.source.continuedIn !== undefined) {
+      continuedIn.set(
+        threadKey,
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.source.continuedIn)),
+      );
+    }
     if (capabilities?.threadActiveReorder === true) activeReorderable.add(threadKey);
     if (capabilities?.threadPinning === true && capabilities.threadPinReorder === true) {
       draggable.add(threadKey);
@@ -897,13 +926,43 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
       ).push(thread);
     }
   }
+  // An expert's topics leave their sections for its row.
+  const expertKeys = new Set(pinned.map(threadShellKey));
+  const topicsByExpert = new Map<string, EnvironmentThreadShell[]>();
+  const withoutTopics = (list: EnvironmentThreadShell[], section: SidebarSection) =>
+    expertKeys.size === 0
+      ? list
+      : list.filter((thread) => {
+          const launchedBy = thread.source.launchedBy;
+          if (launchedBy === undefined) return true;
+          const expertKey = resolveSidebarTopicExpert({
+            section,
+            launcherKey: scopedThreadKey(
+              scopeThreadRef(launchedBy.environmentId, launchedBy.threadId),
+            ),
+            expertKeys,
+            continuedIn,
+            needsUser: sidebarThreadNeedsUser(statusGroupOf(thread)),
+          });
+          if (expertKey === null) return true;
+          const topics = topicsByExpert.get(expertKey);
+          if (topics) topics.push(thread);
+          else topicsByExpert.set(expertKey, [thread]);
+          return false;
+        });
+  const activeOnly = withoutTopics(active, "active");
+  const workingOnly = withoutTopics(working, "working");
+  const backgroundOnly = withoutTopics(background, "background");
+  for (const [expertKey, topics] of topicsByExpert) {
+    topicsByExpert.set(expertKey, sortSidebarActiveThreads(topics, threadSort, statusGroupOf));
+  }
   // Server capability only gates DRAGGING — it must not influence the
   // sort, or mixed-version fleets would render different pinned orders on
   // web and mobile from the same data.
   const sortedPinned = sortSidebarPinnedThreads(pinned, threadSort, statusGroupOf);
   const sortedActive = workingShelfEnabled
-    ? sortInboxThreadsByReturn(active, inboxReturns.returnedAt)
-    : sortSidebarActiveThreads(active, threadSort, statusGroupOf);
+    ? sortInboxThreadsByReturn(activeOnly, inboxReturns.returnedAt)
+    : sortSidebarActiveThreads(activeOnly, threadSort, statusGroupOf);
   return {
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
@@ -926,8 +985,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
             preferredIds: optimisticDrop.order,
             getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
           }),
-    workingThreads: sortWorkingThreadsBySend(working),
-    backgroundThreads: sortSidebarActiveThreads(background, threadSort, statusGroupOf),
+    topicsByExpert,
+    workingThreads: sortWorkingThreadsBySend(workingOnly),
+    backgroundThreads: sortSidebarActiveThreads(backgroundOnly, threadSort, statusGroupOf),
     snoozedThreads: snoozed.toSorted(
       (left, right) =>
         firstValidTimestampMs(left.snoozedUntil ?? null) -
@@ -1922,12 +1982,16 @@ type SidebarThreadRowProps = {
   thread: SidebarThreadSummary;
   // "folder" is a one-line row inside a boring sidebar project folder; "group" is
   // one inside a machine or status folder, which keeps the project's icon.
-  variant: "card" | "expert" | "slim" | "folder" | "group";
+  variant: "card" | "expert" | "topic" | "slim" | "folder" | "group";
   variantAction: SidebarSweepAction;
   settlementSupported: boolean;
   snoozeSupported: boolean;
   pinningSupported: boolean;
   isPinned: boolean;
+  // An expert's topics nested under it, and whether they show.
+  topicCount: number;
+  topicsOpen: boolean;
+  onToggleTopics: (threadRef: ScopedThreadRef) => void;
   sortable?: SortableThreadRowBag | undefined;
   dropVerb: SidebarDropVerb | null;
   dragOverPinned: boolean;
@@ -2194,7 +2258,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       branchMismatch={branchMismatch}
       terminalStatus={terminalStatus}
       terminalProcessCount={terminalProcessCount}
-      pullRequest={variant === "expert" ? prStatus : null}
+      pullRequest={variant === "expert" || variant === "topic" ? prStatus : null}
       memoryThreadRef={variant === "expert" && props.isPinned ? threadRef : null}
     />
   );
@@ -2295,6 +2359,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     event.preventDefault();
     event.stopPropagation();
     onUnpin(threadRef);
+  };
+  const handleToggleTopicsClick = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    props.onToggleTopics(threadRef);
   };
   const handleSnoozePreset = (preset: Pick<SnoozePreset, "snoozedUntil">) => {
     onSnooze(threadRef, preset);
@@ -2557,7 +2626,29 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     <RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />
   );
 
-  if (variant === "expert") {
+  if (variant === "expert" || variant === "topic") {
+    const topicsToggle =
+      props.topicCount > 0 ? (
+        <button
+          type="button"
+          aria-expanded={props.topicsOpen}
+          aria-label={`${props.topicsOpen ? "Hide" : "Show"} ${props.topicCount} ${
+            props.topicCount === 1 ? "topic" : "topics"
+          }`}
+          data-testid="sidebar-expert-topics-toggle"
+          onClick={handleToggleTopicsClick}
+          className="inline-flex h-5 shrink-0 cursor-pointer items-center gap-0.5 rounded-sm px-0.5 text-xs tabular-nums text-secondary-label outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <ChevronRightIcon
+            aria-hidden
+            className={cn(
+              "size-3 shrink-0 transition-transform duration-150",
+              props.topicsOpen && "rotate-90",
+            )}
+          />
+          {props.topicCount}
+        </button>
+      ) : null;
     return (
       <li
         data-thread-item={threadKey}
@@ -2577,9 +2668,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 tabIndex={0}
                 aria-label={accessibility.label}
                 aria-current={accessibility.current}
-                data-testid="sidebar-row-expert"
+                data-testid={variant === "topic" ? "sidebar-row-topic" : "sidebar-row-expert"}
                 aria-busy={isRegeneratingTitle || undefined}
-                className={cn(rowSurfaceClassName, "flex h-7 items-center gap-1.5 px-2.5")}
+                className={cn(
+                  rowSurfaceClassName,
+                  "flex h-7 items-center gap-1.5 px-2.5",
+                  variant === "topic" && "pl-7",
+                )}
                 onClick={handleClick}
                 onDoubleClick={handleDoubleClick}
                 onKeyDown={handleKeyDown}
@@ -2598,6 +2693,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 Regenerating title
               </span>
             ) : null}
+            {topicsToggle}
             {pinIndicator}
             {showPin ? <ThreadMemoryIndicator threadRef={threadRef} /> : null}
             {isRemote ? (
@@ -3503,6 +3599,9 @@ export default function Sidebar() {
     pinnedThreads,
     experts,
     toggleExperts,
+    topicsByExpert,
+    openTopicKeys,
+    toggleTopics,
     draggableThreadKeys,
     activeReorderableThreadKeys,
     activeThreads,
@@ -4049,6 +4148,9 @@ export default function Sidebar() {
     })();
   };
 
+  const toggleExpertTopics = useStableCallback((threadRef: ScopedThreadRef) =>
+    toggleTopics(scopedThreadKey(threadRef)),
+  );
   const handleThreadDragStart = (event: DragStartEvent) => {
     const activeKey = String(event.active.id);
     contextDragKeyRef.current = activeKey;
@@ -4101,8 +4203,9 @@ export default function Sidebar() {
       return [];
     }
     const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
-    const pinnedRows = rowsOf(experts.rows, "pinned");
-    items.push(...pinnedRows);
+    for (const row of experts.rows) {
+      items.push({ kind: "thread", key: threadShellKey(row.thread), section: row.section });
+    }
     items.push({ kind: "marker", marker: "pinned-divider" });
     const activeRows = rowsOf(activeThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
@@ -4518,7 +4621,11 @@ export default function Sidebar() {
           const item = sidebarBackgroundMenuItem({
             thread,
             choices: backgroundChoices,
-            parked: section === "pinned" || section === "snoozed" || section === "settled",
+            parked:
+              section === "pinned" ||
+              section === "topic" ||
+              section === "snoozed" ||
+              section === "settled",
             statusGroup: statusGroupOf(thread),
           });
           return item?.placement === placement && item.available;
@@ -4840,7 +4947,12 @@ export default function Sidebar() {
         const backgroundItem = sidebarBackgroundMenuItem({
           thread,
           choices: backgroundChoices,
-          parked: isPinned || isSettled || isSnoozed,
+          // A topic stays under its expert.
+          parked:
+            isPinned ||
+            isSettled ||
+            isSnoozed ||
+            sectionByThreadKeyRef.current.get(threadKey) === "topic",
           statusGroup: statusGroupOf(thread),
         });
         const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
@@ -5468,6 +5580,8 @@ export default function Sidebar() {
                             contextDrag={isContextDrag}
                             sortableDisabled={
                               folders !== null ||
+                              // A topic moves with its expert.
+                              section === "topic" ||
                               renamingThreadKey === threadKey ||
                               !draggableThreadKeys.has(threadKey) ||
                               optimisticDrop !== null
@@ -5494,6 +5608,13 @@ export default function Sidebar() {
                                 .threadPinning === true
                             }
                             isPinned={thread.pinnedAt != null}
+                            topicCount={
+                              section === "pinned"
+                                ? (topicsByExpert.get(threadKey)?.length ?? 0)
+                                : 0
+                            }
+                            topicsOpen={openTopicKeys.includes(threadKey)}
+                            onToggleTopics={toggleExpertTopics}
                             dropVerb={
                               dragState?.activeKey === threadKey
                                 ? resolveSidebarDropVerb(dragState.activeSection, dragTargetSection)
@@ -5584,8 +5705,8 @@ export default function Sidebar() {
                             />,
                           );
                         }
-                        for (const thread of experts.rows) {
-                          items.push(renderThreadRow(thread, "pinned"));
+                        for (const row of experts.rows) {
+                          items.push(renderThreadRow(row.thread, row.section));
                         }
                         for (const folder of folders) {
                           const folderKey = folder.key;

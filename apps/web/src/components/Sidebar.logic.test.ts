@@ -48,6 +48,7 @@ import {
   resolveSidebarDropTarget,
   resolveSidebarExpertsSection,
   resolveSidebarRowVariant,
+  resolveSidebarTopicExpert,
   resolveSidebarFolderDot,
   planSidebarThreadDrop,
   sidebarMarkerId,
@@ -150,6 +151,7 @@ describe("resolveSidebarThreadSection", () => {
 describe("resolveSidebarRowVariant", () => {
   it("gives experts one line and keeps full cards for the live sections", () => {
     expect(resolveSidebarRowVariant("pinned")).toBe("expert");
+    expect(resolveSidebarRowVariant("topic")).toBe("topic");
     expect(resolveSidebarRowVariant("active")).toBe("card");
     expect(resolveSidebarRowVariant("working")).toBe("card");
     for (const section of ["background", "snoozed", "settled"] as const) {
@@ -158,38 +160,159 @@ describe("resolveSidebarRowVariant", () => {
   });
 });
 
+describe("resolveSidebarTopicExpert", () => {
+  const expertKeys = new Set(["expert", "remote-expert"]);
+  const topicExpert = (
+    input: Partial<Parameters<typeof resolveSidebarTopicExpert>[0]> = {},
+  ): string | null =>
+    resolveSidebarTopicExpert({
+      section: "background",
+      launcherKey: "expert",
+      expertKeys,
+      continuedIn: new Map(),
+      needsUser: false,
+      ...input,
+    });
+
+  it("nests a thread an expert launched under it, from any open section or machine", () => {
+    for (const section of ["active", "working", "background"] as const) {
+      expect(topicExpert({ section })).toBe("expert");
+    }
+    expect(topicExpert({ launcherKey: "remote-expert" })).toBe("remote-expert");
+  });
+
+  it("never makes a pinned thread a topic: it is an expert of its own", () => {
+    expect(topicExpert({ section: "pinned" })).toBeNull();
+  });
+
+  it("brings a topic that needs the user forward", () => {
+    expect(topicExpert({ section: "active", needsUser: true })).toBeNull();
+  });
+
+  it("leaves settled and snoozed topics on their shelves", () => {
+    expect(topicExpert({ section: "settled" })).toBeNull();
+    expect(topicExpert({ section: "snoozed" })).toBeNull();
+  });
+
+  it("leaves a thread whose launcher is unknown or not an expert where it was", () => {
+    expect(topicExpert({ launcherKey: "unpinned-coordinator" })).toBeNull();
+    expect(topicExpert({ launcherKey: null })).toBeNull();
+  });
+
+  it("follows an expert that started fresh to the thread it continues in", () => {
+    const continuedIn = new Map([
+      ["old-expert", "older-continuation"],
+      ["older-continuation", "expert"],
+    ]);
+    expect(topicExpert({ launcherKey: "old-expert", continuedIn })).toBe("expert");
+    // A loop in the continuations ends instead of spinning.
+    expect(
+      topicExpert({
+        launcherKey: "a",
+        continuedIn: new Map([
+          ["a", "b"],
+          ["b", "a"],
+        ]),
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("resolveSidebarExpertsSection", () => {
   const pinned = ["p1", "p2", "p3"];
   const keyOf = (key: string) => key;
+  const noTopics = {
+    topicsByExpert: new Map<string, string[]>(),
+    openTopicKeys: new Set<string>(),
+  };
+  const expertRows = (keys: readonly string[]) =>
+    keys.map((thread) => ({ thread, section: "pinned" as const }));
 
   it("lists every pin with the count while expanded", () => {
     expect(
-      resolveSidebarExpertsSection({ pinned, collapsed: false, routeThreadKey: null, keyOf }),
-    ).toEqual({ rows: pinned, label: "Experts (3)", expanded: true });
+      resolveSidebarExpertsSection({
+        pinned,
+        ...noTopics,
+        collapsed: false,
+        routeThreadKey: null,
+        keyOf,
+      }),
+    ).toEqual({ rows: expertRows(pinned), label: "Experts (3)", expanded: true });
   });
 
   it("keeps only the open thread while collapsed, and still counts every pin", () => {
+    const collapsed = (routeThreadKey: string | null) =>
+      resolveSidebarExpertsSection({ pinned, ...noTopics, collapsed: true, routeThreadKey, keyOf });
+    expect(collapsed(null)).toEqual({ rows: [], label: "Experts (3)", expanded: false });
+    expect(collapsed("p2").rows).toEqual(expertRows(["p2"]));
+    expect(collapsed("a1").rows).toEqual([]);
+  });
+
+  it("nests an expert's topics under it once opened, and the open topic always", () => {
+    const topicsByExpert = new Map([["p2", ["t1", "t2"]]]);
+    const section = (input: {
+      openTopicKeys: ReadonlySet<string>;
+      collapsed: boolean;
+      routeThreadKey: string | null;
+    }) => resolveSidebarExpertsSection({ pinned, topicsByExpert, keyOf, ...input }).rows;
+    expect(section({ openTopicKeys: new Set(), collapsed: false, routeThreadKey: null })).toEqual(
+      expertRows(pinned),
+    );
     expect(
-      resolveSidebarExpertsSection({ pinned, collapsed: true, routeThreadKey: null, keyOf }),
-    ).toEqual({ rows: [], label: "Experts (3)", expanded: false });
+      section({ openTopicKeys: new Set(["p2"]), collapsed: false, routeThreadKey: null }),
+    ).toEqual([
+      { thread: "p1", section: "pinned" },
+      { thread: "p2", section: "pinned" },
+      { thread: "t1", section: "topic" },
+      { thread: "t2", section: "topic" },
+      { thread: "p3", section: "pinned" },
+    ]);
+    expect(section({ openTopicKeys: new Set(), collapsed: false, routeThreadKey: "t2" })).toEqual([
+      { thread: "p1", section: "pinned" },
+      { thread: "p2", section: "pinned" },
+      { thread: "t2", section: "topic" },
+      { thread: "p3", section: "pinned" },
+    ]);
+    // Collapsed, the open topic keeps its expert above it.
     expect(
-      resolveSidebarExpertsSection({ pinned, collapsed: true, routeThreadKey: "p2", keyOf }).rows,
-    ).toEqual(["p2"]);
-    expect(
-      resolveSidebarExpertsSection({ pinned, collapsed: true, routeThreadKey: "a1", keyOf }).rows,
-    ).toEqual([]);
+      section({ openTopicKeys: new Set(["p2"]), collapsed: true, routeThreadKey: "t1" }),
+    ).toEqual([
+      { thread: "p2", section: "pinned" },
+      { thread: "t1", section: "topic" },
+    ]);
+  });
+
+  it("leaves topics out of the order a drop among them pins into", () => {
+    const items: SidebarListItem[] = [
+      { kind: "marker", marker: "pinned-header" },
+      { kind: "thread", key: "p1", section: "pinned" },
+      { kind: "thread", key: "t1", section: "topic" },
+      { kind: "thread", key: "p2", section: "pinned" },
+      { kind: "marker", marker: "pinned-divider" },
+      { kind: "thread", key: "a1", section: "active" },
+    ];
+    expect(resolveSidebarDropTarget(items, "a1", "t1")).toEqual({
+      section: "pinned",
+      pinnedOrder: ["p1", "a1", "p2"],
+      activeOrder: [],
+    });
   });
 
   it("pins a thread dropped onto the collapsed header like the menu's Pin", () => {
     const experts = resolveSidebarExpertsSection({
       pinned,
+      ...noTopics,
       collapsed: true,
       routeThreadKey: null,
       keyOf,
     });
     const items: SidebarListItem[] = [
       { kind: "marker", marker: "pinned-header" },
-      ...experts.rows.map((key) => ({ kind: "thread" as const, key, section: "pinned" as const })),
+      ...experts.rows.map((row) => ({
+        kind: "thread" as const,
+        key: row.thread,
+        section: row.section,
+      })),
       { kind: "marker", marker: "pinned-divider" },
       { kind: "thread", key: "a1", section: "active" },
       { kind: "thread", key: "a2", section: "active" },

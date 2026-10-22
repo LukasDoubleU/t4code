@@ -128,6 +128,7 @@ export function createSidebarSortingStrategy(input: {
     if (!target) return [];
     const groups: Record<SidebarSection, ThreadItem[]> = {
       pinned: [],
+      topic: [],
       active: [],
       working: [],
       background: [],
@@ -138,7 +139,16 @@ export function createSidebarSortingStrategy(input: {
     let expertHeight = input.expertHeight;
     let slimHeight = input.slimHeight;
     let headerScale: number | undefined;
+    // A topic row follows its expert's row, and moves with it.
+    const topicsByExpert = new Map<string, ThreadItem[]>();
+    let expertKey: string | undefined;
     for (const [index, item] of items.entries()) {
+      if (item.kind === "thread" && item.section === "pinned") expertKey = item.key;
+      if (item.kind === "thread" && item.section === "topic" && expertKey !== undefined) {
+        const topics = topicsByExpert.get(expertKey);
+        if (topics) topics.push(item);
+        else topicsByExpert.set(expertKey, [item]);
+      }
       if (item.kind === "marker") {
         if (isShelfHeader(item)) {
           const height = rects[index]?.height;
@@ -148,7 +158,7 @@ export function createSidebarSortingStrategy(input: {
       }
       const variant = resolveSidebarRowVariant(item.section);
       if (variant === "card") cardHeight ??= rects[index]?.height;
-      else if (variant === "expert") expertHeight ??= rects[index]?.height;
+      else if (variant === "expert" || variant === "topic") expertHeight ??= rects[index]?.height;
       else slimHeight ??= rects[index]?.height;
       if (item.key !== active.key) groups[item.section].push(item);
     }
@@ -206,7 +216,9 @@ export function createSidebarSortingStrategy(input: {
       else marker(`${name}-placeholder`);
     };
     marker("pinned-header");
-    projected.push(...groups.pinned);
+    for (const expert of groups.pinned) {
+      projected.push(expert, ...(topicsByExpert.get(expert.key) ?? []));
+    }
     marker("pinned-divider");
     section("active");
     if (items.some((item) => item.kind === "marker" && item.marker === "working-header")) {
@@ -236,7 +248,11 @@ export function createSidebarSortingStrategy(input: {
       const rect = index === undefined ? undefined : rects[index];
       const variant = item.kind === "thread" ? resolveSidebarRowVariant(item.section) : "slim";
       const fallback =
-        variant === "card" ? cardHeight : variant === "expert" ? expertHeight : slimHeight;
+        variant === "card"
+          ? cardHeight
+          : variant === "expert" || variant === "topic"
+            ? expertHeight
+            : slimHeight;
       const moved = item.kind === "thread" && item.key === active.key;
       // With pins, the Experts header is a full row that labels its section itself.
       return item.kind === "marker" && item.marker === "pinned-header"

@@ -39,7 +39,7 @@ function layout(
       item.kind === "thread"
         ? (item.section === "active" || item.section === "working"
             ? cardHeight
-            : item.section === "pinned"
+            : item.section === "pinned" || item.section === "topic"
               ? 28
               : 36) * scale
         : item.marker === "pinned-header" || item.marker === "pinned-divider"
@@ -347,6 +347,23 @@ describe("sidebar drag projection", () => {
       if (index === args.activeIndex) continue;
       expect(strategy({ ...args, index })).toEqual(verticalListSortingStrategy({ ...args, index }));
     }
+  });
+
+  it("moves an expert's topics with it, and hides them when it leaves the Experts", () => {
+    const items = [
+      pinnedHeader,
+      thread("p1", "pinned"),
+      thread("t1", "topic"),
+      thread("p2", "pinned"),
+      divider,
+      thread("a1", "active"),
+      settledHeader,
+    ];
+    const input = { items, settledOrder: [], settledExpanded: true };
+    const below = preview(input, "p1", "p2");
+    expect(below.get("p2")).toEqual({ ...stationary, y: -58 });
+    expect(below.get("t1")).toEqual({ ...stationary, y: 29 });
+    expect(preview(input, "p1", "a1").get("t1")).toEqual({ ...stationary, scaleY: 0 });
   });
 
   it("keeps the pinned header above the gap when a lower pin moves to the top", () => {

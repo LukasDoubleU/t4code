@@ -307,6 +307,7 @@ import {
   turnFoldReplyKey,
   type TurnFoldReply,
 } from "./MessageTime";
+import { useTallTurnFoldReplies } from "./useTallTurnFoldReplies";
 import { WorkflowOpeningBlock } from "./WorkflowOpeningBlock";
 
 import { SkillChipIcon } from "./SkillInlineText";
@@ -326,6 +327,7 @@ interface TimelineRowSharedState {
   alwaysShowMessageTimes: boolean;
   messageTimeStyle: MessageTimeStyle;
   turnFoldReplies: ReadonlyMap<string, TurnFoldReply>;
+  tallTurnFoldReplyIds: ReadonlySet<string>;
   routeThreadKey: string;
   threadRef: ScopedThreadRef | null;
   markdownCwd: string | undefined;
@@ -1122,6 +1124,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
     </TimelineListFooter>
   );
 
+  const { tallReplyIds: tallTurnFoldReplyIds, scheduleRefresh: scheduleTallReplies } =
+    useTallTurnFoldReplies({
+      listRef,
+      replies: turnFoldReplies,
+      composerInset: contentInsetEndAdjustment,
+    });
+
   const measureContentOverflow = () =>
     timelineContentOverflowsViewport(listRef.current?.getState?.(), {
       composerInset: contentInsetEndAdjustment,
@@ -1246,6 +1255,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     }
     reportContentOverflow();
     scheduleMinimapRefresh();
+    scheduleTallReplies();
   };
 
   useEffect(
@@ -1291,6 +1301,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       );
       setMinimapHitStripWidth(resolveTimelineMinimapHitStripWidth(viewportWidth, contentWidth));
       reportContentOverflow();
+      scheduleTallReplies();
     };
 
     const frame = requestAnimationFrame(measure);
@@ -1302,7 +1313,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       stopObserving();
     };
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Rows and chat width resize the content without resizing the viewport.
-  }, [timelineViewportElement, rows.length, reportContentOverflow, chatWidth]);
+  }, [timelineViewportElement, rows.length, reportContentOverflow, scheduleTallReplies, chatWidth]);
 
   const sharedState: TimelineRowSharedState = {
     citationRequest: readyCitationRequest,
@@ -1311,6 +1322,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     alwaysShowMessageTimes,
     messageTimeStyle,
     turnFoldReplies,
+    tallTurnFoldReplyIds,
     routeThreadKey,
     threadRef: citationThreadRef,
     markdownCwd,
@@ -2854,7 +2866,10 @@ function AssistantMessageMeta({
   // A reaction chip stays visible, so its footer does too; the buttons still wait for hover.
   const reacted = (message.reactions?.length ?? 0) > 0;
   const revealButtonsOnly = !alwaysVisible && (ctx.alwaysShowMessageTimes || reacted);
-  const timeInTurnFold = ctx.turnFoldReplies.get(message.runId ?? "")?.messageId === message.id;
+  // A reply taller than the chat area keeps its time here too: its header is out of view.
+  const timeOnlyInTurnFold =
+    ctx.turnFoldReplies.get(message.runId ?? "")?.messageId === message.id &&
+    !ctx.tallTurnFoldReplyIds.has(message.id);
 
   return (
     <div
@@ -2897,7 +2912,7 @@ function AssistantMessageMeta({
           />
         )}
       </div>
-      {!message.streaming && !timeInTurnFold && (
+      {!message.streaming && !timeOnlyInTurnFold && (
         <MessageTime
           isoDate={message.updatedAt}
           style={ctx.alwaysShowMessageTimes ? ctx.messageTimeStyle : "clock"}

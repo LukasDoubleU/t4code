@@ -102,3 +102,21 @@ export function parseTurnFoldReplyKey(key: string): ReadonlyMap<string, TurnFold
   }
   return replies;
 }
+
+/**
+ * Fold replies whose measured row is taller than the visible chat area, so their header time is
+ * out of view while their end is on screen. A string that stays equal until the set changes;
+ * unmeasured rows count as short.
+ */
+export function tallTurnFoldReplyKey(
+  replies: ReadonlyMap<string, TurnFoldReply>,
+  measuredHeight: (messageId: string) => number | undefined,
+  visibleHeight: number,
+): string {
+  if (visibleHeight <= 0) return "";
+  const tallIds: string[] = [];
+  for (const { messageId } of replies.values()) {
+    if ((measuredHeight(messageId) ?? 0) > visibleHeight) tallIds.push(messageId);
+  }
+  return tallIds.join("\n");
+}

@@ -442,6 +442,15 @@ Waits for a selected run to become `completed`, `failed`, `cancelled`,
 time; an idle thread returns immediately. A timeout reports the latest durable
 status and does not cancel work.
 
+The calling thread's turn is blocked in the wait, so a message sent to that
+thread meanwhile would otherwise sit in its queue until the wait returns. The
+first user message created for the calling thread after the wait starts ends
+the wait with `messageReceived` instead, also when the waited-on thread is in a
+linked environment: the watch runs where the caller is. A queued message is
+promoted into the caller's running turn when that turn takes active steering,
+so it is not delivered again as a later turn; delegated-completion deliveries,
+notifications and turns that could only restart stay queued.
+
 ### `t3_thread_interrupt`
 
 Interrupts a selected active run through the normal V2 `run.interrupt` command.

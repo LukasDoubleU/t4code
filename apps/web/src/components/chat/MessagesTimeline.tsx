@@ -490,6 +490,8 @@ interface MessagesTimelineProps {
   /** The thread this one is a subagent of; `open` is absent when it cannot be opened from here. */
   parentThreadLink?: {
     readonly title: string;
+    /** How this thread relates to it, when not as its subagent. */
+    readonly label?: string;
     /** Where it runs, when that is another environment. */
     readonly environmentLabel?: string;
     readonly open?: () => void;
@@ -1389,7 +1391,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       <div className="messages-timeline-row-frame">
         <div className="chat-content-lane pt-1 sm:pt-2">
           <TimelineSystemDivider
-            label="Subagent of"
+            label={parentThreadLink.label ?? "Subagent of"}
             detail={
               parentThreadLink.environmentLabel === undefined
                 ? parentThreadLink.title

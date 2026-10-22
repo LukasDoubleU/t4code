@@ -1608,14 +1608,15 @@ export default function ChatView(props: ChatViewProps) {
           messages: serverProjection.messages,
           parentSubagents: workflowOpeningParentProjection?.projection.subagents ?? null,
         });
-  // A linked environment's agent may have delegated this thread from there.
+  // A linked environment's agent may have delegated this thread from there, or
+  // an agent here or there launched it.
   const delegatedFrom = activeThread?.delegatedFrom ?? null;
-  const delegatedFromEnvironment = useEnvironment(delegatedFrom?.environmentId ?? null);
+  const launchedBy = delegatedFrom === null ? (activeThread?.source.launchedBy ?? null) : null;
+  const launcher = delegatedFrom ?? launchedBy;
+  const delegatedFromEnvironment = useEnvironment(launcher?.environmentId ?? null);
   const delegatedFromRef =
-    delegatedFrom === null
-      ? null
-      : scopeThreadRef(delegatedFrom.environmentId, delegatedFrom.threadId);
-  // The title it had at delegation, until this client sees the parent itself.
+    launcher === null ? null : scopeThreadRef(launcher.environmentId, launcher.threadId);
+  // The title it had at delegation or launch, until this client sees the parent itself.
   const delegatedFromThread = useQuietThreadShell(delegatedFromRef);
   const parentThreadLink = (() => {
     if (parentSubagentThreadRef !== null) {
@@ -1629,11 +1630,20 @@ export default function ChatView(props: ChatViewProps) {
         },
       };
     }
-    if (delegatedFrom === null || delegatedFromRef === null) return null;
+    if (launcher === null || delegatedFromRef === null) return null;
     const parentRef = delegatedFromRef;
     return {
-      title: delegatedFromThread?.title ?? delegatedFrom.title,
-      environmentLabel: delegatedFromEnvironment?.label ?? activeThread?.linkOrigin?.label ?? "",
+      title: delegatedFromThread?.title ?? launcher.title,
+      // A pinned launcher is an expert, and this thread one of its topics.
+      ...(launchedBy === null
+        ? {}
+        : { label: delegatedFromThread?.pinnedAt != null ? "Topic of" : "Started by" }),
+      ...(launchedBy !== null && launchedBy.environmentId === activeThread?.environmentId
+        ? {}
+        : {
+            environmentLabel:
+              delegatedFromEnvironment?.label ?? activeThread?.linkOrigin?.label ?? "",
+          }),
       // Only an environment this client is connected to can open the parent.
       ...(delegatedFromEnvironment === null
         ? {}

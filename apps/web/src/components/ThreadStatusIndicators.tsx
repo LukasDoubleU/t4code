@@ -808,7 +808,7 @@ export function ThreadWorktreeIndicator({
   );
 }
 
-function ThreadStatusLabel({ status }: { status: ThreadStatusPill }) {
+export function ThreadStatusLabel({ status }: { status: ThreadStatusPill }) {
   return (
     <Tooltip>
       <TooltipTrigger

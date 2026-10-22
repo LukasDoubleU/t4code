@@ -6,6 +6,7 @@ import {
   ThreadId,
   RunId,
   OrchestrationV2DelegatedFrom,
+  OrchestrationV2SentFrom,
   OrchestrationV2RunStatus,
   OrchestrationV2ThreadLaunchWorkspaceStrategy,
   RuntimeMode,
@@ -153,6 +154,8 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
     clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
     /** Set by a linked environment launching its agent's delegated task here; ignored otherwise. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+    /** Set by a linked environment for its thread that launches this one; ignored otherwise. */
+    sentFrom: Schema.optional(OrchestrationV2SentFrom),
   }),
   success: Schema.Struct({
     threadId: ThreadId,

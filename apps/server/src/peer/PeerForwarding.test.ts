@@ -612,7 +612,14 @@ it.effect("launches in a linked environment with the caller's modes, retry-safe"
           ...args,
         });
 
-      const first = yield* launch("thread:laptop-plan");
+      const first = yield* launch("thread:laptop-plan", {
+        sentFrom: {
+          environmentId: "environment-elsewhere",
+          threadId: "x",
+          title: "Claimed",
+          label: "Elsewhere",
+        },
+      });
       expect(first.isError).toBe(false);
       expect(first.structuredContent).toMatchObject({
         projectId: boxProject,
@@ -625,6 +632,15 @@ it.effect("launches in a linked environment with the caller's modes, retry-safe"
       expect(launched).toMatchObject({ runtimeMode: "full-access", interactionMode: "plan" });
       expect(relaunched?.threadId).toBe(launched?.threadId);
       expect(retried.structuredContent).toEqual(first.structuredContent);
+      // It names the thread here that launched it, not what the agent claimed, and so does
+      // its first message.
+      const launcher = {
+        environmentId: laptop.environmentId,
+        threadId: "thread:laptop-plan",
+        title: "thread:laptop-plan",
+      };
+      expect(launched?.launchedBy).toEqual(launcher);
+      expect(launched?.initialMessage?.sentFrom).toEqual({ ...launcher, label: "Laptop" });
 
       // An escalation past the caller's own modes is refused here.
       const escalated = yield* launch("thread:laptop-plan", { interactionMode: "default" });

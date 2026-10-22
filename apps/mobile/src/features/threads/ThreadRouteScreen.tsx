@@ -425,21 +425,26 @@ function ThreadRouteContent(
 
   const usesNativeHeaderGlass = NATIVE_LIQUID_GLASS_SUPPORTED;
   const delegatedFrom = selectedThread?.delegatedFrom ?? null;
+  const launchedBy = delegatedFrom === null ? (selectedThread?.source.launchedBy ?? null) : null;
+  const launcher = delegatedFrom ?? launchedBy;
   const delegatedFromRef =
-    delegatedFrom === null
-      ? null
-      : scopeThreadRef(delegatedFrom.environmentId, delegatedFrom.threadId);
-  // The title it had at delegation, until this client sees the parent itself.
+    launcher === null ? null : scopeThreadRef(launcher.environmentId, launcher.threadId);
+  // The title it had at delegation or launch, until this client sees the parent itself.
   const delegatedFromThread = useThreadShell(delegatedFromRef);
   const headerSubtitle = [
     selectedThreadProject?.title ?? null,
     selectedEnvironmentConnection?.environmentLabel ?? null,
-    // A linked environment's delegated task names its parent; other linked work its origin.
+    // A linked environment's delegated task names its parent, a launched thread its
+    // launcher, and other linked work its origin.
     delegatedFrom !== null
       ? `Subagent of ${delegatedFromThread?.title ?? delegatedFrom.title}`
-      : selectedThread?.linkOrigin
-        ? `From ${selectedThread.linkOrigin.label}`
-        : null,
+      : launchedBy !== null
+        ? `${delegatedFromThread?.pinnedAt != null ? "Topic of" : "Started by"} ${
+            delegatedFromThread?.title ?? launchedBy.title
+          }`
+        : selectedThread?.linkOrigin
+          ? `From ${selectedThread.linkOrigin.label}`
+          : null,
   ]
     .filter(Boolean)
     .join(" · ");

@@ -8,6 +8,7 @@ import {
   type ProviderInteractionMode,
   type RuntimeMode,
   type ThreadId,
+  type OrchestrationV2LaunchedBy,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
 import { truncate } from "@t3tools/shared/String";
@@ -90,6 +91,12 @@ export const loadCaller = Effect.fn("mcp.loadCaller")(function* () {
     limits: { runtimeMode: caller.runtimeMode, interactionMode: caller.interactionMode },
   } satisfies Caller;
 });
+
+/** The calling thread, as the launcher a thread it starts records. */
+export const launcherOf = ({ scope, caller }: Caller): OrchestrationV2LaunchedBy | undefined =>
+  caller === undefined
+    ? undefined
+    : { environmentId: scope.environmentId, threadId: caller.id, title: caller.title };
 
 export const assertTargetWithinLimits = (
   limits: CallerLimits,

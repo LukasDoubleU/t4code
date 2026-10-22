@@ -67,6 +67,12 @@ it("stamps authoritative provenance on commands that create threads or messages"
       threadId: ThreadId.make("thread:elsewhere"),
       title: "Somewhere else",
     },
+    // Nor name an expert it would nest under.
+    launchedBy: {
+      environmentId: EnvironmentId.make("environment:here"),
+      threadId: ThreadId.make("thread:expert"),
+      title: "Expert",
+    },
   };
 
   const stamped = ThreadManagementService.withCreationProvenance(command, {
@@ -79,6 +85,7 @@ it("stamps authoritative provenance on commands that create threads or messages"
   });
   expect(stamped).not.toHaveProperty("linkOrigin");
   expect(stamped).not.toHaveProperty("delegatedFrom");
+  expect(stamped).not.toHaveProperty("launchedBy");
 });
 
 it("leaves commands that do not create durable authored content unchanged", () => {

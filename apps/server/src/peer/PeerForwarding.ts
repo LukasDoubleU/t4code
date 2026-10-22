@@ -9,7 +9,6 @@ import {
   OrchestratorMcpThreadListResult,
   OrchestratorMcpThreadReadInput,
   OrchestratorMcpThreadReadResult,
-  type OrchestratorMcpThreadSendInput,
   OrchestratorMcpThreadWaitInput,
   OrchestratorMcpThreadWaitResult,
   type OrchestratorMcpUnlistedEnvironment,
@@ -270,12 +269,13 @@ const make = Effect.gen(function* () {
   });
 
   /**
-   * A message sent there names the thread here that sent it, which a client there may never
-   * have seen. What the agent passed is replaced: only this side knows its caller.
+   * A message sent there, or a thread launched there, names the thread here that sent it, which
+   * a client there may never have seen. What the agent passed is replaced: only this side knows
+   * its caller.
    */
   const withSender = Effect.fn("PeerForwarding.withSender")(function* (
     scope: Scope,
-    { sentFrom: _claimed, ...input }: OrchestratorMcpThreadSendInput,
+    { sentFrom: _claimed, ...input }: { readonly sentFrom?: unknown },
   ) {
     const sender =
       scope.thread === undefined
@@ -301,8 +301,8 @@ const make = Effect.gen(function* () {
           environmentId,
           params as OrchestratorMcpThreadWaitInput,
         ) as Effect.Effect<Tool.Success<typeof tool>, OrchestratorMcpFailure>)
-      : tool.name === "t3_thread_send"
-        ? withSender(scope, params as OrchestratorMcpThreadSendInput).pipe(
+      : tool.name === "t3_thread_send" || tool.name === "t3_thread_launch"
+        ? withSender(scope, params as { readonly sentFrom?: unknown }).pipe(
             Effect.flatMap((sent) =>
               forward<Tool.Success<typeof tool>>(
                 scope,

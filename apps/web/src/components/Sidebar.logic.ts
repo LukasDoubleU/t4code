@@ -1,3 +1,4 @@
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
@@ -119,7 +120,14 @@ export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
 // sections. Background is this device's view of active threads, so only active
 // rows drop into it.
 
-export type SidebarSection = "pinned" | "active" | "working" | "background" | "snoozed" | "settled";
+export type SidebarSection =
+  | "pinned"
+  | "topic"
+  | "active"
+  | "working"
+  | "background"
+  | "snoozed"
+  | "settled";
 
 export function resolveSidebarThreadSection(input: {
   readonly snoozed: boolean;
@@ -136,30 +144,113 @@ export function resolveSidebarThreadSection(input: {
 
 /**
  * Only the live sections show full cards. Experts are long-lived, so their branch, pull request
- * and account move to the hover card and each takes one short line.
+ * and account move to the hover card and each takes one short line, as their topics do.
  */
-export function resolveSidebarRowVariant(section: SidebarSection): "card" | "expert" | "slim" {
+export function resolveSidebarRowVariant(
+  section: SidebarSection,
+): "card" | "expert" | "topic" | "slim" {
   if (section === "active" || section === "working") return "card";
+  if (section === "topic") return "topic";
   return section === "pinned" ? "expert" : "slim";
 }
 
+/** The key of the thread whose agent launched this one, if one did. */
+export function sidebarLauncherKey(thread: {
+  readonly source: Pick<SidebarThreadSummary["source"], "launchedBy">;
+}): string | null {
+  const launchedBy = thread.source.launchedBy;
+  return launchedBy === undefined
+    ? null
+    : scopedThreadKey(scopeThreadRef(launchedBy.environmentId, launchedBy.threadId));
+}
+
+/** Each thread that started fresh, by key, to the key of the thread it continues in. */
+export function sidebarContinuations(
+  threads: Iterable<
+    Pick<SidebarThreadSummary, "environmentId" | "id"> & {
+      readonly source: Pick<SidebarThreadSummary["source"], "continuedIn">;
+    }
+  >,
+): ReadonlyMap<string, string> {
+  const continuedIn = new Map<string, string>();
+  for (const thread of threads) {
+    if (thread.source.continuedIn === undefined) continue;
+    continuedIn.set(
+      scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+      scopedThreadKey(scopeThreadRef(thread.environmentId, thread.source.continuedIn)),
+    );
+  }
+  return continuedIn;
+}
+
 /**
- * Pinned threads form the Experts section. Collapsed, it keeps only the open thread, as a
- * collapsed shelf does, and hides its order: a drop onto its header pins like the thread
- * menu's Pin instead of at a spot nobody can see.
+ * The expert whose topic a thread is: the listed expert whose agent launched it, or the thread
+ * an expert that started fresh continues in. Null for a thread no listed expert launched.
+ */
+export function resolveSidebarTopicOf(input: {
+  readonly launcherKey: string | null;
+  readonly expertKeys: ReadonlySet<string>;
+  readonly continuedIn: ReadonlyMap<string, string>;
+}): string | null {
+  const { expertKeys, continuedIn } = input;
+  const seen = new Set<string>();
+  let key = input.launcherKey;
+  while (key !== null && !seen.has(key)) {
+    if (expertKeys.has(key)) return key;
+    seen.add(key);
+    key = continuedIn.get(key) ?? null;
+  }
+  return null;
+}
+
+/**
+ * The expert a topic nests under, or null where it keeps its own section: a topic that needs
+ * the user comes forward, and pinned, snoozed and settled threads keep their sections. Either
+ * way it stays its expert's, so no Background move applies to it.
+ */
+export function resolveSidebarTopicExpert(input: {
+  readonly section: SidebarSection;
+  readonly topicOf: string | null;
+  readonly needsUser: boolean;
+}): string | null {
+  const { section } = input;
+  if (section !== "active" && section !== "working" && section !== "background") return null;
+  return input.needsUser ? null : input.topicOf;
+}
+
+/**
+ * Pinned threads form the Experts section, each with its topics nested under it, shown once
+ * the expert's count is opened. Collapsed, the section keeps only the open thread, with its
+ * expert when it is a topic, as a collapsed shelf does, and hides its order: a drop onto its
+ * header pins like the thread menu's Pin instead of at a spot nobody can see.
  */
 export function resolveSidebarExpertsSection<T>(input: {
   readonly pinned: readonly T[];
+  readonly topicsByExpert: ReadonlyMap<string, readonly T[]>;
+  /** Experts whose topics are shown. */
+  readonly openTopicKeys: ReadonlySet<string>;
   readonly collapsed: boolean;
   readonly routeThreadKey: string | null;
   readonly keyOf: (thread: T) => string;
-}): { readonly rows: readonly T[]; readonly label: string; readonly expanded: boolean } {
-  const { pinned, collapsed, routeThreadKey, keyOf } = input;
-  return {
-    rows: collapsed ? pinned.filter((thread) => keyOf(thread) === routeThreadKey) : pinned,
-    label: `Experts (${pinned.length})`,
-    expanded: !collapsed,
-  };
+}): {
+  readonly rows: ReadonlyArray<{ readonly thread: T; readonly section: "pinned" | "topic" }>;
+  readonly label: string;
+  readonly expanded: boolean;
+} {
+  const { pinned, topicsByExpert, openTopicKeys, collapsed, routeThreadKey, keyOf } = input;
+  const rows: Array<{ readonly thread: T; readonly section: "pinned" | "topic" }> = [];
+  for (const expert of pinned) {
+    const expertKey = keyOf(expert);
+    const topics = topicsByExpert.get(expertKey) ?? [];
+    const shownTopics =
+      !collapsed && openTopicKeys.has(expertKey)
+        ? topics
+        : topics.filter((topic) => keyOf(topic) === routeThreadKey);
+    if (collapsed && expertKey !== routeThreadKey && shownTopics.length === 0) continue;
+    rows.push({ thread: expert, section: "pinned" });
+    for (const topic of shownTopics) rows.push({ thread: topic, section: "topic" });
+  }
+  return { rows, label: `Experts (${pinned.length})`, expanded: !collapsed };
 }
 
 const SIDEBAR_MARKER_PREFIX = "sidebar-marker-";
@@ -186,8 +277,12 @@ export function sidebarListItemId(item: SidebarListItem): string {
   return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
 }
 
-function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number): SidebarSection {
-  let section: SidebarSection = "pinned";
+// Topics sit inside the Experts section, so a slot among them is the Experts'.
+function sectionAtSidebarSlot(
+  items: readonly SidebarListItem[],
+  index: number,
+): Exclude<SidebarSection, "topic"> {
+  let section: Exclude<SidebarSection, "topic"> = "pinned";
   for (let i = 0; i < index && i < items.length; i += 1) {
     const item = items[i]!;
     if (item.kind !== "marker") continue;
@@ -231,7 +326,8 @@ export function resolveSidebarDropTarget(
         item.marker === "settled-header"
       )
         break;
-    } else if (currentSection === "pinned") pinnedOrder.push(item.key);
+    } else if (item.section === "topic") continue;
+    else if (currentSection === "pinned") pinnedOrder.push(item.key);
     else activeOrder.push(item.key);
   }
   return { section, pinnedOrder, activeOrder };

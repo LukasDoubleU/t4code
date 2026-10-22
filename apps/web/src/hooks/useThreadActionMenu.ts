@@ -1,4 +1,8 @@
-import { scopedThreadKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
 import {
   type AtomCommandResult,
@@ -17,6 +21,12 @@ import {
 import { useRouter } from "@tanstack/react-router";
 
 import { sidebarBackgroundMenuItem, useSidebarBackground } from "../components/Sidebar.background";
+import {
+  resolveSidebarThreadSection,
+  resolveSidebarTopicOf,
+  sidebarContinuations,
+  sidebarLauncherKey,
+} from "../components/Sidebar.logic";
 import { resolveSnoozePresets } from "../components/Sidebar.snooze";
 import { resolveSidebarStatusGroup } from "../components/Sidebar.viewOptions";
 import {
@@ -35,6 +45,7 @@ import {
   readEnvironmentSupportsSnooze,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShell,
+  readThreadShells,
   useDelegatedUnderParent,
   useProjects,
 } from "../state/entities";
@@ -151,10 +162,39 @@ export function useThreadActionMenu(input: {
       const memoryPath = readThreadMemoryPath(threadRef, isUserPinnedThread(thread));
       const isSettled = supports.settlement && thread.settledOverride === "settled";
       const isSnoozed = supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() });
-      // Background only sorts the threads the sidebar lists.
+      // Background only sorts the threads the sidebar lists, and a topic stays its expert's.
       const listed =
         thread.archivedAt === null &&
         !isShownUnderParent(threadRef, thread.lineage, delegatedUnderParent);
+      const isTopic = (() => {
+        const launcherKey = sidebarLauncherKey(thread);
+        if (launcherKey === null) return false;
+        const shells = readThreadShells();
+        const expertKeys = new Set(
+          shells
+            .filter(
+              (shell) =>
+                shell.archivedAt === null &&
+                resolveSidebarThreadSection({
+                  pinned: shell.pinnedAt != null,
+                  settled:
+                    readEnvironmentSupportsSettlement(shell.environmentId) &&
+                    shell.settledOverride === "settled",
+                  snoozed:
+                    readEnvironmentSupportsSnooze(shell.environmentId) &&
+                    effectiveSnoozed(shell, { now: now.toISOString() }),
+                }) === "pinned",
+            )
+            .map((shell) => scopedThreadKey(scopeThreadRef(shell.environmentId, shell.id))),
+        );
+        return (
+          resolveSidebarTopicOf({
+            launcherKey,
+            expertKeys,
+            continuedIn: sidebarContinuations(shells),
+          }) !== null
+        );
+      })();
       const items = buildThreadActionMenuItems({
         canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
         branch: thread.branch ?? null,
@@ -171,7 +211,7 @@ export function useThreadActionMenu(input: {
           ? sidebarBackgroundMenuItem({
               thread,
               choices: background.choices,
-              parked: isPinned || isSettled || isSnoozed,
+              parked: isPinned || isSettled || isSnoozed || isTopic,
               statusGroup: resolveSidebarStatusGroup(thread, {
                 now: now.toISOString(),
                 localLastVisitedAt:

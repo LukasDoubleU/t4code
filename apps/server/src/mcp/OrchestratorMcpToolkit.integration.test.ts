@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeURL from "node:url";
 import { describe, expect, it } from "@effect/vitest";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import type { JsonSchemaType } from "@modelcontextprotocol/sdk/validation";
@@ -156,9 +157,7 @@ const readDelegatedTaskStatusTranscript = Effect.fn("readDelegatedTaskStatusTran
   followupResult: string,
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const text = yield* fs.readFileString(
-    decodeURIComponent(delegatedTaskStatusTranscriptFile.pathname),
-  );
+  const text = yield* fs.readFileString(NodeURL.fileURLToPath(delegatedTaskStatusTranscriptFile));
   return yield* decodeProviderReplayNdjson(text.replaceAll(queuedFollowupResult, followupResult));
 }, Effect.provide(NodeServices.layer));
 
@@ -297,6 +296,9 @@ function makeDeterministicAdapter(input: {
               );
               runOrdinals.set(providerTurnId, turnInput.runOrdinal);
               turnInputs.set(providerTurnId, turnInput);
+              // Picked before the turn reads as running, so a test that swaps
+              // gates once it sees the turn running cannot strand it.
+              const terminalGate = input.terminalGate?.(turnInput);
               yield* publish([
                 {
                   type: "provider_turn.updated",
@@ -318,7 +320,6 @@ function makeDeterministicAdapter(input: {
                   },
                 },
               ]);
-              const terminalGate = input.terminalGate?.(turnInput);
               if (terminalGate !== undefined) {
                 yield* Deferred.await(terminalGate);
               } else if (!input.shouldComplete(turnInput)) {
@@ -739,7 +740,12 @@ describe("orchestrator MCP toolkit", () => {
             Layer.provide(layerProviderRegistry),
             Layer.provide(ServerSettings.layerTest()),
             Layer.provide(layerScheduledTaskStub),
-            Layer.provide(Layer.mock(PeerForwarding.PeerForwarding)({})),
+            Layer.provide(
+              Layer.mock(PeerForwarding.PeerForwarding)({
+                // No linked environment has a thread this one lacks.
+                locateThread: () => Effect.succeed(undefined),
+              }),
+            ),
             Layer.provide(Layer.mock(PeerLinkRequests.PeerLinkRequests)({})),
             Layer.provide(Layer.mock(PeerLinks.PeerLinks)({})),
             Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
@@ -3949,6 +3955,22 @@ describe("orchestrator MCP toolkit", () => {
               projection: OrchestrationV2ThreadProjection,
               delivery: OrchestrationV2DelegatedCompletionDelivery,
             ) => projection.runs.find((run) => run.userMessageId === delivery.messageId)?.status;
+            // A run reads as running before its provider turn starts, and the
+            // turn picks its gate when it starts.
+            const deliveryTurnRunning = (
+              projection: OrchestrationV2ThreadProjection,
+              delivery: OrchestrationV2DelegatedCompletionDelivery,
+            ) => {
+              const run = projection.runs.find(
+                (candidate) => candidate.userMessageId === delivery.messageId,
+              );
+              return (
+                run?.status === "running" &&
+                projection.providerTurns.some(
+                  (turn) => turn.runAttemptId === run.activeAttemptId && turn.status === "running",
+                )
+              );
+            };
 
             const beforeFirstStarts = fanoutTasks.slice(0, 2);
             const duringFirst = fanoutTasks.slice(2, 7);
@@ -3971,10 +3993,8 @@ describe("orchestrator MCP toolkit", () => {
             expect(sortedIds(firstFanoutDelivery.taskIds)).toEqual(idsOf(beforeFirstStarts));
             yield* dispatchFanoutDelivery("first", firstFanoutDelivery);
             yield* Deferred.succeed(fanoutParentGate, undefined);
-            yield* waitForProjection(
-              orchestrator,
-              fanoutParentThreadId,
-              (projection) => deliveryRunStatus(projection, firstFanoutDelivery) === "running",
+            yield* waitForProjection(orchestrator, fanoutParentThreadId, (projection) =>
+              deliveryTurnRunning(projection, firstFanoutDelivery),
             );
 
             yield* finishFanoutChildren(duringFirst);
@@ -4022,10 +4042,8 @@ describe("orchestrator MCP toolkit", () => {
             );
             expectAtMostOneOutstandingDelivery(secondJoined);
             yield* dispatchFanoutDelivery("second", secondFanoutDelivery);
-            yield* waitForProjection(
-              orchestrator,
-              fanoutParentThreadId,
-              (projection) => deliveryRunStatus(projection, secondFanoutDelivery) === "running",
+            yield* waitForProjection(orchestrator, fanoutParentThreadId, (projection) =>
+              deliveryTurnRunning(projection, secondFanoutDelivery),
             );
 
             yield* finishFanoutChildren(duringSecond);

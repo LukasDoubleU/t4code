@@ -1,4 +1,8 @@
-const CLI_RELEASE_REPOSITORY = "pingdotgg/t3code";
+// Fork-only: every t3 download, `t3 update` and the update checks follow this
+// repository's releases, which t4-release.yml tags t4-v<version>, so a fork
+// build never installs an upstream release. Upstream: "pingdotgg/t3code", "v".
+const CLI_RELEASE_REPOSITORY = "LukasDoubleU/t4code";
+const CLI_RELEASE_TAG_PREFIX = "t4-v";
 export const CLI_RELEASES_PAGE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases`;
 export const CLI_RELEASE_CHECKSUMS_FILE = "SHA256SUMS";
 export const CLI_RELEASE_BASE_URL_ENV = "T3CODE_RELEASE_BASE_URL";
@@ -52,7 +56,7 @@ export function cliReleaseDownloadBaseUrl(
   version: string,
   baseUrl: string | undefined = CLI_RELEASE_DEFAULT_BASE_URL,
 ): string {
-  return `${(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL).replace(/\/+$/, "")}/v${version}`;
+  return `${(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL).replace(/\/+$/, "")}/${CLI_RELEASE_TAG_PREFIX}${version}`;
 }
 
 export function parseChecksums(text: string): ReadonlyMap<string, string> {
@@ -86,19 +90,26 @@ export function cliReleaseIndexPageUrl(page: number): string {
   return `https://api.github.com/repos/${CLI_RELEASE_REPOSITORY}/releases?per_page=100&page=${page}`;
 }
 
+const CLI_RELEASE_TAG = new RegExp(
+  `^${CLI_RELEASE_TAG_PREFIX}(\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?)$`,
+);
+
 /**
- * Drafts are skipped because their assets are not downloadable.
+ * Drafts are skipped because their assets are not downloadable. Prereleases are
+ * never stable, whatever their version says: the fork's X.Y.Z-test.N builds
+ * carry no nightly or preview marker.
  */
 export function newestCliReleaseVersion(
   releases: ReadonlyArray<{
     readonly tag_name: string;
     readonly draft?: boolean | undefined;
+    readonly prerelease?: boolean | undefined;
   }>,
   channel: CliReleaseChannel,
 ): string | undefined {
   for (const release of releases) {
-    if (release.draft) continue;
-    const version = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(release.tag_name)?.[1];
+    if (release.draft || (channel === "stable" && release.prerelease)) continue;
+    const version = CLI_RELEASE_TAG.exec(release.tag_name)?.[1];
     if (version === undefined) continue;
     if (cliReleaseChannelOf(version) === channel) return version;
   }

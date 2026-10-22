@@ -110,7 +110,7 @@ describe("ssh tunnel scripts", () => {
     assert.include(script, "T3_NODE_SCRIPT_PATH=''");
     assert.include(
       script,
-      "T3_RELEASE_BASE_URL='https://github.com/pingdotgg/t3code/releases/download'",
+      "T3_RELEASE_URL='https://github.com/LukasDoubleU/t4code/releases/download/t4-v1.2.3-preview.20260911.4'",
     );
     assert.include(script, 'T3_RUNTIME_DIR="$HOME/.t3/runtime/versions/$T3_ARCHIVE_VERSION"');
     assert.include(script, 'T3_ARCHIVE="t3-$T3_ARCHIVE_VERSION-$T3_PLATFORM-$T3_ARCH.tar.gz"');
@@ -151,7 +151,10 @@ describe("ssh tunnel scripts", () => {
       releaseBaseUrl: "https://mirror.example/t3/",
     });
     assert.include(launch, "T3_ARCHIVE_MODE=1");
-    assert.include(launch, "T3_RELEASE_BASE_URL='https://mirror.example/t3'");
+    assert.include(
+      launch,
+      "T3_RELEASE_URL='https://mirror.example/t3/t4-v1.2.3-preview.20260911.4'",
+    );
     assert.include(launch, '"$RUNNER_FILE" __ssh-helper pick-port "$PORT_FILE"');
     assert.include(launch, '"$RUNNER_FILE" __ssh-helper wait-ready "$REMOTE_PORT"');
     assert.include(launch, '"$RUNNER_FILE" __ssh-helper runtime-port "$DEFAULT_RUNTIME_FILE"');
@@ -1108,7 +1111,7 @@ describe("archive runner script", () => {
     const arch = hostArch === "arm64" ? "arm64" : "x64";
     const stem = `t3-${archiveVersion}-${platform}-${arch}`;
     const stage = `${root}/stage/${stem}`;
-    const release = `${root}/mirror/v${archiveVersion}`;
+    const release = `${root}/mirror/t4-v${archiveVersion}`;
     const script = [
       "set -eu",
       `mkdir -p '${stage}' '${release}'`,

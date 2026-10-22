@@ -138,6 +138,28 @@ count toward the message limit.
 Mobile displays saved quotes and comments, but does not create citations or
 navigate to their sources.
 
+## React to a response
+
+On web and desktop, hover over the final response of a turn to find two buttons beside
+**Copy**:
+
+- The thumbs-up button adds 👍 without sending anything, so no turn starts. The 👍 stays
+  under the response; click it to remove it.
+- The green play button, **Go ahead**, adds 👍 and sends "👍 Go ahead." When the response
+  is not the thread's latest one, the message names it by its time, for example "👍 Go ahead
+  with your reply from 15:20." Like any message, it starts a turn now or waits in the queue
+  while the agent is working.
+
+The agent learns about a silent 👍 with the next message it receives in the thread, whether
+you send it from the composer, the queue, or another agent. That message starts with one line
+per reaction, such as `The user reacted 👍 to your reply from 2026-10-22 13:20 UTC ("Release
+plan").` Each reaction is mentioned once, and a 👍 you remove before then is not mentioned.
+Agents reading the thread through T3 Code's tools also see the reactions.
+
+To approve the latest response from the keyboard, assign a shortcut to `chat.goAhead` in
+[Settings → Keybindings](./keybindings.md), or choose **👍 Go ahead with the latest reply** in
+the command palette. Mobile does not show reactions.
+
 ## Recall a sent prompt
 
 Press `ArrowUp` in an empty composer to bring back the last prompt you sent in this thread. Press

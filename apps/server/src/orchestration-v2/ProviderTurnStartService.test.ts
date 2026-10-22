@@ -16,7 +16,9 @@ import {
   RunId,
   ThreadId,
   ProjectId,
+  TurnItemId,
   type OrchestrationV2ThreadProjection,
+  type OrchestrationV2TurnItem,
   OrchestrationV2DomainEvent,
 } from "@t3tools/contracts";
 import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
@@ -1310,6 +1312,56 @@ effectIt.effect("starts the provider turn with each citation as a readable quote
       ].join("\n"),
     );
     expect(harness.projection().messages.at(-1)?.text).toBe(stored);
+  }),
+);
+
+effectIt.effect("starts the provider turn with the reactions set since the last turn", () =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({ text: "Next step?", failReadsAfterRunning: true });
+    const projection = harness.projection();
+    const userMessage = projection.messages.at(-1)!;
+    const repliedAt = DateTime.makeUnsafe("2026-09-04T11:58:00Z");
+    const reactedAt = yield* DateTime.now;
+    const reply = (id: string, goAhead: boolean): OrchestrationV2TurnItem => ({
+      id: TurnItemId.make(id),
+      threadId: userMessage.threadId,
+      runId: null,
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal: 0,
+      status: "completed",
+      title: null,
+      startedAt: repliedAt,
+      completedAt: repliedAt,
+      updatedAt: repliedAt,
+      type: "assistant_message",
+      messageId: MessageId.make(id),
+      text: "Run the migration first.\nThen deploy.",
+      streaming: false,
+      reactions: [{ emoji: "👍", reactedAt, ...(goAhead ? { goAhead } : {}) }],
+    });
+    harness.setProjection({
+      ...projection,
+      turnItems: [
+        ...projection.turnItems,
+        reply("reply-thumbs-up", false),
+        reply("reply-go-ahead", true),
+      ],
+    });
+
+    yield* harness.start;
+
+    expect(harness.startRootRun.mock.calls[0]?.[0].message.text).toBe(
+      [
+        'The user reacted 👍 to your reply from 2026-09-04 11:58 UTC ("Run the migration first.").',
+        "",
+        "Next step?",
+      ].join("\n"),
+    );
+    expect(harness.projection().messages.at(-1)?.text).toBe("Next step?");
   }),
 );
 

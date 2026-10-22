@@ -1165,6 +1165,18 @@ export const OrchestrationV2Notification = Schema.Struct({
 });
 export type OrchestrationV2Notification = typeof OrchestrationV2Notification.Type;
 
+export const OrchestrationV2MessageReactionEmoji = Schema.Literals(["👍"]);
+export type OrchestrationV2MessageReactionEmoji = typeof OrchestrationV2MessageReactionEmoji.Type;
+
+/** The user's reaction on an assistant reply. The agent learns it with the next input it gets. */
+export const OrchestrationV2MessageReaction = Schema.Struct({
+  emoji: OrchestrationV2MessageReactionEmoji,
+  reactedAt: Schema.DateTimeUtc,
+  /** Set with "Go ahead": the message the user sent says it, so no input repeats it. */
+  goAhead: Schema.optional(Schema.Boolean),
+});
+export type OrchestrationV2MessageReaction = typeof OrchestrationV2MessageReaction.Type;
+
 export const OrchestrationV2ConversationMessage = Schema.Struct({
   notification: Schema.optional(OrchestrationV2Notification),
   ...OrchestrationV2CreationFields,
@@ -1475,6 +1487,8 @@ export const OrchestrationV2TurnItem = Schema.Union([
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),
     streaming: Schema.Boolean,
+    /** Absent when the reply has none. Adapters never send it: the user sets it. */
+    reactions: Schema.optional(Schema.Array(OrchestrationV2MessageReaction)),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
@@ -2186,6 +2200,13 @@ export const OrchestrationV2RuntimeRequestJson = OrchestrationV2RuntimeRequest.m
 );
 export type OrchestrationV2RuntimeRequestJson = typeof OrchestrationV2RuntimeRequestJson.Type;
 
+export const OrchestrationV2MessageReactionJson = OrchestrationV2MessageReaction.mapFields(
+  (fields) => ({
+    ...fields,
+    reactedAt: Schema.DateTimeUtcFromString,
+  }),
+);
+
 export const OrchestrationV2ConversationMessageJson = OrchestrationV2ConversationMessage.mapFields(
   (fields) => ({
     ...fields,
@@ -2241,6 +2262,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),
     streaming: Schema.Boolean,
+    reactions: Schema.optional(Schema.Array(OrchestrationV2MessageReactionJson)),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
@@ -2948,6 +2970,17 @@ export const OrchestrationV2Command = Schema.Union([
       Schema.Struct({ type: Schema.Literal("queue_after_active") }),
       Schema.Struct({ type: Schema.Literal("start_immediately") }),
     ]),
+  }),
+  /** Sets or clears the user's reaction on an assistant reply. It never starts a turn. */
+  Schema.Struct({
+    type: Schema.Literal("message.reaction.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    /** The reply's assistant_message turn item, which the timeline and history pages carry. */
+    itemId: TurnItemId,
+    emoji: OrchestrationV2MessageReactionEmoji,
+    reacted: Schema.Boolean,
+    goAhead: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("prepared-run.release"),

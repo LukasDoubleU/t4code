@@ -8,6 +8,7 @@ import {
   type OrchestrationV2ProviderTurn,
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
+  type OrchestrationV2TurnItem,
   type ModelSelection,
   type RuntimeMode,
   type ProviderInteractionMode,
@@ -518,6 +519,21 @@ export const layer: Layer.Layer<
       return events;
     });
 
+    // Adapters send a reply whole and know nothing of the user's reactions, which only the
+    // projection holds. Without this, a reply sent again would lose them.
+    const withStoredReactions = (item: OrchestrationV2TurnItem) =>
+      item.type !== "assistant_message" || item.reactions !== undefined
+        ? Effect.succeed(item)
+        : projections
+            .getTurnItem({ threadId: item.threadId, itemId: item.id })
+            .pipe(
+              Effect.map((stored) =>
+                stored?.type === "assistant_message" && stored.reactions !== undefined
+                  ? { ...item, reactions: stored.reactions }
+                  : item,
+              ),
+            );
+
     const normalize: ProviderEventIngestorV2Shape["normalize"] =
       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
       Effect.fnUntraced(
@@ -637,7 +653,9 @@ export const layer: Layer.Layer<
                   type: "turn-item.updated",
                   threadId: input.event.turnItem.threadId,
                   payload: boundFileChangeForStorage(
-                    stripUnservedToolOutputImageBytes(input.event.turnItem),
+                    stripUnservedToolOutputImageBytes(
+                      yield* withStoredReactions(input.event.turnItem),
+                    ),
                   ),
                   runId: input.event.turnItem.runId,
                   nodeId: input.event.turnItem.nodeId,

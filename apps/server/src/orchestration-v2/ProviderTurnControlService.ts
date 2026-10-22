@@ -353,7 +353,7 @@ export const layer: Layer.Layer<
               cause: "The persisted steering message or target run is missing.",
             });
           }
-          const text = yield* providerMessageText(projections, message);
+          const text = yield* providerMessageText(projections, message, message.createdAt);
           yield* loaded.session.value
             .steerTurn({
               threadId: input.threadId,

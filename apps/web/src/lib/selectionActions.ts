@@ -2,6 +2,9 @@ export type SelectionActionPoint = { x: number; y: number };
 
 export const SELECTION_MULTI_CLICK_INTERVAL_MS = 500;
 const SELECTION_SCROLL_SETTLE_MS = 150;
+// How long a wheel, touch or key press keeps counting the scrolls after it as the user's own.
+const USER_SCROLL_INPUT_MS = 500;
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
 export function resolveSelectionActionPosition(options: {
   bounds: { left: number; top: number; width: number; height: number };
@@ -41,7 +44,9 @@ export function isSelectionRectVisible(rect: SelectionRect, clips: readonly Sele
 
 /**
  * Interactive popovers pass getActionElement to keep editing their fields from replacing the
- * captured source selection.
+ * captured source selection. With restoreAfterScroll, a scroll the user makes hides the actions
+ * until it settles, and a scroll they did not make, such as the timeline following a streaming
+ * reply, only moves them.
  */
 export function observeSelectionActions({
   element,
@@ -65,6 +70,14 @@ export function observeSelectionActions({
   let pointer: SelectionActionPoint | null = null;
   let timer: number | null = null;
   let frame: number | null = null;
+  let userScrollTimer: number | null = null;
+
+  const markUserScroll = () => {
+    if (userScrollTimer !== null) view.clearTimeout(userScrollTimer);
+    userScrollTimer = view.setTimeout(() => {
+      userScrollTimer = null;
+    }, USER_SCROLL_INPUT_MS);
+  };
 
   const isActionTarget = (target: EventTarget | null) =>
     target !== null && (getActionElement?.()?.contains(target as Node) ?? false);
@@ -137,6 +150,7 @@ export function observeSelectionActions({
   };
   const onKeyDown = (event: KeyboardEvent) => {
     if (isActionTarget(event.target) && event.key !== "Escape") return;
+    if (SCROLL_KEYS.has(event.key)) markUserScroll();
     if (event.key === "Escape") {
       dismiss();
     } else if (!pointerDown) {
@@ -151,6 +165,13 @@ export function observeSelectionActions({
     else if (!pointerDown && getActionElement?.()) dismiss();
   };
   const onScroll = () => {
+    if (restoreAfterScroll && !pointerDown && userScrollTimer === null) {
+      if (!dismissed && restorable) {
+        pointer = null;
+        schedule(0);
+      }
+      return;
+    }
     cancelPending();
     // Autoscroll during a drag must not cancel that gesture's eventual release.
     if (!pointerDown) {
@@ -170,6 +191,8 @@ export function observeSelectionActions({
   document.addEventListener("focusin", onFocusIn);
   element.addEventListener("contextmenu", onContextMenu, true);
   element.addEventListener("scroll", onScroll, true);
+  element.addEventListener("wheel", markUserScroll, { capture: true, passive: true });
+  element.addEventListener("touchmove", markUserScroll, { capture: true, passive: true });
   view.addEventListener("blur", dismiss);
   view.addEventListener("resize", dismiss);
 
@@ -188,6 +211,7 @@ export function observeSelectionActions({
     },
     dispose() {
       cancel();
+      if (userScrollTimer !== null) view.clearTimeout(userScrollTimer);
       document.removeEventListener("pointerdown", onPointerDown, true);
       element.removeEventListener("pointerdown", onSelectionStart);
       view.removeEventListener("pointerup", onPointerUp);
@@ -197,6 +221,8 @@ export function observeSelectionActions({
       document.removeEventListener("focusin", onFocusIn);
       element.removeEventListener("contextmenu", onContextMenu, true);
       element.removeEventListener("scroll", onScroll, true);
+      element.removeEventListener("wheel", markUserScroll, true);
+      element.removeEventListener("touchmove", markUserScroll, true);
       view.removeEventListener("blur", dismiss);
       view.removeEventListener("resize", dismiss);
     },

@@ -87,6 +87,7 @@ import {
   DispatchModeLimit,
   type DispatchModeRefusal,
 } from "../orchestration-v2/DispatchModeLimit.ts";
+import { citedReplyIds, readableCitations } from "../orchestration-v2/providerMessageText.ts";
 import { runOutcome } from "../orchestration-v2/RestartBackgroundNote.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
@@ -869,7 +870,12 @@ function timelineItem(input: {
   readonly textOffset?: number;
   readonly messagesByThreadId: ReadonlyMap<ThreadId, OrchestrationV2ThreadProjection["messages"]>;
 }): OrchestratorMcpThreadTimelineItem {
-  const text = turnItemText(input.row.item);
+  const threadMessages = input.messagesByThreadId.get(input.row.sourceThreadId) ?? [];
+  const itemText = turnItemText(input.row.item);
+  const text =
+    input.row.item.type === "user_message" && itemText !== null
+      ? readableCitations(itemText, input.row.sourceThreadId, threadMessages)
+      : itemText;
   const offset = input.textOffset ?? 0;
   const end = offset + input.maxChars;
   const textTruncated = text !== null && text.length > end;
@@ -878,11 +884,7 @@ function timelineItem(input: {
       ? input.row.item.messageId
       : null;
   const message =
-    messageId === null
-      ? undefined
-      : input.messagesByThreadId
-          .get(input.row.sourceThreadId)
-          ?.find((candidate) => candidate.id === messageId);
+    messageId === null ? undefined : threadMessages.find((candidate) => candidate.id === messageId);
   return {
     position: input.row.position,
     visibility: input.row.visibility,
@@ -2747,6 +2749,9 @@ const make = Effect.gen(function* () {
         if (row.item.type !== "user_message" && row.item.type !== "assistant_message") continue;
         const ids = messageIdsByThread.get(row.sourceThreadId) ?? [];
         ids.push(row.item.messageId);
+        if (row.item.type === "user_message") {
+          ids.push(...citedReplyIds(row.item.text, row.sourceThreadId));
+        }
         messageIdsByThread.set(row.sourceThreadId, ids);
       }
       const sourceMessages = yield* Effect.forEach(

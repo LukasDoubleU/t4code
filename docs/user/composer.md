@@ -116,18 +116,24 @@ Leaving reasoning level or service tier unset uses the provider's own configurat
 ## Quote an assistant response
 
 On web and desktop, select text within one assistant response and choose
-**Cite in composer**. You can add a comment about the quote and write instructions
-around it.
+**Cite**, or choose **Cite selection in composer** in the command palette. To cite
+from the keyboard, assign a shortcut to `chat.citeSelection` in
+[Settings → Keybindings](./keybindings.md). You can add a comment about the quote
+and write instructions around it.
+
+In the draft, the chip shows your comment when it has one, or a short quote preview otherwise. Use
+the pencil button to add or change the comment. To remove the citation, place the caret beside its
+chip and delete it like other inline context. A sent message shows the quote where you placed it,
+followed by your comment.
 
 Select the quote in a draft or sent message to return to its source. If the source
 is unavailable or has changed, the saved quote remains readable.
 
-The chip shows your comment when it has one, or a short quote preview otherwise. Use the pencil
-button to add or change the comment. To remove the citation, place the caret beside its chip and
-delete it like other inline context. Copying, reloading, and restoring a
-[stashed prompt](#prompt-stash) keep each comment
-with its quote, and sending tells the agent which words were quoted and which comment you wrote.
-The quoted text and comment count toward the message limit.
+The agent receives each quote in place as a quoted block, marked as an earlier assistant reply
+with that reply's time when it comes from the same thread, followed by your comment. Agents
+reading the thread through T3 Code's tools see the same text. Copying, reloading, and restoring a
+[stashed prompt](#prompt-stash) keep each comment with its quote. The quoted text and comment
+count toward the message limit.
 
 Mobile displays saved quotes and comments, but does not create citations or
 navigate to their sources.

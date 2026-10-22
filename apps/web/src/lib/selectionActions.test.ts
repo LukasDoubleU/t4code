@@ -88,6 +88,11 @@ function createSelectionSurface({ interactiveActions = false, restoreAfterScroll
     pointerUp(button);
     view.dispatchEvent(event("mouseup", { clientX: x, clientY: y, detail, button }));
   };
+  const scroll = () => element.dispatchEvent(event("scroll"));
+  const userScroll = () => {
+    element.dispatchEvent(event("wheel"));
+    scroll();
+  };
   const flushFrame = () => {
     const callbacks = [...frames.values()];
     frames.clear();
@@ -113,6 +118,8 @@ function createSelectionSurface({ interactiveActions = false, restoreAfterScroll
     up,
     pointerUp,
     change,
+    scroll,
+    userScroll,
     flush,
     flushFrame,
   };
@@ -311,10 +318,10 @@ describe("selection action gestures", () => {
     expect(surface.onSelection.mock.calls).toEqual([[{ x: 420, y: 310 }]]);
 
     surface.onDismiss.mockClear();
-    surface.element.dispatchEvent(event("scroll"));
+    surface.userScroll();
     expect(surface.onDismiss).toHaveBeenCalledWith("cancel");
     surface.flush(100);
-    surface.element.dispatchEvent(event("scroll"));
+    surface.userScroll();
     surface.change();
     surface.flush(100);
     expect(surface.onSelection).toHaveBeenCalledOnce();
@@ -326,7 +333,7 @@ describe("selection action gestures", () => {
     surface.down();
     surface.up();
     vi.advanceTimersByTime(0);
-    surface.element.dispatchEvent(event("scroll"));
+    surface.userScroll();
     surface.flush(149);
     expect(surface.onSelection).toHaveBeenCalledTimes(2);
     surface.flush(1);
@@ -338,7 +345,7 @@ describe("selection action gestures", () => {
     surface.down();
     surface.up();
     surface.flush();
-    surface.element.dispatchEvent(event("scroll"));
+    surface.userScroll();
     surface.key("Escape");
     surface.change();
     surface.flush(1000);
@@ -360,6 +367,58 @@ describe("selection action gestures", () => {
     surface.up();
     surface.flush();
     expect(surface.onSelection).toHaveBeenCalledTimes(3);
+  });
+
+  it("follows a scroll the user did not make without hiding the actions", () => {
+    const surface = createSelectionSurface({ restoreAfterScroll: true });
+    surface.down();
+    surface.up({ x: 420, y: 310 });
+    surface.flush();
+    surface.onDismiss.mockClear();
+
+    surface.scroll();
+    surface.scroll();
+    expect(surface.onDismiss).not.toHaveBeenCalled();
+    surface.flush();
+    expect(surface.onSelection.mock.calls).toEqual([[{ x: 420, y: 310 }], [null]]);
+
+    surface.element.dispatchEvent(event("wheel"));
+    surface.flush(500);
+    surface.scroll();
+    surface.flush();
+    expect(surface.onDismiss).not.toHaveBeenCalled();
+    expect(surface.onSelection).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["wheel", "touchmove", "PageDown"])(
+    "hides the actions while a %s scroll settles",
+    (input) => {
+      const surface = createSelectionSurface({ restoreAfterScroll: true });
+      surface.down();
+      surface.up();
+      surface.flush();
+      surface.onDismiss.mockClear();
+
+      if (input === "PageDown") surface.key(input);
+      else surface.element.dispatchEvent(event(input));
+      surface.scroll();
+      expect(surface.onDismiss).toHaveBeenCalledWith("cancel");
+      surface.flush(149);
+      expect(surface.onSelection).toHaveBeenCalledOnce();
+      surface.flush(1);
+      expect(surface.onSelection).toHaveBeenLastCalledWith(null);
+    },
+  );
+
+  it("does not bring back dismissed actions on a scroll the user did not make", () => {
+    const surface = createSelectionSurface({ restoreAfterScroll: true });
+    surface.down();
+    surface.up();
+    surface.flush();
+    surface.key("Escape");
+    surface.scroll();
+    surface.flush(1000);
+    expect(surface.onSelection).toHaveBeenCalledOnce();
   });
 
   it("cancels a queued animation frame when a new press supersedes the release", () => {

@@ -150,6 +150,9 @@ a shortcut.
 `thread.stop` interrupts the running turn in the focused thread. It has no default
 shortcut; assign one in **Settings → Keybindings**.
 
+`chat.citeSelection` [cites the text you selected](./composer.md#quote-an-assistant-response)
+in an assistant response, like the **Cite** button. It has no default shortcut either.
+
 `thread.undo` (`mod+z` by default) reverses the actions shown in the notice at the
 bottom of the sidebar, such as unpin, settle, snooze, archive, or discarding a
 draft. Consecutive

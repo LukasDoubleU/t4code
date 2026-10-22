@@ -1,5 +1,6 @@
 import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@t3tools/contracts";
 import { expandAssistantCitationsForProvider } from "@t3tools/shared/assistantCitations";
+import * as DateTime from "effect/DateTime";
 
 type ComposerSubmitEvent = { preventDefault: () => void };
 
@@ -10,11 +11,10 @@ type ComposerSubmissionInput = {
 };
 
 export function getComposerPromptLengthValidationMessage(prompt: string): string | null {
-  const normalizedPrompt = prompt.trim();
-  const inputLength = Math.max(
-    normalizedPrompt.length,
-    expandAssistantCitationsForProvider(normalizedPrompt).length,
-  );
+  // Agents receive citations as quotes, with each cited reply's time when the server finds it.
+  const inputLength = expandAssistantCitationsForProvider(prompt.trim(), () =>
+    DateTime.makeUnsafe(0),
+  ).length;
   const excessCharacters = inputLength - PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
   if (excessCharacters <= 0) return null;
 

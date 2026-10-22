@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import {
+  EnvironmentId,
   EventId,
   MessageId,
   NodeId,
@@ -15,6 +16,7 @@ import {
   ThreadId,
   type OrchestrationV2DomainEvent,
 } from "@t3tools/contracts";
+import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -348,5 +350,108 @@ it.effect.each(storageCases)(
           ),
         ),
       );
+    }).pipe(Effect.provide(Layer.merge(storeLayer, SqlitePersistence.layerMemory))),
+);
+
+it.effect.each(storageCases)(
+  "$storage: steers citations as readable quotes and keeps the stored links",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const replyId = MessageId.make("message:control-reads-reply");
+      const repliedAt = DateTime.makeUnsafe("2026-10-22T10:00:30.000Z");
+      const cite = (source: ThreadId, text: string, comment?: string) =>
+        serializeAssistantCitation({
+          version: 1,
+          environmentId: EnvironmentId.make("environment:control-reads"),
+          threadId: source,
+          messageId: replyId,
+          text,
+          start: 0,
+          end: text.length,
+          prefix: "",
+          suffix: "",
+          ...(comment === undefined ? {} : { comment }),
+        });
+      const stored = `${cite(threadId, "Prefer the smaller fix.", "Why smaller?")} Do that.\n${cite(
+        ThreadId.make("thread:elsewhere"),
+        "Keep the tests.",
+      )}`;
+      const events = fixtureEvents(now).map((event) =>
+        event.type === "message.updated"
+          ? { ...event, payload: { ...event.payload, text: stored } }
+          : event,
+      );
+      yield* Effect.forEach(
+        [
+          ...events,
+          {
+            id: EventId.make("control:reply"),
+            type: "message.updated",
+            threadId,
+            occurredAt: repliedAt,
+            payload: {
+              id: replyId,
+              threadId,
+              runId,
+              nodeId,
+              role: "assistant",
+              text: "Prefer the smaller fix. It touches one file.",
+              attachments: [],
+              streaming: false,
+              createdBy: "agent",
+              creationSource: "provider",
+              createdAt: repliedAt,
+              updatedAt: repliedAt,
+            },
+          } satisfies OrchestrationV2DomainEvent,
+        ],
+        (event) => store.apply(event),
+        { discard: true },
+      );
+      const steered: string[] = [];
+      const layerSessions = Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({
+        get: () =>
+          Effect.succeed(
+            Option.some({
+              steerTurn: (input: { message: { text: string } }) =>
+                Effect.sync(() => {
+                  steered.push(input.message.text);
+                }),
+            } as never),
+          ),
+      });
+      yield* Effect.gen(function* () {
+        const control = yield* ProviderTurnControlService.ProviderTurnControlServiceV2;
+        yield* control.steer({
+          threadId,
+          providerThreadId,
+          providerTurnId,
+          providerSessionId,
+          messageId,
+        });
+      }).pipe(Effect.provide(ProviderTurnControlService.layer.pipe(Layer.provide(layerSessions))));
+
+      assert.deepEqual(steered, [
+        [
+          "Quoted from an earlier assistant reply (2026-10-22 10:00 UTC):",
+          "> Prefer the smaller fix.",
+          "",
+          "User comment: Why smaller?",
+          "",
+          "Do that.",
+          "",
+          "Quoted from an earlier assistant reply:",
+          "> Keep the tests.",
+        ].join("\n"),
+      ]);
+      const context = yield* store.getProviderControlContext(threadId, {
+        providerThreadId,
+        providerTurnId,
+        attemptId,
+        messageId,
+      });
+      assert.equal(context.message?.text, stored);
     }).pipe(Effect.provide(Layer.merge(storeLayer, SqlitePersistence.layerMemory))),
 );

@@ -4,7 +4,7 @@
 
 T4 Code is a personal fork of [T3 Code](https://github.com/pingdotgg/t3code), the open-source GUI for Claude Code, Codex and other coding agents. It is built for running many agents across several machines and subscriptions: threads that reach across machines, an app that keeps running in the tray, a sidebar made for long-lived threads, and a hint which account to use next.
 
-It is based on upstream `v0.1.1` and follows upstream releases. Only Windows builds are published.
+It is based on upstream `v0.1.1` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
 
 > [!NOTE]
 > T4 Code is not affiliated with T3 Tools or the T3 Code team. Please don't report its problems upstream.
@@ -21,6 +21,7 @@ It is based on upstream `v0.1.1` and follows upstream releases. Only Windows bui
 - **Experts.** Pinned threads form a collapsible Experts section that gathers them from every connected machine, one line per expert with the details on hover. [Experts](./docs/user/thread-sidebar.md#experts-pin-and-reorder-threads)
 - **Memory for pinned threads.** A pinned thread keeps a memory file that its agent reads after every compaction and keeps current. A brain icon on the expert's row shows it; **Open memory** opens the file. [Keep a memory](./docs/user/thread-sidebar.md#keep-a-memory-for-a-pinned-thread)
 - **Background section.** Threads that agents start on their own wait there and come forward only while they need you: a question, an approval or a failed run. The **Status** sort puts the same things first. [Keep agents' threads in the background](./docs/user/thread-sidebar.md#keep-agents-threads-in-the-background)
+- **Quiet agent turns.** A turn that another agent started doesn't notify you when it finishes; its questions, approvals and failures still do. An agent waiting on another thread wakes as soon as a message for it arrives.
 - **Sidebar.** Group threads by project, sort by last message, both in one menu; compact cards; the Background and Settled shelves stay at the bottom. [Sort and group threads](./docs/user/thread-sidebar.md#sort-and-group-threads)
 
 **Several accounts**

@@ -270,6 +270,9 @@ works too: the agent finds the linked machine that has it.
 - The access you pick is the most agents from this machine may do there. An
   agent also never gets more there than its own mode here.
 - Threads a link starts are marked **From** and this machine's name there.
+- A message an agent sends there folds into one line headed by its thread's
+  title and this machine's name. **Open thread** opens that thread when the app
+  showing the message is connected to this machine too.
 - A full-access link works there like that machine's own agents. Below full
   access, the link's agents can change only threads it started, not that
   machine's own threads, projects or settings, and they skip its project setup

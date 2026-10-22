@@ -72,7 +72,7 @@ it.effect("authenticates each release page until the requested channel is found"
   }),
 );
 
-it.effect("never resolves an upstream release or a fork test build as the newest stable", () =>
+it.effect("resolves the highest fork release, never an upstream release or a test build", () =>
   Effect.gen(function* () {
     const httpClient = HttpClient.make((request) =>
       Effect.succeed(
@@ -80,8 +80,9 @@ it.effect("never resolves an upstream release or a fork test build as the newest
           request,
           Response.json([
             { tag_name: "v0.1.3" },
+            { tag_name: "t4-v0.1.2-t4.9", prerelease: false },
             { tag_name: "t4-v0.1.3-test.1", prerelease: true },
-            { tag_name: "t4-v0.1.2-t4.2", prerelease: false },
+            { tag_name: "t4-v0.1.2-t4.13", prerelease: false },
           ]),
         ),
       ),
@@ -90,7 +91,7 @@ it.effect("never resolves an upstream release or a fork test build as the newest
       Effect.provideService(HostProcess.Environment, {}),
       Effect.provideService(HttpClient.HttpClient, httpClient),
     );
-    assert.equal(version, "0.1.2-t4.2");
+    assert.equal(version, "0.1.2-t4.13");
   }),
 );
 

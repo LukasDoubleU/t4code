@@ -1,3 +1,5 @@
+import { compareSemverVersions } from "./semver.ts";
+
 // Fork-only: every t3 download, `t3 update` and the update checks follow this
 // repository's releases, which t4-release.yml tags t4-v<version>, so a fork
 // build never installs an upstream release. Upstream: "pingdotgg/t3code", "v".
@@ -97,7 +99,8 @@ const CLI_RELEASE_TAG = new RegExp(
 /**
  * Drafts are skipped because their assets are not downloadable. Prereleases are
  * never stable, whatever their version says: the fork's X.Y.Z-test.N builds
- * carry no nightly or preview marker.
+ * carry no nightly or preview marker. GitHub lists releases in no reliable
+ * version order (the fork's t4.9 came before t4.13), so the highest one wins.
  */
 export function newestCliReleaseVersion(
   releases: ReadonlyArray<{
@@ -107,11 +110,12 @@ export function newestCliReleaseVersion(
   }>,
   channel: CliReleaseChannel,
 ): string | undefined {
+  let newest: string | undefined;
   for (const release of releases) {
     if (release.draft || (channel === "stable" && release.prerelease)) continue;
     const version = CLI_RELEASE_TAG.exec(release.tag_name)?.[1];
-    if (version === undefined) continue;
-    if (cliReleaseChannelOf(version) === channel) return version;
+    if (version === undefined || cliReleaseChannelOf(version) !== channel) continue;
+    if (newest === undefined || compareSemverVersions(version, newest) > 0) newest = version;
   }
-  return undefined;
+  return newest;
 }

@@ -94,6 +94,17 @@ describe("cliRelease", () => {
     expect(newestCliReleaseVersion([{ tag_name: "v0.1.3" }], "stable")).toBeUndefined();
   });
 
+  it("picks the highest version in whatever order GitHub lists them", () => {
+    const releases = [
+      { tag_name: "t4-v0.1.2-t4.9" },
+      { tag_name: "t4-v0.1.2-t4.13" },
+      { tag_name: "t4-v0.1.2-t4.10" },
+      { tag_name: "t4-v0.1.2-test.1", prerelease: true },
+      { tag_name: "t4-v0.1.2-t4.8" },
+    ];
+    expect(newestCliReleaseVersion(releases, "stable")).toBe("0.1.2-t4.13");
+  });
+
   it("pages through the fork's release index at the largest page GitHub allows", () => {
     expect(cliReleaseIndexPageUrl(1)).toBe(
       "https://api.github.com/repos/LukasDoubleU/t4code/releases?per_page=100&page=1",

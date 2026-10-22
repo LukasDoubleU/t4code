@@ -152,7 +152,11 @@ import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { useBoringSidebarEnabled, useClientSettings } from "../hooks/useSettings";
+import {
+  updateClientSettings,
+  useBoringSidebarEnabled,
+  useClientSettings,
+} from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -239,6 +243,7 @@ import {
   type SidebarListItem,
   type SidebarListMarker,
   type SidebarSection,
+  resolveSidebarExpertsSection,
   resolveSidebarRowThreadId,
 } from "./Sidebar.logic";
 import {
@@ -556,6 +561,7 @@ function useSidebarThreads(input: {
   // Folders already separate the work, so only the flat list has a Working shelf.
   const workingShelfEnabled =
     useClientSettings((s) => s.sidebarWorkingShelfEnabled) && grouping === "none";
+  const expertsCollapsed = useClientSettings((s) => s.sidebarExpertsCollapsed);
   const background = useSidebarBackground();
   const machines = useEnvironmentIdentities();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -636,6 +642,12 @@ function useSidebarThreads(input: {
     snoozedThreads,
     settledThreads,
   } = partition;
+  const experts = resolveSidebarExpertsSection({
+    pinned: pinnedThreads,
+    collapsed: expertsCollapsed,
+    routeThreadKey: routeRowThreadKey,
+    keyOf: threadShellKey,
+  });
   const visibleSettledThreads = (() => {
     if (settledThreads.length <= settledVisibleCount) return settledThreads;
     const visible = settledThreads.slice(0, settledVisibleCount);
@@ -697,7 +709,7 @@ function useSidebarThreads(input: {
   const orderedThreads =
     folders === null
       ? [
-          ...pinnedThreads,
+          ...experts.rows,
           ...activeThreads,
           ...visibleWorkingThreads,
           ...visibleBackgroundThreads,
@@ -705,7 +717,7 @@ function useSidebarThreads(input: {
           ...renderedSettledThreads,
         ]
       : [
-          ...pinnedThreads,
+          ...experts.rows,
           ...folders.flatMap((folder) => [...folder.inbox, ...folder.settled]),
           // Background is one list below the folders, whatever they group by.
           ...visibleBackgroundThreads,
@@ -748,6 +760,8 @@ function useSidebarThreads(input: {
         scopeKey: current.scopeKey,
         count: current.count + SETTLED_TAIL_PAGE_COUNT,
       })),
+    experts,
+    toggleExperts: () => void updateClientSettings({ sidebarExpertsCollapsed: !expertsCollapsed }),
     settledShelfExpanded,
     toggleSettledShelf: () => setSettledShelfExpanded((value) => !value),
     snoozedShelfExpanded,
@@ -1499,7 +1513,12 @@ function SidebarDragBoundary(props: {
 }
 
 function SidebarSectionHeader(props: {
-  marker: "working-header" | "background-header" | "snoozed-header" | "settled-header";
+  marker:
+    | "pinned-header"
+    | "working-header"
+    | "background-header"
+    | "snoozed-header"
+    | "settled-header";
   label: string;
   className?: string;
   dragging?: boolean;
@@ -1507,13 +1526,15 @@ function SidebarSectionHeader(props: {
   toggle: { expanded: boolean; onToggle: () => void };
 }) {
   const shelf =
-    props.marker === "working-header"
-      ? "working"
-      : props.marker === "background-header"
-        ? "background"
-        : props.marker === "snoozed-header"
-          ? "snoozed"
-          : "settled";
+    props.marker === "pinned-header"
+      ? "experts"
+      : props.marker === "working-header"
+        ? "working"
+        : props.marker === "background-header"
+          ? "background"
+          : props.marker === "snoozed-header"
+            ? "snoozed"
+            : "settled";
   const snoozed = shelf === "snoozed";
   return (
     <SortableSidebarMarker
@@ -2846,12 +2867,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
               >
                 {isRemote && !showsScratchMachine ? (
-                  <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
+                  <span className="inline-flex shrink-0 items-center gap-1 text-sidebar-muted-foreground/70">
                     <EnvironmentMachineIcon
                       aria-hidden
                       kind={props.environmentMachine}
                       className="size-3.5"
                     />
+                    {/* Experts gather from every machine, so their rows name it. */}
+                    {props.isPinned && props.environmentLabel ? (
+                      <span className="max-w-24 truncate">{props.environmentLabel}</span>
+                    ) : null}
                   </span>
                 ) : null}
                 <SidebarProviderStack
@@ -3362,6 +3387,8 @@ export default function Sidebar() {
     threadGrouping,
     statusGroupOf,
     pinnedThreads,
+    experts,
+    toggleExperts,
     draggableThreadKeys,
     activeReorderableThreadKeys,
     activeThreads,
@@ -3919,8 +3946,11 @@ export default function Sidebar() {
     if (list && header) {
       const listRect = list.getBoundingClientRect();
       const scale = list.offsetWidth > 0 ? listRect.width / list.offsetWidth : 1;
+      const headerRect = header.getBoundingClientRect();
       dragLabelOffsetRef.current =
-        header.getBoundingClientRect().top - listRect.top + SIDEBAR_DRAG_LABEL_HEIGHT * scale;
+        headerRect.top -
+        listRect.top +
+        Math.max(headerRect.height, SIDEBAR_DRAG_LABEL_HEIGHT * scale);
     } else {
       dragLabelOffsetRef.current = 0;
     }
@@ -3957,7 +3987,7 @@ export default function Sidebar() {
       return [];
     }
     const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
-    const pinnedRows = rowsOf(pinnedThreads, "pinned");
+    const pinnedRows = rowsOf(experts.rows, "pinned");
     items.push(...pinnedRows);
     items.push({ kind: "marker", marker: "pinned-divider" });
     const activeRows = rowsOf(activeThreads, "active");
@@ -4066,6 +4096,7 @@ export default function Sidebar() {
     boundaryLabelHeight: SIDEBAR_DRAG_LABEL_HEIGHT,
     settledOrder: draggedSettledOrder,
     ...(draggedPinnedOrder === undefined ? {} : { pinnedOrder: draggedPinnedOrder }),
+    pinnedExpanded: experts.expanded,
     ...(draggedActiveOrder === undefined ? {} : { activeOrder: draggedActiveOrder }),
     backgroundOrder: draggedBackgroundOrder,
     backgroundExpanded: backgroundShelfExpanded,
@@ -4105,7 +4136,7 @@ export default function Sidebar() {
             activeKeysById,
             activeReorderableKeys: activeReorderableThreadKeys,
             activeTimeOrdered: workingShelfEnabled || threadSort !== "manual",
-            pinnedTimeOrdered: threadSort !== "manual",
+            pinnedTimeOrdered: threadSort !== "manual" || !experts.expanded,
             backgroundAvailable,
           }).kind !== "none"
         );
@@ -4142,7 +4173,7 @@ export default function Sidebar() {
       activeKeysById,
       activeReorderableKeys: activeReorderableThreadKeys,
       activeTimeOrdered: workingShelfEnabled || threadSort !== "manual",
-      pinnedTimeOrdered: threadSort !== "manual",
+      pinnedTimeOrdered: threadSort !== "manual" || !experts.expanded,
       backgroundAvailable: !sidebarThreadNeedsUser(statusGroupOf(activeThread)),
     });
     if (plan.kind === "none") return;
@@ -5414,7 +5445,17 @@ export default function Sidebar() {
                         />,
                       ];
                       if (folders !== null) {
-                        for (const thread of pinnedThreads) {
+                        if (pinnedThreads.length > 0) {
+                          items.push(
+                            <SidebarSectionHeader
+                              key="pinned-header"
+                              marker="pinned-header"
+                              label={experts.label}
+                              toggle={{ expanded: experts.expanded, onToggle: toggleExperts }}
+                            />,
+                          );
+                        }
+                        for (const thread of experts.rows) {
                           items.push(renderThreadRow(thread, "pinned"));
                         }
                         for (const folder of folders) {
@@ -5556,14 +5597,29 @@ export default function Sidebar() {
                         }
                         switch (item.marker) {
                           case "pinned-header":
+                            // Without pins, the section shows only while dragging, to pin onto.
                             items.push(
-                              <SidebarDragBoundary
-                                key="pinned-header"
-                                marker="pinned-header"
-                                label="Pinned"
-                                visible={from !== null}
-                                isDropTarget={dragTargetSection === "pinned"}
-                              />,
+                              pinnedThreads.length > 0 ? (
+                                <SidebarSectionHeader
+                                  key="pinned-header"
+                                  marker="pinned-header"
+                                  label={experts.label}
+                                  dragging={from !== null}
+                                  isDropTarget={dragTargetSection === "pinned"}
+                                  toggle={{
+                                    expanded: experts.expanded,
+                                    onToggle: toggleExperts,
+                                  }}
+                                />
+                              ) : (
+                                <SidebarDragBoundary
+                                  key="pinned-header"
+                                  marker="pinned-header"
+                                  label="Experts"
+                                  visible={from !== null}
+                                  isDropTarget={dragTargetSection === "pinned"}
+                                />
+                              ),
                             );
                             break;
                           case "pinned-divider":

@@ -1320,6 +1320,18 @@ describe("sidebar Background section switch", () => {
   });
 });
 
+describe("sidebar Experts section", () => {
+  it("starts expanded and keeps a device's collapse", () => {
+    expect(decodeClientSettings({}).sidebarExpertsCollapsed).toBe(false);
+    const settings = decodeClientSettings({ sidebarExpertsCollapsed: true });
+    expect(encodeClientSettings(settings)).toMatchObject({ sidebarExpertsCollapsed: true });
+    expect(decodeClientSettingsPatch({ sidebarExpertsCollapsed: false })).toEqual({
+      sidebarExpertsCollapsed: false,
+    });
+    expect(decodeClientSettingsPatch({})).not.toHaveProperty("sidebarExpertsCollapsed");
+  });
+});
+
 describe("always show message times", () => {
   it("is on for clients that never chose and keeps a device's choice", () => {
     expect(decodeClientSettings({}).alwaysShowMessageTimes).toBe(true);

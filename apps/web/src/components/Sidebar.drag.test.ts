@@ -712,6 +712,43 @@ describe("sidebar drag projection", () => {
     });
   });
 
+  describe("a collapsed Experts section", () => {
+    const items = [
+      pinnedHeader,
+      divider,
+      thread("a1", "active"),
+      thread("a2", "active"),
+      settledHeader,
+      marker("settled-placeholder"),
+    ];
+    const input = { items, settledOrder: [], settledExpanded: false, pinnedExpanded: false };
+
+    it("hides a row dropped onto its header, as the collapsed shelves do", () => {
+      const result = preview(input, "a2", sidebarMarkerId("pinned-header"));
+      expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(0);
+      expect(result.get("a1")).toEqual(stationary);
+    });
+
+    it("keeps the open thread visible when it arrives", () => {
+      const result = preview(
+        { ...input, routeThreadKey: "a2" },
+        "a2",
+        sidebarMarkerId("pinned-header"),
+      );
+      expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(83);
+    });
+
+    it("takes the header's measured height instead of the drag label's", () => {
+      const strategy = createSidebarSortingStrategy({ ...input, boundaryLabelHeight: 24 });
+      const args = layout(items, "a2", "a1");
+      const rects = args.rects.map((rect, index) =>
+        index === 0 ? { ...rect, height: 32, bottom: rect.top + 32 } : rect,
+      );
+      // The header is 32 tall in place of the zero-height boundary below it.
+      expect(strategy({ ...args, rects, index: 1 })?.y).toBe(32);
+    });
+  });
+
   it("preserves a collapsed snoozed header while another section changes", () => {
     const items = [
       pinnedHeader,

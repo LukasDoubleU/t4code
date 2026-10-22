@@ -2,6 +2,7 @@ import { closestCenter, type CollisionDetection, type Modifier } from "@dnd-kit/
 import { verticalListSortingStrategy, type SortingStrategy } from "@dnd-kit/sortable";
 import {
   resolveSidebarDropTarget,
+  resolveSidebarRowVariant,
   sidebarListItemId,
   sidebarMarkerId,
   type SidebarListItem,
@@ -109,6 +110,7 @@ export function createSidebarSortingStrategy(input: {
   routeThreadKey?: string | null;
   snoozedThreadCount?: number;
   cardHeight?: number;
+  expertHeight?: number;
   slimHeight?: number;
   boundaryLabelHeight?: number;
 }): SortingStrategy {
@@ -133,6 +135,7 @@ export function createSidebarSortingStrategy(input: {
       settled: [],
     };
     let cardHeight = input.cardHeight;
+    let expertHeight = input.expertHeight;
     let slimHeight = input.slimHeight;
     let headerScale: number | undefined;
     for (const [index, item] of items.entries()) {
@@ -143,14 +146,20 @@ export function createSidebarSortingStrategy(input: {
         }
         continue;
       }
-      if (item.section === "pinned" || item.section === "active" || item.section === "working")
-        cardHeight ??= rects[index]?.height;
+      const variant = resolveSidebarRowVariant(item.section);
+      if (variant === "card") cardHeight ??= rects[index]?.height;
+      else if (variant === "expert") expertHeight ??= rects[index]?.height;
       else slimHeight ??= rects[index]?.height;
       if (item.key !== active.key) groups[item.section].push(item);
     }
     const scale =
-      slimHeight !== undefined ? slimHeight / 36 : (headerScale ?? (cardHeight ?? 70) / 70);
+      slimHeight !== undefined
+        ? slimHeight / 36
+        : expertHeight !== undefined
+          ? expertHeight / 28
+          : (headerScale ?? (cardHeight ?? 70) / 70);
     cardHeight ??= 70 * scale;
+    expertHeight ??= 28 * scale;
     slimHeight ??= 36 * scale;
     const labelHeight = (input.boundaryLabelHeight ?? 0) * scale;
     const group = groups[target.section];
@@ -225,11 +234,9 @@ export function createSidebarSortingStrategy(input: {
     const heights = projected.map((item) => {
       const index = indices.get(sidebarListItemId(item));
       const rect = index === undefined ? undefined : rects[index];
+      const variant = item.kind === "thread" ? resolveSidebarRowVariant(item.section) : "slim";
       const fallback =
-        item.kind === "thread" &&
-        (item.section === "pinned" || item.section === "active" || item.section === "working")
-          ? cardHeight
-          : slimHeight;
+        variant === "card" ? cardHeight : variant === "expert" ? expertHeight : slimHeight;
       const moved = item.kind === "thread" && item.key === active.key;
       // With pins, the Experts header is a full row that labels its section itself.
       return item.kind === "marker" && item.marker === "pinned-header"

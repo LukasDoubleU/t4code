@@ -135,6 +135,15 @@ export function resolveSidebarThreadSection(input: {
 }
 
 /**
+ * Only the live sections show full cards. Experts are long-lived, so their branch, pull request
+ * and account move to the hover card and each takes one short line.
+ */
+export function resolveSidebarRowVariant(section: SidebarSection): "card" | "expert" | "slim" {
+  if (section === "active" || section === "working") return "card";
+  return section === "pinned" ? "expert" : "slim";
+}
+
+/**
  * Pinned threads form the Experts section. Collapsed, it keeps only the open thread, as a
  * collapsed shelf does, and hides its order: a drop onto its header pins like the thread
  * menu's Pin instead of at a spot nobody can see.

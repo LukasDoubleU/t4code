@@ -3,42 +3,27 @@ import {
   assistantCitationLabel,
   serializeAssistantCitation,
 } from "@t3tools/shared/assistantCitations";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowUpRightIcon, PencilIcon, QuoteIcon } from "lucide-react";
-import {
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-} from "react";
+import { Link } from "@tanstack/react-router";
+import { PencilIcon, QuoteIcon } from "lucide-react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   findAssistantCitationSourceAnchor,
   type AssistantCitationSourceAnchor,
 } from "~/lib/assistantTextSelection";
-import {
-  assistantCitationHash,
-  assistantCitationNavigation,
-} from "../../lib/assistantCitationNavigation";
-import { cn } from "~/lib/utils";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
-import { ContextChipPopover } from "../contextChipParts";
-import { Button } from "../ui/button";
-import { Popover, PopoverClose, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { AssistantCitationCommentEditor } from "./AssistantCitationCommentEditor";
 import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCommentDismissal";
+import { useAssistantCitationSourceLink } from "./AssistantCitationQuote";
 import { observeAssistantCitationCommentSource } from "./AssistantCitationSource";
 import { composerFloatingLayerProps } from "./composerEventScope";
-import { observeResize } from "~/lib/observeResize";
 
+/** A citation in the composer draft. Sent messages render `AssistantCitationQuote` instead. */
 export function AssistantCitationChip({
   citation,
-  composer = false,
   commentEditor,
 }: {
   citation: AssistantCitation;
-  composer?: boolean;
   commentEditor?: {
     open: boolean;
     sourceAnchor?: AssistantCitationSourceAnchor | undefined;
@@ -50,7 +35,7 @@ export function AssistantCitationChip({
     onRestoreFocus?: () => void;
   };
 }) {
-  const navigate = useNavigate();
+  const sourceLink = useAssistantCitationSourceLink(citation);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const commentPopupRef = useRef<HTMLDivElement>(null);
   const draftCommentRef = useRef<string | null>(null);
@@ -99,23 +84,10 @@ export function AssistantCitationChip({
       }
     : undefined;
   const label = assistantCitationLabel(citation);
-  const sourceLinkProps = {
-    to: "/$environmentId/$threadId" as const,
-    params: { environmentId: citation.environmentId, threadId: citation.threadId },
-    hash: assistantCitationHash(citation),
-    "data-markdown-copy": serializeAssistantCitation(citation),
-    resetScroll: false,
-    onClick: (event: ReactMouseEvent<HTMLAnchorElement>) => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-        return;
-      }
-      event.preventDefault();
-      void navigate(assistantCitationNavigation(citation));
-    },
-  };
   const composerSourceLink = (
     <Link
-      {...sourceLinkProps}
+      {...sourceLink}
+      data-markdown-copy={serializeAssistantCitation(citation)}
       className="inline-flex h-full min-w-0 items-center gap-[0.33em] rounded-sm text-inherit no-underline focus-visible:outline-2 focus-visible:outline-foreground"
       aria-label={`View cited assistant text: ${label}`}
     >
@@ -123,27 +95,6 @@ export function AssistantCitationChip({
       <ContextChipLabel className="max-w-[16em]">{label}</ContextChipLabel>
     </Link>
   );
-  if (!composer) {
-    return (
-      <ContextChipPopover
-        kind="citation"
-        icon={<QuoteIcon />}
-        label={label}
-        accessibleLabel={`Quoted assistant text: ${label}`}
-        copyMarkdown={serializeAssistantCitation(citation)}
-      >
-        <div className="flex max-h-[calc(var(--available-height)_-_1rem_-_2px)] flex-col items-start gap-3 p-1 text-sm">
-          <AssistantCitationQuote citation={citation} />
-          <PopoverClose
-            render={<Button variant="outline" size="sm" render={<Link {...sourceLinkProps} />} />}
-          >
-            <ArrowUpRightIcon aria-hidden="true" />
-            Go to source
-          </PopoverClose>
-        </div>
-      </ContextChipPopover>
-    );
-  }
   return (
     <ContextChip
       kind="citation"
@@ -235,33 +186,5 @@ export function AssistantCitationChip({
         </Popover>
       ) : null}
     </ContextChip>
-  );
-}
-
-function AssistantCitationQuote({ citation }: { citation: AssistantCitation }) {
-  const [fade, setFade] = useState({ top: false, bottom: false });
-  const updateFade = (element: HTMLElement) => {
-    const top = element.scrollTop > 1;
-    const bottom = element.scrollHeight - element.clientHeight - element.scrollTop > 1;
-    setFade((current) =>
-      current.top === top && current.bottom === bottom ? current : { top, bottom },
-    );
-  };
-  const observeFade = (element: HTMLDivElement | null) =>
-    element ? observeResize(element, () => updateFade(element)) : undefined;
-  return (
-    <div
-      ref={observeFade}
-      onScroll={(event) => updateFade(event.currentTarget)}
-      className={cn(
-        "max-h-64 min-h-0 space-y-3 self-stretch overflow-y-auto whitespace-pre-wrap wrap-break-word",
-        getVirtualizedScrollFadeClassName(fade),
-      )}
-    >
-      <blockquote className="border-l-2 border-border pl-3 text-muted-foreground">
-        {citation.text}
-      </blockquote>
-      {citation.comment ? <p>{citation.comment}</p> : null}
-    </div>
   );
 }

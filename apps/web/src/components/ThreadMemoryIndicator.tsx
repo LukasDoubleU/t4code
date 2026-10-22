@@ -1,7 +1,8 @@
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { BrainIcon } from "lucide-react";
 
 import { useRelativeTimeState } from "../hooks/useRelativeTimeState";
+import { useThreadShell } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
 import { threadMemoryMetadata, useThreadMemoryPath } from "../threadMemory";
 import { threadMemoryTooltipLabel } from "../threadMemory.logic";
@@ -25,7 +26,7 @@ export function ThreadMemoryIndicator(props: { readonly threadRef: ScopedThreadR
         <BrainIcon aria-hidden className="size-3" />
       </TooltipTrigger>
       <TooltipPopup side="top">
-        <ThreadMemoryLastUpdate environmentId={props.threadRef.environmentId} path={path} />
+        <ThreadMemoryLastUpdate threadRef={props.threadRef} path={path} />
       </TooltipPopup>
     </Tooltip>
   );
@@ -33,20 +34,22 @@ export function ThreadMemoryIndicator(props: { readonly threadRef: ScopedThreadR
 
 // Mounted only while the tooltip is open, so the file is checked on hover.
 function ThreadMemoryLastUpdate(props: {
-  readonly environmentId: EnvironmentId;
+  readonly threadRef: ScopedThreadRef;
   readonly path: string;
 }) {
   const metadata = useEnvironmentQuery(
     threadMemoryMetadata({
-      environmentId: props.environmentId,
+      environmentId: props.threadRef.environmentId,
       input: { paths: [props.path], includeModifiedAt: true },
     }),
   );
+  const thread = useThreadShell(props.threadRef);
   const entry = metadata.data === null ? undefined : (metadata.data.entries[0] ?? null);
   const updated = useRelativeTimeState(entry?.modifiedAt ?? null);
   return threadMemoryTooltipLabel({
     entry,
     failed: metadata.error !== null,
+    unchangedTurns: thread?.source.memoryUnchangedTurns,
     updated:
       updated.status !== "relative"
         ? null

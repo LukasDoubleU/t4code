@@ -4,7 +4,13 @@ import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import { ThreadTerminalStatusButton } from "./ThreadStatusIndicators";
 import { ThreadMemoryIndicator } from "./ThreadMemoryIndicator";
-import { readThreadMemoryPath, useOpenThreadMemory } from "../threadMemory";
+import {
+  readEnvironmentSupportsFreshStart,
+  readThreadMemoryPath,
+  useFreshStartThread,
+  useOpenLinkedThread,
+  useOpenThreadMemory,
+} from "../threadMemory";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -4655,6 +4661,8 @@ export default function Sidebar() {
   );
 
   const openThreadMemory = useOpenThreadMemory();
+  const freshStartThread = useFreshStartThread();
+  const openLinkedThread = useOpenLinkedThread();
   const handleThreadContextMenu = useStableCallback(
     (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
       void (async () => {
@@ -4721,6 +4729,8 @@ export default function Sidebar() {
                 : null,
               isPinned,
               hasMemory: memoryPath !== null,
+              continuedIn: thread.source.continuedIn !== undefined,
+              continuedFrom: thread.source.continuedFrom !== undefined,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
               isSnoozed,
@@ -4734,6 +4744,7 @@ export default function Sidebar() {
                 snooze: supportsSnooze,
                 pinning: supportsPinning,
                 titleRegeneration: supportsTitleRegeneration,
+                freshStart: readEnvironmentSupportsFreshStart(thread.environmentId),
               },
               snoozePresets,
             }),
@@ -4813,6 +4824,18 @@ export default function Sidebar() {
           case "open-memory":
             if (memoryPath !== null) await openThreadMemory(threadRef, memoryPath);
             return;
+          case "fresh-start":
+            await freshStartThread(threadRef);
+            return;
+          case "open-continued-in":
+          case "open-continued-from": {
+            const linked =
+              clicked.value === "open-continued-in"
+                ? thread.source.continuedIn
+                : thread.source.continuedFrom;
+            if (linked !== undefined) await openLinkedThread(thread.environmentId, linked);
+            return;
+          }
           case "auto-settle:enabled":
           case "auto-settle:disabled": {
             const result = await setThreadAutoSettle(

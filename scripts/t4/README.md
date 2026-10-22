@@ -1,6 +1,6 @@
-# Fork scripts (Windows)
+# Fork scripts
 
-Scripts that only this fork carries, for installing its builds and switching versions without losing data. They need PowerShell 7; the two version-switch scripts need 7.4 and Node 24 on `PATH`, for `node:sqlite`. All of them use `T3CODE_HOME` when it is set, `~/.t3` otherwise.
+Scripts that only this fork carries, for installing its builds and switching versions without losing data. The Windows scripts need PowerShell 7; the two version-switch scripts need 7.4 and Node 24 on `PATH`, for `node:sqlite`. `install-t4.sh` installs the server on Linux and needs only `sh`, `curl`, `sha256sum` and `tar`. All of them use `T3CODE_HOME` when it is set, `~/.t3` otherwise.
 
 ## Install or update: `install-t4.ps1`
 
@@ -22,6 +22,32 @@ pwsh -File scripts/t4/install-t4.ps1 -WhatIf    # download and check only, show 
 A file downloaded with PowerShell carries no "from the internet" mark, so SmartScreen doesn't ask. The build is still unsigned.
 
 **Restore a backup:** quit T4 Code, delete `statev2.sqlite-wal` and `statev2.sqlite-shm` in `userdata`, copy the backup's files over `userdata`, then install the version that wrote them. Its version is in the backup's folder name. A backup folder is a complete T3 home, so `rehearse-switch.ps1 -Source <backup folder>` checks it first.
+
+## Linux server: `install-t4.sh`
+
+Runs the fork's server headless on a Linux x64 machine, so threads keep running around the clock while the desktop app and other machines connect to it. It installs for the current user and needs no root.
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/LukasDoubleU/t4code/t4/scripts/t4/install-t4.sh
+sh install-t4.sh             # newest release
+sh install-t4.sh --dry-run   # download and check only, show the rest
+```
+
+1. Finds the newest release of this repository, or the one named with `--version`, as a tag or a version, like `install-t4.ps1`.
+2. Downloads its Linux archive, `t3-<version>-linux-x64.tar.gz`, checks it against the release's `SHA256SUMS` and unpacks it into `~/.t3/runtime/versions/<version>`, beside the running version: the layout of upstream's `install.sh` and `t3 update`, so `t3 service install` and `t3 update` reuse it. A version already unpacked there isn't downloaded again.
+3. Stops the background service if it runs. If agents or terminals are running in it, it asks first; `--force` skips the question. From a terminal or agent inside T3 Code on that machine it refuses, because the restart would end it halfway: run it over SSH.
+4. Backs up the files in `userdata` to `~/.t3/backups/<time>-<installed version>/userdata`, as `install-t4.ps1` does; `--skip-backup` skips this. It stops if a `t3` server started by hand still has the database open.
+5. Points the `t3` launcher, `~/.local/bin/t3`, at the new version. `T3CODE_INSTALL_BIN_DIR` puts the launcher elsewhere.
+6. Switches the background service to the new version with that version's `t3 service install`, which starts it again.
+7. Removes old install backups, keeping the newest three; `--keep-backups <n>` keeps another number.
+
+**First install.** Run `t3 service install` afterwards: a systemd user service that starts at boot and keeps running after logout. It listens on `127.0.0.1:3773`; for other machines to reach it, set `T3CODE_HOST` in `~/.t3/service.env` to an address they can reach, such as the LAN or tailnet address, and run `t3 service restart`. Upstream's [background service](../../docs/user/background-service.md) guide covers the service and that file. On minimal images the `t3` executable also needs `libatomic1`; the script says so when it is missing.
+
+**Pair the desktop app.** On the server, `t3 pair` prints a one-time pairing link, `t3 pair --tailscale` one with a Tailscale HTTPS address. In the desktop app, open **Settings → Connections**, choose **Add environment** and paste it. See upstream's [remote access](../../docs/user/remote-access.md) guide for the other ways to connect.
+
+**Update** by running the script again after a release; it backs up `userdata` first. `t3 update` on the server, and the update a client offers for a connected server, take this repository's releases as well, never upstream's, but make no backup. The repository and tag prefix they use are set in `packages/shared/src/cliRelease.ts`.
+
+**Restore a backup:** stop the service (`systemctl --user stop t3code.service`), delete `statev2.sqlite-wal` and `statev2.sqlite-shm` in `userdata`, copy the backup's files over `userdata`, then install the version that wrote them with `--version` and start the service with `t3 service restart`.
 
 ## Switch versions safely
 

@@ -37,7 +37,7 @@ it.effect.each([
     const httpClient = HttpClient.make((request) => {
       authorizations.push(request.headers.authorization);
       return Effect.succeed(
-        HttpClientResponse.fromWeb(request, Response.json([{ tag_name: "v1.2.3" }])),
+        HttpClientResponse.fromWeb(request, Response.json([{ tag_name: "t4-v1.2.3" }])),
       );
     });
     const version = yield* resolveNewestVersion("stable").pipe(
@@ -55,12 +55,12 @@ it.effect("authenticates each release page until the requested channel is found"
     const httpClient = HttpClient.make((request) => {
       const url = new URL(request.url);
       assert.equal(url.origin, "https://api.github.com");
-      assert.equal(url.pathname, "/repos/pingdotgg/t3code/releases");
+      assert.equal(url.pathname, "/repos/LukasDoubleU/t4code/releases");
       assert.equal(request.headers.accept, "application/vnd.github+json");
       assert.equal(request.headers.authorization, "Bearer gh-token");
       const page = url.searchParams.get("page") ?? "";
       pages.push(page);
-      const tag_name = page === "1" ? "v1.2.4-preview.20260101.1" : "v1.2.3";
+      const tag_name = page === "1" ? "t4-v1.2.4-preview.20260101.1" : "t4-v1.2.3";
       return Effect.succeed(HttpClientResponse.fromWeb(request, Response.json([{ tag_name }])));
     });
     const version = yield* resolveNewestVersion("stable").pipe(
@@ -69,6 +69,29 @@ it.effect("authenticates each release page until the requested channel is found"
     );
     assert.equal(version, "1.2.3");
     assert.deepStrictEqual(pages, ["1", "2"]);
+  }),
+);
+
+it.effect("resolves the highest fork release, never an upstream release or a test build", () =>
+  Effect.gen(function* () {
+    const httpClient = HttpClient.make((request) =>
+      Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          Response.json([
+            { tag_name: "v0.1.3" },
+            { tag_name: "t4-v0.1.2-t4.9", prerelease: false },
+            { tag_name: "t4-v0.1.3-test.1", prerelease: true },
+            { tag_name: "t4-v0.1.2-t4.13", prerelease: false },
+          ]),
+        ),
+      ),
+    );
+    const version = yield* resolveNewestVersion("stable").pipe(
+      Effect.provideService(HostProcess.Environment, {}),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+    );
+    assert.equal(version, "0.1.2-t4.13");
   }),
 );
 

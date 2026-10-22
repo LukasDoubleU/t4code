@@ -1,7 +1,8 @@
-# Fork-only: builds the Windows x64 installer and the `t3` CLI archive on a
-# GitHub-hosted runner and publishes them as a release of this repository.
-# Installed fork builds take their updates from this repository's latest
-# release, through its latest.yml.
+# Fork-only: builds the Windows x64 installer and the `t3` CLI archives for
+# Windows and Linux x64 on GitHub-hosted runners and publishes them as one
+# release of this repository. Installed fork builds take their updates from
+# this repository's latest release: the desktop app through its latest.yml,
+# `t3 update` and scripts/t4/install-t4.sh through the CLI archives.
 #
 # Push a tag t4-v<version>, or run this workflow with the version, which then
 # tags the selected commit. Two kinds of versions are accepted:
@@ -36,30 +37,23 @@ concurrency:
 permissions:
   contents: write
 
-jobs:
-  release:
-    name: Build and publish Windows x64
-    runs-on: windows-latest
-    timeout-minutes: 90
-    defaults:
-      run:
-        shell: bash
-    steps:
-      # The repository is public, so Git needs no credentials. actions/checkout
-      # cleans up its credentials with `git submodule foreach`, which fails on
-      # the orphaned gitlinks in the vendored .repos tree (see
-      # release-desktop.yml).
-      - name: Checkout
-        env:
-          GIT_TERMINAL_PROMPT: "0"
-        run: |
-          git init .
-          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
-          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
-          git sparse-checkout set --no-cone '/*' '!/.repos/'
-          git -c checkout.workers=0 checkout --detach FETCH_HEAD
+defaults:
+  run:
+    shell: bash
 
+jobs:
+  prepare:
+    name: Check the version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      kind: ${{ steps.version.outputs.kind }}
+      previous_tag: ${{ steps.version.outputs.previous_tag }}
+    steps:
       - name: Resolve release version
+        id: version
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_VERSION: ${{ inputs.version }}
@@ -107,12 +101,34 @@ jobs:
           fi
 
           {
-            echo "RELEASE_VERSION=$version"
-            echo "RELEASE_TAG=$tag"
-            echo "RELEASE_KIND=$kind"
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "kind=$kind"
             # The release notes list what was merged since that release.
-            echo "PREVIOUS_RELEASE_TAG=${latest:-}"
-          } >> "$GITHUB_ENV"
+            echo "previous_tag=${latest:-}"
+          } >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Build Windows x64
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      # The repository is public, so Git needs no credentials. actions/checkout
+      # cleans up its credentials with `git submodule foreach`, which fails on
+      # the orphaned gitlinks in the vendored .repos tree (see
+      # release-desktop.yml).
+      - name: Checkout
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git -c checkout.workers=0 checkout --detach FETCH_HEAD
 
       # The build scripts run Vite+ (`vp`), which installs pnpm 11.10.0 from
       # packageManager and gives the CLI executable build its own Node (see
@@ -200,17 +216,124 @@ jobs:
       - name: Smoke-test CLI archive
         run: node scripts/smoke-cli-archive.ts --archive "release-cli/t3-$RELEASE_VERSION-win32-x64.zip" --expect-version "$RELEASE_VERSION"
 
-      # Installers check downloads against SHA256SUMS, so it hashes the files
-      # exactly as they are uploaded. On Windows, sha256sum defaults to binary
-      # mode and marks each name with `*`; --text writes the same hashes in
-      # upstream's `<hash>  <name>` form.
       - name: Collect release assets
         run: |
           mkdir release-assets
           cp "release/T3-Code-$RELEASE_VERSION-x64.exe" "release/T3-Code-$RELEASE_VERSION-x64.exe.blockmap" release/latest.yml \
             "release-cli/t3-$RELEASE_VERSION-win32-x64.zip" release-assets/
-          cd release-assets
-          sha256sum --text -- * > SHA256SUMS
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-windows-x64
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 1
+
+  linux:
+    name: Build Linux x64
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      # See the Windows job's checkout.
+      - name: Checkout
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git checkout --detach FETCH_HEAD
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+
+      - name: Install dependencies
+        run: vp install --filter=t3... --filter=@t3tools/web... --filter=@t3tools/scripts...
+
+      - name: Align package versions to the release version
+        run: node scripts/update-release-package-versions.ts "$RELEASE_VERSION"
+
+      - name: Enable T3 Connect
+        run: cp .env.example .env
+
+      # What the Windows job's desktop build does for the archive's web client,
+      # without packaging a desktop app.
+      - name: Build server and web client
+        env:
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+        run: |
+          vp run --filter t3 build
+          node scripts/apply-web-brand-assets.ts production apps/server/dist/client
+
+      - name: Build resource monitor
+        run: cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml
+
+      # See the Windows job's "Build CLI executable".
+      - name: Build CLI executable
+        run: |
+          VP_NODE_VERSION="$(sed -n 's/^const SEA_NODE_VERSION = "\(.*\)";$/\1/p' apps/server/vite.config.ts)"
+          test -n "$VP_NODE_VERSION"
+          export VP_NODE_VERSION
+          node apps/server/scripts/cli.ts build-exe --verbose
+
+      - name: Build CLI archive
+        run: |
+          monitor_dir="$RUNNER_TEMP/cli-resource-monitor"
+          mkdir -p "$monitor_dir/linux-x64"
+          cp native/resource-monitor/target/release/t3-resource-monitor "$monitor_dir/linux-x64/"
+          node scripts/build-cli-archive.ts --platform linux --arch x64 --version "$RELEASE_VERSION" \
+            --resource-monitor-dir "$monitor_dir" --output-dir release-cli
+
+      - name: Smoke-test CLI archive
+        run: node scripts/smoke-cli-archive.ts --archive "release-cli/t3-$RELEASE_VERSION-linux-x64.tar.gz" --expect-version "$RELEASE_VERSION"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-linux-x64
+          path: release-cli/t3-${{ env.RELEASE_VERSION }}-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  # A failed build on either platform publishes nothing.
+  publish:
+    name: Publish release
+    needs: [prepare, windows, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_KIND: ${{ needs.prepare.outputs.kind }}
+      PREVIOUS_RELEASE_TAG: ${{ needs.prepare.outputs.previous_tag }}
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      # Installers check downloads against SHA256SUMS, so it hashes the files
+      # exactly as they are uploaded, in upstream's `<hash>  <name>` form.
+      - name: Write SHA256SUMS
+        working-directory: release-assets
+        run: |
+          sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
 
       # The release is published only once every asset is uploaded, so the
@@ -234,7 +357,7 @@ jobs:
               if [[ -n "$whats_new" ]]; then
                 printf "## What's new\n\n%s\n\n" "$whats_new"
               fi
-              echo "Windows x64 build of $GITHUB_SHA. The installer is unsigned, so SmartScreen warns when a copy downloaded in a browser is first run."
+              echo "Windows x64 and Linux x64 builds of $GITHUB_SHA. The Windows installer is unsigned, so SmartScreen warns when a copy downloaded in a browser is first run. On Linux, \`scripts/t4/install-t4.sh\` installs and updates the server."
             } > "$notes"
             cat "$notes"
             create_flags=()

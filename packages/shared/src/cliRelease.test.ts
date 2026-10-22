@@ -30,12 +30,12 @@ describe("cliRelease", () => {
     expect(cliArchivePlatformKey("linux", "ia32")).toBeUndefined();
   });
 
-  it("resolves download URLs under the tagged release, honoring a mirror", () => {
-    expect(cliReleaseDownloadBaseUrl("1.2.3")).toBe(
-      "https://github.com/pingdotgg/t3code/releases/download/v1.2.3",
+  it("resolves download URLs under the fork's tagged release, honoring a mirror", () => {
+    expect(cliReleaseDownloadBaseUrl("0.1.2-t4.1")).toBe(
+      "https://github.com/LukasDoubleU/t4code/releases/download/t4-v0.1.2-t4.1",
     );
     expect(cliReleaseDownloadBaseUrl("1.2.3", "https://mirror.example/t3/")).toBe(
-      "https://mirror.example/t3/v1.2.3",
+      "https://mirror.example/t3/t4-v1.2.3",
     );
   });
 
@@ -70,22 +70,44 @@ describe("cliRelease", () => {
 
   it("picks the newest non-draft release on the requested channel", () => {
     const releases = [
-      { tag_name: "v1.2.4-preview.20260912.9", draft: true },
-      { tag_name: "v1.2.4-preview.20260912.8" },
-      { tag_name: "v1.2.4-nightly.20260912.7" },
+      { tag_name: "t4-v1.2.4-preview.20260912.9", draft: true },
+      { tag_name: "t4-v1.2.4-preview.20260912.8" },
+      { tag_name: "t4-v1.2.4-nightly.20260912.7" },
       { tag_name: "desktop-preview" },
-      { tag_name: "v1.2.3" },
-      { tag_name: "v1.2.3-nightly.20260911.2" },
+      { tag_name: "t4-v1.2.3" },
+      { tag_name: "t4-v1.2.3-nightly.20260911.2" },
     ];
     expect(newestCliReleaseVersion(releases, "preview")).toBe("1.2.4-preview.20260912.8");
     expect(newestCliReleaseVersion(releases, "nightly")).toBe("1.2.4-nightly.20260912.7");
     expect(newestCliReleaseVersion(releases, "stable")).toBe("1.2.3");
-    expect(newestCliReleaseVersion([{ tag_name: "v1.2.3" }], "preview")).toBeUndefined();
+    expect(newestCliReleaseVersion([{ tag_name: "t4-v1.2.3" }], "preview")).toBeUndefined();
   });
 
-  it("pages through the release index at the largest page GitHub allows", () => {
+  it("follows only the fork's releases, and never a test build on the stable channel", () => {
+    const releases = [
+      { tag_name: "v0.1.3" },
+      { tag_name: "t4-v0.1.2-test.4", prerelease: true },
+      { tag_name: "t4-v0.1.2-t4.3" },
+      { tag_name: "t4-v0.1.2-t4.2" },
+    ];
+    expect(newestCliReleaseVersion(releases, "stable")).toBe("0.1.2-t4.3");
+    expect(newestCliReleaseVersion([{ tag_name: "v0.1.3" }], "stable")).toBeUndefined();
+  });
+
+  it("picks the highest version in whatever order GitHub lists them", () => {
+    const releases = [
+      { tag_name: "t4-v0.1.2-t4.9" },
+      { tag_name: "t4-v0.1.2-t4.13" },
+      { tag_name: "t4-v0.1.2-t4.10" },
+      { tag_name: "t4-v0.1.2-test.1", prerelease: true },
+      { tag_name: "t4-v0.1.2-t4.8" },
+    ];
+    expect(newestCliReleaseVersion(releases, "stable")).toBe("0.1.2-t4.13");
+  });
+
+  it("pages through the fork's release index at the largest page GitHub allows", () => {
     expect(cliReleaseIndexPageUrl(1)).toBe(
-      "https://api.github.com/repos/pingdotgg/t3code/releases?per_page=100&page=1",
+      "https://api.github.com/repos/LukasDoubleU/t4code/releases?per_page=100&page=1",
     );
     expect(cliReleaseIndexPageUrl(3)).toContain("page=3");
   });

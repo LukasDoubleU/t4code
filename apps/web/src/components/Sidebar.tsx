@@ -3,8 +3,8 @@ import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import { ThreadTerminalStatusButton } from "./ThreadStatusIndicators";
-import { ThreadMemoryIndicator } from "./ThreadMemoryIndicator";
-import { readThreadMemoryPath, useOpenThreadMemory } from "../threadMemory";
+import { ThreadMemoryIndicator, ThreadMemoryLastUpdate } from "./ThreadMemoryIndicator";
+import { readThreadMemoryPath, useOpenThreadMemory, useThreadMemoryPath } from "../threadMemory";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -81,6 +81,7 @@ import {
   CircleDotDashedIcon,
   ClockIcon,
   FolderIcon,
+  BrainIcon,
   GitBranchIcon,
   ListFilterIcon,
   MessageCircleQuestionIcon,
@@ -245,6 +246,7 @@ import {
   type SidebarSection,
   resolveSidebarExpertsSection,
   resolveSidebarRowThreadId,
+  resolveSidebarRowVariant,
 } from "./Sidebar.logic";
 import {
   groupSidebarThreads,
@@ -276,6 +278,7 @@ import {
   ThreadPullRequestsMiniList,
   ThreadWorktreeIndicator,
   prStatusIndicator,
+  type PrStatusIndicator,
   resolveThreadPullRequestBadge,
   terminalStatusFromRunningIds,
   type TerminalStatusIndicator,
@@ -1185,6 +1188,8 @@ function SidebarThreadTooltip({
   branchMismatch,
   terminalStatus,
   terminalProcessCount,
+  pullRequest,
+  memoryThreadRef,
 }: {
   thread: SidebarThreadSummary;
   project: ProjectFaviconProject | null;
@@ -1202,18 +1207,22 @@ function SidebarThreadTooltip({
   } | null;
   terminalStatus: TerminalStatusIndicator | null;
   terminalProcessCount: number;
+  // An expert row leaves these off the row, so its hover card carries them.
+  pullRequest: PrStatusIndicator | null;
+  memoryThreadRef: ScopedThreadRef | null;
 }) {
   const driverKind = providerEntry?.driverKind ?? null;
   const previousProviderNames = thread.providerInstanceHistory
     .filter((instanceId) => instanceId !== modelInstanceId)
     .map((instanceId) => providerEntryByInstanceId.get(instanceId)?.displayName ?? instanceId);
   const supportsMultiplePullRequests = useSupportsMultiplePullRequests(thread.environmentId);
+  const listsPullRequests = supportsMultiplePullRequests && thread.pullRequests.length > 0;
   return (
     <ThreadHoverCardPopup side="right" align="start" sideOffset={4}>
       <ThreadHoverCard
         title={thread.title}
         footer={
-          supportsMultiplePullRequests && thread.pullRequests.length > 0 ? (
+          listsPullRequests ? (
             <div className="border-t border-border/60 pt-2 pl-0.5 text-xs text-muted-foreground">
               <ThreadPullRequestsMiniList pullRequests={thread.pullRequests} />
             </div>
@@ -1239,6 +1248,15 @@ function SidebarThreadTooltip({
           <div className="flex min-w-0 items-center gap-2">
             <GitBranchIcon className="size-3 shrink-0 stroke-muted-foreground" />
             <MiddleTruncate value={thread.branch} className="flex" />
+          </div>
+        ) : null}
+        {pullRequest && !listsPullRequests ? (
+          <div className="flex min-w-0 items-center gap-2">
+            <pullRequest.Icon
+              aria-hidden
+              className={cn("size-3 shrink-0", pullRequest.colorClass)}
+            />
+            <div className="min-w-0 truncate text-foreground/75">{pullRequest.tooltip}</div>
           </div>
         ) : null}
         {branchMismatch ? (
@@ -1290,6 +1308,7 @@ function SidebarThreadTooltip({
             </div>
           </div>
         ) : null}
+        {memoryThreadRef ? <SidebarThreadMemoryLine threadRef={memoryThreadRef} /> : null}
         {thread.runtime?.lastError ? (
           <div
             className={cn(
@@ -1307,6 +1326,19 @@ function SidebarThreadTooltip({
         ) : null}
       </ThreadHoverCard>
     </ThreadHoverCardPopup>
+  );
+}
+
+function SidebarThreadMemoryLine(props: { readonly threadRef: ScopedThreadRef }) {
+  const path = useThreadMemoryPath(props.threadRef, true);
+  if (path === null) return null;
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <BrainIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />
+      <div className="min-w-0 truncate text-foreground/75">
+        <ThreadMemoryLastUpdate environmentId={props.threadRef.environmentId} path={path} />
+      </div>
+    </div>
   );
 }
 
@@ -1883,7 +1915,7 @@ type SidebarThreadRowProps = {
   thread: SidebarThreadSummary;
   // "folder" is a one-line row inside a boring sidebar project folder; "group" is
   // one inside a machine or status folder, which keeps the project's icon.
-  variant: "card" | "slim" | "folder" | "group";
+  variant: "card" | "expert" | "slim" | "folder" | "group";
   variantAction: SidebarSweepAction;
   settlementSupported: boolean;
   snoozeSupported: boolean;
@@ -2155,6 +2187,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       branchMismatch={branchMismatch}
       terminalStatus={terminalStatus}
       terminalProcessCount={terminalProcessCount}
+      pullRequest={variant === "expert" ? prStatus : null}
+      memoryThreadRef={variant === "expert" && props.isPinned ? threadRef : null}
     />
   );
 
@@ -2487,6 +2521,107 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     )
   ) : null;
 
+  // A card's top line and an expert's right edge: the status, or the last activity without one.
+  const statusOrTime = topStatus ? (
+    isWokeStatus ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label="Dismiss Woke notification"
+              onClick={handleAcknowledgeWokeClick}
+              className={cn(
+                "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                topStatus.className,
+              )}
+            >
+              <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
+              <span role="status">{topStatus.label}</span>
+            </button>
+          }
+        />
+        <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
+      </Tooltip>
+    ) : (
+      <SidebarStatusText topStatus={topStatus} status={status} thread={thread} />
+    )
+  ) : (
+    <RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />
+  );
+
+  if (variant === "expert") {
+    return (
+      <li
+        data-thread-item={threadKey}
+        {...sortableRootProps}
+        {...(fileDropHandlers ?? {})}
+        className={cn(
+          "list-none [content-visibility:auto] [contain-intrinsic-size:auto_28px]",
+          sortable?.isDragging && "relative z-20",
+        )}
+      >
+        <Tooltip disabled={sortable?.isDragging}>
+          <TooltipTrigger
+            render={
+              <div
+                ref={rowRef}
+                role="button"
+                tabIndex={0}
+                aria-label={accessibility.label}
+                aria-current={accessibility.current}
+                data-testid="sidebar-row-expert"
+                aria-busy={isRegeneratingTitle || undefined}
+                className={cn(rowSurfaceClassName, "flex h-7 items-center gap-1.5 px-2.5")}
+                onClick={handleClick}
+                onDoubleClick={handleDoubleClick}
+                onKeyDown={handleKeyDown}
+                onContextMenu={handleContextMenu}
+              />
+            }
+          >
+            {accessibleTitle}
+            {props.project ? (
+              <ProjectFavicon project={props.project} className="mr-0.5 size-4 shrink-0" />
+            ) : null}
+            {draftIndicator}
+            {title}
+            {isRegeneratingTitle ? (
+              <span role="status" className="sr-only">
+                Regenerating title
+              </span>
+            ) : null}
+            {pinIndicator}
+            {showPin ? <ThreadMemoryIndicator threadRef={threadRef} /> : null}
+            {isRemote ? (
+              <EnvironmentMachineIcon
+                aria-hidden
+                kind={props.environmentMachine}
+                className="size-3.5 shrink-0 text-sidebar-muted-foreground/70"
+              />
+            ) : null}
+            {terminalStatusIcon}
+            {sortable?.isDragging ? (
+              dragDestination
+            ) : (
+              <span
+                className={cn(
+                  "ml-1 flex h-5 shrink-0 items-center text-xs tabular-nums text-secondary-label",
+                  props.sweepAction !== null && "hidden",
+                )}
+              >
+                {statusOrTime}
+              </span>
+            )}
+            {props.sweepAction !== null ? dragDestination : null}
+            {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
+          </TooltipTrigger>
+          {detailsTooltip}
+        </Tooltip>
+      </li>
+    );
+  }
+
   if (variant !== "card") {
     const inFolder = variant === "folder" || variant === "group";
     return (
@@ -2730,33 +2865,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
                     )}
                   >
-                    {topStatus ? (
-                      isWokeStatus ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label="Dismiss Woke notification"
-                                onClick={handleAcknowledgeWokeClick}
-                                className={cn(
-                                  "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                                  topStatus.className,
-                                )}
-                              >
-                                <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                <span role="status">{topStatus.label}</span>
-                              </button>
-                            }
-                          />
-                          <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
-                        </Tooltip>
-                      ) : (
-                        <SidebarStatusText topStatus={topStatus} status={status} thread={thread} />
-                      )
-                    ) : (
-                      <RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />
-                    )}
+                    {statusOrTime}
                   </span>
                   {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
                     <span
@@ -2867,16 +2976,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
               >
                 {isRemote && !showsScratchMachine ? (
-                  <span className="inline-flex shrink-0 items-center gap-1 text-sidebar-muted-foreground/70">
+                  <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
                     <EnvironmentMachineIcon
                       aria-hidden
                       kind={props.environmentMachine}
                       className="size-3.5"
                     />
-                    {/* Experts gather from every machine, so their rows name it. */}
-                    {props.isPinned && props.environmentLabel ? (
-                      <span className="max-w-24 truncate">{props.environmentLabel}</span>
-                    ) : null}
                   </span>
                 ) : null}
                 <SidebarProviderStack
@@ -3071,6 +3176,8 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
           branchMismatch={branchMismatch}
           terminalStatus={terminalStatus}
           terminalProcessCount={runningTerminalIds.length}
+          pullRequest={null}
+          memoryThreadRef={null}
         />
       </Tooltip>
     </li>
@@ -5329,9 +5436,7 @@ export default function Sidebar() {
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
                         );
-                        const isCard =
-                          section === "active" || section === "pinned" || section === "working";
-                        const rowVariant = folderVariant ?? (isCard ? "card" : "slim");
+                        const rowVariant = folderVariant ?? resolveSidebarRowVariant(section);
                         return (
                           <SortableThreadRow
                             key={threadKey}

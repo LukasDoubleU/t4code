@@ -32,7 +32,7 @@ export function ThreadMemoryIndicator(props: { readonly threadRef: ScopedThreadR
 }
 
 // Mounted only while the tooltip is open, so the file is checked on hover.
-function ThreadMemoryLastUpdate(props: {
+export function ThreadMemoryLastUpdate(props: {
   readonly environmentId: EnvironmentId;
   readonly path: string;
 }) {

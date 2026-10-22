@@ -47,6 +47,7 @@ import {
   sortInboxThreadsByReturn,
   resolveSidebarDropTarget,
   resolveSidebarExpertsSection,
+  resolveSidebarRowVariant,
   resolveSidebarFolderDot,
   planSidebarThreadDrop,
   sidebarMarkerId,
@@ -143,6 +144,17 @@ describe("resolveSidebarThreadSection", () => {
     expect(resolveSidebarThreadSection({ snoozed: false, settled: true, pinned: true })).toBe(
       "settled",
     );
+  });
+});
+
+describe("resolveSidebarRowVariant", () => {
+  it("gives experts one line and keeps full cards for the live sections", () => {
+    expect(resolveSidebarRowVariant("pinned")).toBe("expert");
+    expect(resolveSidebarRowVariant("active")).toBe("card");
+    expect(resolveSidebarRowVariant("working")).toBe("card");
+    for (const section of ["background", "snoozed", "settled"] as const) {
+      expect(resolveSidebarRowVariant(section)).toBe("slim");
+    }
   });
 });
 

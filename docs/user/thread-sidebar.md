@@ -130,6 +130,18 @@ rename a thread, regenerate its title, or link and unlink a pull request. These 
 appear on web, desktop, and mobile without requiring the originating browser to remain
 open.
 
+### Follow every expert in one feed
+
+On web and desktop, the speech-bubble button on the Experts header, or **Open experts feed** in the
+command palette, opens the **Experts** feed: the latest replies of every expert, on every connected
+machine, in one list with the newest at the bottom. Each entry names its expert, its machine when
+it is another one, and the expert's status. Messages from other agents and automations fold into
+one line that names the sender; long replies show their start until **Show more**.
+
+**Reply** on an entry sends your message into that expert's own thread, as if you typed it
+there: it starts a turn, or steers or queues behind a running one as your follow-up setting says.
+The experts do not see each other's replies. Click an expert's name to open its thread.
+
 ### Keep a memory for a pinned thread
 
 A thread you keep for weeks loses detail every time its conversation is compacted. A pinned

@@ -52,13 +52,30 @@ const run = RunId.make("run:lookup");
 const thread = (
   id: string,
   project: string,
-  options: { readonly pinned?: boolean; readonly updatedAt?: string } = {},
-): OrchestrationV2ThreadShell => ({
-  ...liveThreadShell(ThreadId.make(id), { runtimeMode: "auto" }),
-  projectId: ProjectId.make(project),
-  pinnedAt: options.pinned === true ? DateTime.makeUnsafe("2026-10-01T00:00:00.000Z") : null,
-  updatedAt: DateTime.makeUnsafe(options.updatedAt ?? "2026-10-02T00:00:00.000Z"),
-});
+  options: {
+    readonly pinned?: boolean;
+    readonly updatedAt?: string;
+    /** A subagent or delegated task of this thread. */
+    readonly childOf?: string;
+  } = {},
+): OrchestrationV2ThreadShell => {
+  const shell = liveThreadShell(ThreadId.make(id), { runtimeMode: "auto" });
+  return {
+    ...shell,
+    projectId: ProjectId.make(project),
+    pinnedAt: options.pinned === true ? DateTime.makeUnsafe("2026-10-01T00:00:00.000Z") : null,
+    updatedAt: DateTime.makeUnsafe(options.updatedAt ?? "2026-10-02T00:00:00.000Z"),
+    ...(options.childOf === undefined
+      ? {}
+      : {
+          lineage: {
+            parentThreadId: ThreadId.make(options.childOf),
+            relationshipToParent: "subagent",
+            rootThreadId: ThreadId.make(options.childOf),
+          },
+        }),
+  };
+};
 
 /** One environment's threads and projects; every send there is recorded. */
 const environmentThreads = (
@@ -243,11 +260,17 @@ it.effect("lists the pinned threads of every project, here and in each linked en
           updatedAt: "2026-10-03T00:00:00.000Z",
         }),
         thread("thread:box-plain", "project:box"),
+        thread("thread:box-task", "project:box", { pinned: true, childOf: "thread:box-expert" }),
       ]);
       const d = yield* serveEnvironment(desk, [thread("thread:desk-expert", "project:desk")]);
+      // Children carry the pin their parent had when they were created; the user pinned neither.
       const a = yield* makeLaptop([
         thread("thread:laptop-expert", "project:laptop", { pinned: true }),
         thread("thread:laptop-plain", "project:laptop"),
+        thread("thread:laptop-task", "project:laptop", {
+          pinned: true,
+          childOf: "thread:laptop-expert",
+        }),
       ]);
       yield* linkTo(a.links, b, "full-access");
       yield* linkTo(a.links, d, "full-access");
@@ -294,7 +317,7 @@ it.effect("lists the pinned threads of every project, here and in each linked en
             ),
           );
       expect(yield* inProject(true)).toEqual(["thread:laptop-expert"]);
-      expect(yield* inProject(false)).toEqual(["thread:laptop-plain"]);
+      expect(yield* inProject(false)).toEqual(["thread:laptop-plain", "thread:laptop-task"]);
 
       // Work a link started here lists only what is here, and asks no link.
       yield* Ref.set(b.bearers, []);

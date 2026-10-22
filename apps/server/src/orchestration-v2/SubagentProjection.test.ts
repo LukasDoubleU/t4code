@@ -117,6 +117,24 @@ it("keeps a subagent child awake when its parent thread is snoozed", () => {
   });
 });
 
+it("leaves a subagent child of a pinned parent unpinned", () => {
+  const childThread = makeSubagentChildThread({
+    parentThread: { ...makeParentThread(), pinnedAt: snoozedAt, pinOrderKey: "a0" },
+    childThreadId,
+    parentNodeId: NodeId.make("node:subagent-pinned-parent"),
+    activeProviderThreadId: null,
+    providerInstanceId: childProviderInstanceId,
+    modelSelection: childModelSelection,
+    title: "Unpinned child",
+    now: childCreatedAt,
+    createdBy: "agent",
+    creationSource: "provider",
+  });
+
+  assert.isNull(childThread.pinnedAt);
+  assert.isNull(childThread.pinOrderKey);
+});
+
 it("attributes native subagent prompts to their parent thread", () => {
   for (const role of ["user", "assistant"] as const) {
     const artifacts = makeSubagentConversationArtifacts({

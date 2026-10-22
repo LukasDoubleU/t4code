@@ -10,6 +10,7 @@ import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/threa
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import {
   AuthOrchestrationOperateScope,
+  isUserPinnedThread,
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -138,7 +139,7 @@ export function useThreadActionMenu(input: {
       const isRegeneratingTitle = thread.titleRegeneration != null;
       const snoozePresets = resolveSnoozePresets(now, timestampFormat);
       const isPinned = thread.pinnedAt != null;
-      const memoryPath = readThreadMemoryPath(threadRef, isPinned);
+      const memoryPath = readThreadMemoryPath(threadRef, isUserPinnedThread(thread));
       const isSettled = supports.settlement && thread.settledOverride === "settled";
       const isSnoozed = supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() });
       // Background only sorts the threads the sidebar lists.

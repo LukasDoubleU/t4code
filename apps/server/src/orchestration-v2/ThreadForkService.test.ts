@@ -172,6 +172,19 @@ it.effect("keeps a fork awake when its source thread is snoozed", () =>
   }),
 );
 
+it.effect("leaves a fork of a pinned thread unpinned", () =>
+  Effect.gen(function* () {
+    const sourceRun = makeSourceRun("completed");
+    const result = yield* planFork(sourceRun, {
+      ...makeSourceProjection(sourceRun),
+      thread: { ...makeSourceThread(), pinnedAt: snoozedAt, pinOrderKey: "a0" },
+    });
+
+    assert.isNull(result.targetThread.pinnedAt);
+    assert.isNull(result.targetThread.pinOrderKey);
+  }),
+);
+
 it.effect("forks from a usage-limited failed run", () =>
   Effect.gen(function* () {
     const result = yield* planFork(makeSourceRun("failed"));

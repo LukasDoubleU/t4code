@@ -58,6 +58,7 @@ import {
   type ScheduledTaskUpsertInput,
   type ServerProvider,
   ThreadId,
+  isUserPinnedThread,
 } from "@t3tools/contracts";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import {
@@ -724,7 +725,7 @@ function matchesListFilters(input: OrchestratorMcpThreadListInput, nowMs: number
     (statuses === null || statuses.has(thread.activityRunStatus ?? thread.status)) &&
     (input.settled === undefined || threadSettlement(thread).settled === input.settled) &&
     (input.snoozed === undefined || isSnoozed(thread, nowMs) === input.snoozed) &&
-    (input.pinned === undefined || (thread.pinnedAt != null) === input.pinned) &&
+    (input.pinned === undefined || isUserPinnedThread(thread) === input.pinned) &&
     (titleContains === undefined || thread.title.toLocaleLowerCase().includes(titleContains));
 }
 
@@ -2673,7 +2674,7 @@ const make = Effect.gen(function* () {
       // name, so they list across projects and linked environments at once.
       if (input.pinned === true && input.projectId === undefined) {
         const pinned = (yield* threadManagement
-          .listPinnedThreads({ includeSubagents: input.includeSubagents !== false })
+          .listPinnedThreads()
           .pipe(Effect.mapError(listFailure))).filter(matchesListFilters(input, nowMs));
         const page = pinned.slice(0, limit);
         const projectTitles = new Map(

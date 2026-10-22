@@ -105,23 +105,49 @@ const startTurnOf = (appThread: OrchestrationV2AppThread) =>
     return yield* Deferred.await(started);
   });
 
+const ownLineage = (id: ThreadId): OrchestrationV2AppThread["lineage"] => ({
+  parentThreadId: null,
+  relationshipToParent: null,
+  rootThreadId: id,
+});
+
 it.effect("hands a pinned thread's memory to its provider turn, and none to an unpinned one", () =>
   Effect.gen(function* () {
     const memory = yield* ThreadMemory.ThreadMemory;
+    const pinnedId = ThreadId.make("thread:pinned");
     const pinned = yield* startTurnOf({
-      id: ThreadId.make("thread:pinned"),
+      id: pinnedId,
       pinnedAt: yield* DateTime.now,
+      lineage: ownLineage(pinnedId),
     } as OrchestrationV2AppThread);
     assert.deepEqual(
       pinned.threadMemory,
-      yield* memory.forTurn({ id: ThreadId.make("thread:pinned"), pinnedAt: yield* DateTime.now }),
+      yield* memory.forTurn({
+        id: pinnedId,
+        pinnedAt: yield* DateTime.now,
+        lineage: ownLineage(pinnedId),
+      }),
     );
     assert.isDefined(pinned.threadMemory);
 
+    const unpinnedId = ThreadId.make("thread:unpinned");
     const unpinned = yield* startTurnOf({
-      id: ThreadId.make("thread:unpinned"),
+      id: unpinnedId,
       pinnedAt: null,
+      lineage: ownLineage(unpinnedId),
     } as OrchestrationV2AppThread);
     assert.isUndefined(unpinned.threadMemory);
+
+    // A delegated task created by an older build carries its pinned parent's pinnedAt.
+    const delegated = yield* startTurnOf({
+      id: ThreadId.make("thread:delegated"),
+      pinnedAt: yield* DateTime.now,
+      lineage: {
+        parentThreadId: pinnedId,
+        relationshipToParent: "subagent",
+        rootThreadId: pinnedId,
+      },
+    } as OrchestrationV2AppThread);
+    assert.isUndefined(delegated.threadMemory);
   }).pipe(Effect.provide(layerTest)),
 );

@@ -24,6 +24,7 @@ describe("projectThreadAwarenessV2", () => {
       Pick<
         OrchestrationV2ThreadShell,
         | "activityRunStatus"
+        | "latestRunFromAnotherAgent"
         | "status"
         | "pendingBackgroundTasks"
         | "pendingRuntimeRequest"
@@ -76,6 +77,17 @@ describe("projectThreadAwarenessV2", () => {
       ).toBeNull();
     },
   );
+
+  it("ends work another agent asked for without a completion, but keeps its failure", () => {
+    const fromAnotherAgent = (status: "completed" | "failed") =>
+      projectThreadAwarenessV2({
+        environmentId: "env-1" as EnvironmentId,
+        project,
+        thread: v2Thread({ status, latestRunFromAnotherAgent: true }),
+      });
+    expect(fromAnotherAgent("completed")).toBeNull();
+    expect(fromAnotherAgent("failed")).toMatchObject({ phase: "failed" });
+  });
 
   it("keeps an older activity run visible over a newer cancelled run", () => {
     expect(

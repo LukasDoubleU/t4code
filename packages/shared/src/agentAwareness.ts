@@ -44,6 +44,7 @@ export interface ProjectThreadAwarenessV2Input {
     OrchestrationV2ThreadShell,
     | "activityRunStatus"
     | "id"
+    | "latestRunFromAnotherAgent"
     | "lineage"
     | "modelSelection"
     | "pendingBackgroundTasks"
@@ -72,6 +73,9 @@ export function projectThreadAwarenessV2(
   ) {
     return null;
   }
+  // The relay alerts on every new completion. Work another agent asked for leaves the
+  // activity instead, so it ends without one; failures and questions still alert.
+  if (phase === "completed" && thread.latestRunFromAnotherAgent === true) return null;
   const detail =
     phase === "completed"
       ? "Review the completed task."

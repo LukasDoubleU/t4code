@@ -1259,6 +1259,7 @@ function SidebarThreadTooltip({
   terminalProcessCount,
   pullRequest,
   memoryThreadRef,
+  runningStatus,
 }: {
   thread: SidebarThreadSummary;
   project: ProjectFaviconProject | null;
@@ -1279,6 +1280,8 @@ function SidebarThreadTooltip({
   // An expert row leaves these off the row, so its hover card carries them.
   pullRequest: PrStatusIndicator | null;
   memoryThreadRef: ScopedThreadRef | null;
+  // Set where the row shows only the status icon.
+  runningStatus: { topStatus: SidebarTopStatus; status: SidebarThreadStatus } | null;
 }) {
   const driverKind = providerEntry?.driverKind ?? null;
   const previousProviderNames = thread.providerInstanceHistory
@@ -1286,6 +1289,9 @@ function SidebarThreadTooltip({
     .map((instanceId) => providerEntryByInstanceId.get(instanceId)?.displayName ?? instanceId);
   const supportsMultiplePullRequests = useSupportsMultiplePullRequests(thread.environmentId);
   const listsPullRequests = supportsMultiplePullRequests && thread.pullRequests.length > 0;
+  const runningStartedAt = runningStatus
+    ? runningStatusStartedAt(runningStatus.status, thread)
+    : undefined;
   return (
     <ThreadHoverCardPopup side="right" align="start" sideOffset={4}>
       <ThreadHoverCard
@@ -1298,6 +1304,18 @@ function SidebarThreadTooltip({
           ) : null
         }
       >
+        {runningStatus && runningStartedAt !== undefined ? (
+          <div className={cn("flex min-w-0 items-center gap-2", runningStatus.topStatus.className)}>
+            {runningStatus.status === "working" ? (
+              <CircleDashedIcon aria-hidden className="size-3 shrink-0" />
+            ) : (
+              <CircleDotDashedIcon aria-hidden className="size-3 shrink-0" />
+            )}
+            <div className="min-w-0 truncate">
+              {runningStatus.topStatus.label} <WorkingDuration startedAt={runningStartedAt} />
+            </div>
+          </div>
+        ) : null}
         {projectDisplayName ? (
           <div className="flex min-w-0 items-center gap-2">
             {project ? <ProjectFavicon project={project} className="size-3 shrink-0" /> : null}
@@ -2043,12 +2061,26 @@ type SidebarTopStatus = {
   className: string;
 };
 
+function runningStatusStartedAt(
+  status: SidebarThreadStatus,
+  thread: SidebarThreadSummary,
+): string | null | undefined {
+  if (status === "working") return resolveWorkingStartedAt(thread);
+  if (status === "waiting") return thread.latestRun?.completedAt ?? null;
+  return undefined;
+}
+
 function SidebarStatusText(props: {
   topStatus: SidebarTopStatus;
   status: SidebarThreadStatus;
   thread: SidebarThreadSummary;
+  // A single-line row gives the title the room a running status's label and
+  // ticking duration would take; the hover card carries both instead.
+  iconOnlyWhileRunning?: boolean;
 }) {
   const { topStatus, status, thread } = props;
+  const startedAt = runningStatusStartedAt(status, thread);
+  const iconOnly = props.iconOnlyWhileRunning === true && startedAt !== undefined;
   return (
     <span className={cn("inline-flex items-center gap-1 font-medium", topStatus.className)}>
       {topStatus.icon === "working" ? (
@@ -2066,14 +2098,12 @@ function SidebarStatusText(props: {
       ) : null}
       {/* The label alone is the live region: a role="status" wrapper around
         the ticking duration would make screen readers announce every second. */}
-      <span role="status">{topStatus.label}</span>
-      {status === "working" ? (
+      <span role="status" className={iconOnly ? "sr-only" : undefined}>
+        {topStatus.label}
+      </span>
+      {startedAt !== undefined && !iconOnly ? (
         <span aria-hidden>
-          <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
-        </span>
-      ) : status === "waiting" ? (
-        <span aria-hidden>
-          <WorkingDuration startedAt={thread.latestRun?.completedAt ?? null} />
+          <WorkingDuration startedAt={startedAt} />
         </span>
       ) : null}
     </span>
@@ -2262,6 +2292,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       terminalProcessCount={terminalProcessCount}
       pullRequest={variant === "expert" || variant === "topic" ? prStatus : null}
       memoryThreadRef={variant === "expert" && props.isPinned ? threadRef : null}
+      runningStatus={variant !== "card" && topStatus !== null ? { topStatus, status } : null}
     />
   );
 
@@ -2622,7 +2653,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
       </Tooltip>
     ) : (
-      <SidebarStatusText topStatus={topStatus} status={status} thread={thread} />
+      <SidebarStatusText
+        topStatus={topStatus}
+        status={status}
+        thread={thread}
+        iconOnlyWhileRunning={variant !== "card"}
+      />
     )
   ) : (
     <RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />
@@ -2824,7 +2860,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     </Tooltip>
                   ) : inFolder && topStatus ? (
                     <span className="text-xs">
-                      <SidebarStatusText topStatus={topStatus} status={status} thread={thread} />
+                      <SidebarStatusText
+                        topStatus={topStatus}
+                        status={status}
+                        thread={thread}
+                        iconOnlyWhileRunning
+                      />
                     </span>
                   ) : (
                     <span className="text-xs">
@@ -3283,6 +3324,7 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
           terminalProcessCount={runningTerminalIds.length}
           pullRequest={null}
           memoryThreadRef={null}
+          runningStatus={null}
         />
       </Tooltip>
     </li>

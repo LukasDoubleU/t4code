@@ -255,6 +255,9 @@ import {
   resolveSidebarRowThreadId,
   resolveSidebarRowVariant,
   resolveSidebarTopicExpert,
+  resolveSidebarTopicOf,
+  sidebarContinuations,
+  sidebarLauncherKey,
 } from "./Sidebar.logic";
 import {
   groupSidebarThreads,
@@ -874,18 +877,11 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const settled: EnvironmentThreadShell[] = [];
   const draggable = new Set<string>();
   const activeReorderable = new Set<string>();
-  const continuedIn = new Map<string, string>();
   for (const thread of visible) {
     const capabilities = serverConfigs.get(thread.environmentId)?.environment.capabilities;
     const supportsSettlement = capabilities?.threadSettlement === true;
     const supportsSnooze = capabilities?.threadSnooze === true;
     const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-    if (thread.source.continuedIn !== undefined) {
-      continuedIn.set(
-        threadKey,
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.source.continuedIn)),
-      );
-    }
     if (capabilities?.threadActiveReorder === true) activeReorderable.add(threadKey);
     if (capabilities?.threadPinning === true && capabilities.threadPinReorder === true) {
       draggable.add(threadKey);
@@ -928,20 +924,25 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   }
   // An expert's topics leave their sections for its row.
   const expertKeys = new Set(pinned.map(threadShellKey));
+  const continuedIn =
+    expertKeys.size === 0 ? new Map<string, string>() : sidebarContinuations(visible);
   const topicsByExpert = new Map<string, EnvironmentThreadShell[]>();
+  // Every topic, nested or come forward: Background moves do not apply to them.
+  const topicKeys = new Set<string>();
   const withoutTopics = (list: EnvironmentThreadShell[], section: SidebarSection) =>
     expertKeys.size === 0
       ? list
       : list.filter((thread) => {
-          const launchedBy = thread.source.launchedBy;
-          if (launchedBy === undefined) return true;
-          const expertKey = resolveSidebarTopicExpert({
-            section,
-            launcherKey: scopedThreadKey(
-              scopeThreadRef(launchedBy.environmentId, launchedBy.threadId),
-            ),
+          const topicOf = resolveSidebarTopicOf({
+            launcherKey: sidebarLauncherKey(thread),
             expertKeys,
             continuedIn,
+          });
+          if (topicOf === null) return true;
+          topicKeys.add(threadShellKey(thread));
+          const expertKey = resolveSidebarTopicExpert({
+            section,
+            topicOf,
             needsUser: sidebarThreadNeedsUser(statusGroupOf(thread)),
           });
           if (expertKey === null) return true;
@@ -986,6 +987,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
             getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
           }),
     topicsByExpert,
+    topicKeys,
     workingThreads: sortWorkingThreadsBySend(workingOnly),
     backgroundThreads: sortSidebarActiveThreads(backgroundOnly, threadSort, statusGroupOf),
     snoozedThreads: snoozed.toSorted(
@@ -3600,6 +3602,7 @@ export default function Sidebar() {
     experts,
     toggleExperts,
     topicsByExpert,
+    topicKeys,
     openTopicKeys,
     toggleTopics,
     draggableThreadKeys,
@@ -4032,6 +4035,7 @@ export default function Sidebar() {
   };
   const dndSensors = useSensors(useSensor(SidebarPointerSensor, pointerSensorOptions));
   const sectionByThreadKeyRef = useRef(sectionByThreadKey);
+  const topicKeysRef = useRef(topicKeys);
   useLayoutEffect(() => {
     routeThreadKeyRef.current = routeThreadKey;
     projectGroupsRef.current = projectGroups;
@@ -4041,6 +4045,7 @@ export default function Sidebar() {
     settledThreadKeysRef.current = settledThreadKeys;
     snoozedThreadKeysRef.current = snoozedThreadKeys;
     sectionByThreadKeyRef.current = sectionByThreadKey;
+    topicKeysRef.current = topicKeys;
   });
   const startActionSweep = useStableCallback(
     (threadRef: ScopedThreadRef, action: SidebarSweepAction, event: PointerEvent) => {
@@ -4621,11 +4626,12 @@ export default function Sidebar() {
           const item = sidebarBackgroundMenuItem({
             thread,
             choices: backgroundChoices,
+            // A topic stays its expert's, nested or come forward.
             parked:
               section === "pinned" ||
-              section === "topic" ||
               section === "snoozed" ||
-              section === "settled",
+              section === "settled" ||
+              topicKeysRef.current.has(threadShellKey(thread)),
             statusGroup: statusGroupOf(thread),
           });
           return item?.placement === placement && item.available;
@@ -4947,12 +4953,8 @@ export default function Sidebar() {
         const backgroundItem = sidebarBackgroundMenuItem({
           thread,
           choices: backgroundChoices,
-          // A topic stays under its expert.
-          parked:
-            isPinned ||
-            isSettled ||
-            isSnoozed ||
-            sectionByThreadKeyRef.current.get(threadKey) === "topic",
+          // A topic stays its expert's, nested or come forward.
+          parked: isPinned || isSettled || isSnoozed || topicKeysRef.current.has(threadKey),
           statusGroup: statusGroupOf(thread),
         });
         const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);

@@ -1,3 +1,4 @@
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
@@ -153,24 +154,45 @@ export function resolveSidebarRowVariant(
   return section === "pinned" ? "expert" : "slim";
 }
 
+/** The key of the thread whose agent launched this one, if one did. */
+export function sidebarLauncherKey(thread: {
+  readonly source: Pick<SidebarThreadSummary["source"], "launchedBy">;
+}): string | null {
+  const launchedBy = thread.source.launchedBy;
+  return launchedBy === undefined
+    ? null
+    : scopedThreadKey(scopeThreadRef(launchedBy.environmentId, launchedBy.threadId));
+}
+
+/** Each thread that started fresh, by key, to the key of the thread it continues in. */
+export function sidebarContinuations(
+  threads: Iterable<
+    Pick<SidebarThreadSummary, "environmentId" | "id"> & {
+      readonly source: Pick<SidebarThreadSummary["source"], "continuedIn">;
+    }
+  >,
+): ReadonlyMap<string, string> {
+  const continuedIn = new Map<string, string>();
+  for (const thread of threads) {
+    if (thread.source.continuedIn === undefined) continue;
+    continuedIn.set(
+      scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+      scopedThreadKey(scopeThreadRef(thread.environmentId, thread.source.continuedIn)),
+    );
+  }
+  return continuedIn;
+}
+
 /**
- * The expert a thread nests under as one of its topics, or null where it keeps its own
- * section. A topic is a thread an expert's agent launched: one that needs the user comes
- * forward instead, and pinned, snoozed and settled threads keep their sections. An expert
- * that started fresh hands its topics to the thread it continues in.
+ * The expert whose topic a thread is: the listed expert whose agent launched it, or the thread
+ * an expert that started fresh continues in. Null for a thread no listed expert launched.
  */
-export function resolveSidebarTopicExpert(input: {
-  readonly section: SidebarSection;
-  /** The key of the thread whose agent launched this one. */
+export function resolveSidebarTopicOf(input: {
   readonly launcherKey: string | null;
   readonly expertKeys: ReadonlySet<string>;
-  /** Thread keys to the key of the thread each continues in. */
   readonly continuedIn: ReadonlyMap<string, string>;
-  readonly needsUser: boolean;
 }): string | null {
-  const { section, expertKeys, continuedIn } = input;
-  if (section !== "active" && section !== "working" && section !== "background") return null;
-  if (input.needsUser) return null;
+  const { expertKeys, continuedIn } = input;
   const seen = new Set<string>();
   let key = input.launcherKey;
   while (key !== null && !seen.has(key)) {
@@ -179,6 +201,21 @@ export function resolveSidebarTopicExpert(input: {
     key = continuedIn.get(key) ?? null;
   }
   return null;
+}
+
+/**
+ * The expert a topic nests under, or null where it keeps its own section: a topic that needs
+ * the user comes forward, and pinned, snoozed and settled threads keep their sections. Either
+ * way it stays its expert's, so no Background move applies to it.
+ */
+export function resolveSidebarTopicExpert(input: {
+  readonly section: SidebarSection;
+  readonly topicOf: string | null;
+  readonly needsUser: boolean;
+}): string | null {
+  const { section } = input;
+  if (section !== "active" && section !== "working" && section !== "background") return null;
+  return input.needsUser ? null : input.topicOf;
 }
 
 /**

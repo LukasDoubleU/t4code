@@ -1,3 +1,4 @@
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import { threadKey } from "@t3tools/client-runtime/state/entities";
 import * as DateTime from "effect/DateTime";
@@ -49,6 +50,9 @@ import {
   resolveSidebarExpertsSection,
   resolveSidebarRowVariant,
   resolveSidebarTopicExpert,
+  resolveSidebarTopicOf,
+  sidebarContinuations,
+  sidebarLauncherKey,
   resolveSidebarFolderDot,
   planSidebarThreadDrop,
   sidebarMarkerId,
@@ -160,61 +164,88 @@ describe("resolveSidebarRowVariant", () => {
   });
 });
 
-describe("resolveSidebarTopicExpert", () => {
+describe("resolveSidebarTopicOf", () => {
   const expertKeys = new Set(["expert", "remote-expert"]);
-  const topicExpert = (
-    input: Partial<Parameters<typeof resolveSidebarTopicExpert>[0]> = {},
-  ): string | null =>
+  const topicOf = (launcherKey: string | null, continuedIn = new Map<string, string>()) =>
+    resolveSidebarTopicOf({ launcherKey, expertKeys, continuedIn });
+
+  it("makes a thread an expert launched its topic, on any machine", () => {
+    expect(topicOf("expert")).toBe("expert");
+    expect(topicOf("remote-expert")).toBe("remote-expert");
+  });
+
+  it("leaves a thread whose launcher is unknown or not an expert alone", () => {
+    expect(topicOf("unpinned-coordinator")).toBeNull();
+    expect(topicOf(null)).toBeNull();
+  });
+
+  it("follows an expert that started fresh to the thread it continues in", () => {
+    const environmentId = EnvironmentId.make("environment-local");
+    const key = (id: string) => scopedThreadKey(scopeThreadRef(environmentId, ThreadId.make(id)));
+    const startedFresh = (id: string, continuedIn: string) => ({
+      environmentId,
+      id: ThreadId.make(id),
+      source: { continuedIn: ThreadId.make(continuedIn) },
+    });
+    expect(
+      resolveSidebarTopicOf({
+        launcherKey: sidebarLauncherKey({
+          source: { launchedBy: { environmentId, threadId: ThreadId.make("old"), title: "Old" } },
+        }),
+        expertKeys: new Set([key("expert")]),
+        continuedIn: sidebarContinuations([
+          startedFresh("old", "middle"),
+          startedFresh("middle", "expert"),
+        ]),
+      }),
+    ).toBe(key("expert"));
+    // A loop in the continuations ends instead of spinning.
+    expect(
+      topicOf(
+        "a",
+        new Map([
+          ["a", "b"],
+          ["b", "a"],
+        ]),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("resolveSidebarTopicExpert", () => {
+  const nestsUnder = (input: Partial<Parameters<typeof resolveSidebarTopicExpert>[0]> = {}) =>
     resolveSidebarTopicExpert({
       section: "background",
-      launcherKey: "expert",
-      expertKeys,
-      continuedIn: new Map(),
+      topicOf: "expert",
       needsUser: false,
       ...input,
     });
 
-  it("nests a thread an expert launched under it, from any open section or machine", () => {
+  it("nests a topic under its expert from any open section", () => {
     for (const section of ["active", "working", "background"] as const) {
-      expect(topicExpert({ section })).toBe("expert");
+      expect(nestsUnder({ section })).toBe("expert");
     }
-    expect(topicExpert({ launcherKey: "remote-expert" })).toBe("remote-expert");
+    expect(nestsUnder({ topicOf: null })).toBeNull();
   });
 
-  it("never makes a pinned thread a topic: it is an expert of its own", () => {
-    expect(topicExpert({ section: "pinned" })).toBeNull();
+  it("never nests a pinned thread: it is an expert of its own", () => {
+    expect(nestsUnder({ section: "pinned" })).toBeNull();
   });
 
-  it("brings a topic that needs the user forward", () => {
-    expect(topicExpert({ section: "active", needsUser: true })).toBeNull();
+  it("brings a topic that needs the user forward, still its expert's", () => {
+    const asking = {
+      launcherKey: "expert",
+      expertKeys: new Set(["expert"]),
+      continuedIn: new Map<string, string>(),
+    };
+    expect(nestsUnder({ section: "active", needsUser: true })).toBeNull();
+    // Its menus keep hiding Background moves, which would not move it.
+    expect(resolveSidebarTopicOf(asking)).toBe("expert");
   });
 
   it("leaves settled and snoozed topics on their shelves", () => {
-    expect(topicExpert({ section: "settled" })).toBeNull();
-    expect(topicExpert({ section: "snoozed" })).toBeNull();
-  });
-
-  it("leaves a thread whose launcher is unknown or not an expert where it was", () => {
-    expect(topicExpert({ launcherKey: "unpinned-coordinator" })).toBeNull();
-    expect(topicExpert({ launcherKey: null })).toBeNull();
-  });
-
-  it("follows an expert that started fresh to the thread it continues in", () => {
-    const continuedIn = new Map([
-      ["old-expert", "older-continuation"],
-      ["older-continuation", "expert"],
-    ]);
-    expect(topicExpert({ launcherKey: "old-expert", continuedIn })).toBe("expert");
-    // A loop in the continuations ends instead of spinning.
-    expect(
-      topicExpert({
-        launcherKey: "a",
-        continuedIn: new Map([
-          ["a", "b"],
-          ["b", "a"],
-        ]),
-      }),
-    ).toBeNull();
+    expect(nestsUnder({ section: "settled" })).toBeNull();
+    expect(nestsUnder({ section: "snoozed" })).toBeNull();
   });
 });
 

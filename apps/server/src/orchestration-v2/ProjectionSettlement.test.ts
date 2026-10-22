@@ -4,6 +4,7 @@ import {
   MessageId,
   NodeId,
   type OrchestrationV2AppThread,
+  type OrchestrationV2ConversationMessage,
   type OrchestrationV2Run,
   ProjectId,
   ProviderDriverKind,
@@ -11,6 +12,7 @@ import {
   ProviderThreadId,
   RunId,
   RuntimeRequestId,
+  ScheduledTaskId,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -350,6 +352,90 @@ it.effect.each([
       DateTime.formatIso(shellThread!.latestUserAuthoredMessageAt!),
       DateTime.formatIso(written),
     );
+  }).pipe(Effect.provide(testLayer)),
+);
+
+it.effect.each([
+  ["sql", layerSql],
+  ["memory", ProjectionStore.layerMemory],
+] as const)("%s: the shell says whether another agent started the latest run", ([, testLayer]) =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const started = Effect.fn(function* (
+      name: string,
+      origin: Pick<
+        OrchestrationV2ConversationMessage,
+        | "createdBy"
+        | "creationSource"
+        | "senderThreadId"
+        | "scheduledTaskId"
+        | "delegatedCompletion"
+      >,
+    ) {
+      const threadId = yield* createThread(name);
+      const runId = yield* createRun(threadId);
+      yield* store.apply({
+        id: EventId.make(`event:origin:${name}`),
+        type: "message.updated",
+        threadId,
+        occurredAt: old,
+        payload: {
+          ...origin,
+          id: MessageId.make(`message:${runId}`),
+          threadId,
+          runId,
+          nodeId: null,
+          role: "user",
+          text: name,
+          attachments: [],
+          streaming: false,
+          createdAt: old,
+          updatedAt: old,
+        },
+      });
+      return threadId;
+    });
+    const sender = ThreadId.make("thread:origin:sender");
+    const expected = new Map([
+      [yield* started("user", { createdBy: "user", creationSource: "web" }), false],
+      [
+        yield* started("sent", {
+          createdBy: "agent",
+          creationSource: "mcp",
+          senderThreadId: sender,
+        }),
+        true,
+      ],
+      [
+        yield* started("report", {
+          createdBy: "agent",
+          creationSource: "server",
+          delegatedCompletion: {
+            parentRunId: RunId.make("run:parent"),
+            generation: 1,
+            taskIds: [],
+          },
+        }),
+        true,
+      ],
+      [
+        yield* started("scheduled", {
+          createdBy: "agent",
+          creationSource: "mcp",
+          scheduledTaskId: ScheduledTaskId.make("scheduled:origin"),
+        }),
+        false,
+      ],
+    ]);
+
+    const shell = yield* store.getShellSnapshot();
+    for (const [threadId, fromAnotherAgent] of expected) {
+      assert.equal(
+        shell.threads.find((thread) => thread.id === threadId)?.latestRunFromAnotherAgent,
+        fromAnotherAgent,
+        threadId,
+      );
+    }
   }).pipe(Effect.provide(testLayer)),
 );
 

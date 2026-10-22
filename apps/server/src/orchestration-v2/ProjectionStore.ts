@@ -57,6 +57,7 @@ import {
   OrchestrationV2RuntimeRequestJson as OrchestrationV2RuntimeRequestJsonSchema,
   OrchestrationV2SubagentJson as OrchestrationV2SubagentJsonSchema,
   OrchestrationV2TurnItemJson as OrchestrationV2TurnItemJsonSchema,
+  isOrchestrationV2MessageFromAnotherAgent,
   orchestrationV2RunWorkStartedAt,
   RunId,
   MessageId,
@@ -1086,6 +1087,7 @@ type ShellThreadRow = {
   readonly pending_link_request_payload_json: string | null;
   readonly latest_user_message_at: string | null;
   readonly latest_user_authored_message_at: string | null;
+  readonly latest_run_from_another_agent: number | null;
   readonly has_actionable_proposed_plan: number;
   readonly item_count: number;
   readonly runless_item_count: number;
@@ -1533,12 +1535,17 @@ export function threadShellFromProjection(
         (left, right) =>
           DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt),
       )[0] ?? null;
-  const latestRun =
-    usageLimitRunPresentedAsLatest(
-      projection.runs,
-      projection.turnItems,
-      providerSession?.lastError ?? null,
-    ) ?? latestUnheldRun(projection.runs);
+  const usageLimitRun = usageLimitRunPresentedAsLatest(
+    projection.runs,
+    projection.turnItems,
+    providerSession?.lastError ?? null,
+  );
+  const latestRun = usageLimitRun ?? latestUnheldRun(projection.runs);
+  // A usage-limit failure is presented in place of the queue it blocks and always notifies.
+  const latestRunMessage =
+    usageLimitRun || !latestRun
+      ? undefined
+      : projection.messages.find((message) => message.id === latestRun.userMessageId);
   const activeRun =
     projection.runs
       .filter(isInterruptibleRunForShell)
@@ -1620,6 +1627,8 @@ export function threadShellFromProjection(
     latestRunRequestedAt: latestRun?.requestedAt ?? null,
     latestRunStartedAt: latestRun?.startedAt ?? null,
     latestRunCompletedAt: latestRun?.completedAt ?? null,
+    latestRunFromAnotherAgent:
+      latestRunMessage !== undefined && isOrchestrationV2MessageFromAnotherAgent(latestRunMessage),
     activeRunId: activeRun?.id ?? null,
     blockedOnThreadWait: deriveBlockedOnThreadWait({ activeRun, turnItems: projection.turnItems }),
     activityRunStatus: activityRun?.status ?? null,
@@ -1728,6 +1737,7 @@ type ShellThreadState = {
   readonly latestRunRequestedAt: DateTime.Utc | null;
   readonly latestRunStartedAt: DateTime.Utc | null;
   readonly latestRunCompletedAt: DateTime.Utc | null;
+  readonly latestRunFromAnotherAgent: boolean;
   readonly activeRunId: RunId | null;
   readonly blockedOnThreadWait: boolean;
   readonly activityRunStatus: ShellActivityRunStatus | null;
@@ -1887,6 +1897,7 @@ function shellFromState(input: {
     latestRunRequestedAt: input.state.latestRunRequestedAt,
     latestRunStartedAt: input.state.latestRunStartedAt,
     latestRunCompletedAt: input.state.latestRunCompletedAt,
+    latestRunFromAnotherAgent: input.state.latestRunFromAnotherAgent,
     activeRunId: input.state.activeRunId,
     blockedOnThreadWait: input.state.blockedOnThreadWait,
     activityRunStatus: input.state.activityRunStatus,
@@ -5792,6 +5803,19 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 ORDER BY message.updated_at DESC, message.message_id DESC
                 LIMIT 1
               ) AS latest_user_authored_message_at,
+              (
+                -- Mirrors isOrchestrationV2MessageFromAnotherAgent.
+                SELECT json_extract(message.payload_json, '$.createdBy') <> 'user'
+                  AND json_type(message.payload_json, '$.scheduledTaskId') IS NULL
+                  AND (
+                    json_extract(message.payload_json, '$.creationSource') = 'mcp'
+                    OR json_type(message.payload_json, '$.senderThreadId') IS NOT NULL
+                    OR json_type(message.payload_json, '$.delegatedCompletion') IS NOT NULL
+                    OR json_extract(message.payload_json, '$.notification.source.kind') = 'delegated_task'
+                  )
+                FROM orchestration_v2_projection_messages message
+                WHERE message.message_id = json_extract(presented.payload_json, '$.userMessageId')
+              ) AS latest_run_from_another_agent,
               EXISTS (
                 SELECT 1
                 FROM orchestration_v2_projection_plans plan
@@ -6259,6 +6283,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           row.latest_run_completed_at === null
             ? null
             : DateTime.makeUnsafe(row.latest_run_completed_at);
+        let latestRunFromAnotherAgent = row.latest_run_from_another_agent === 1;
         if (row.blocking_run_id !== null && row.blocking_failure_payload_json !== null) {
           const blockingFailure = yield* decodeTurnItemPayload(
             row.blocking_failure_payload_json,
@@ -6272,6 +6297,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             terminalFailureItem = blockingFailure;
             latestRunId = RunId.make(row.blocking_run_id);
             latestRunStatus = "failed";
+            latestRunFromAnotherAgent = false;
             latestRunRequestedAt =
               row.blocking_run_requested_at === null
                 ? null
@@ -6310,6 +6336,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           latestRunRequestedAt,
           latestRunStartedAt,
           latestRunCompletedAt,
+          latestRunFromAnotherAgent,
           activeRunId: row.active_run_id === null ? null : RunId.make(row.active_run_id),
           blockedOnThreadWait: deriveBlockedOnThreadWait({
             activeRun:

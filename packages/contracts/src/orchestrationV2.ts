@@ -1218,6 +1218,32 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
 });
 export type OrchestrationV2ConversationMessage = typeof OrchestrationV2ConversationMessage.Type;
 
+/**
+ * Another agent sent the message: through T3's MCP tools (`t3_thread_send`, `t3_thread_launch`,
+ * `delegate_task`), or as a delegated task's report or question. A turn it starts does not
+ * involve the user, so its completion does not notify them. Scheduled tasks are the user's own
+ * automations and never count. `ProjectionStore` mirrors this in SQL for shell rows.
+ */
+export function isOrchestrationV2MessageFromAnotherAgent(
+  message: Pick<
+    OrchestrationV2ConversationMessage,
+    | "createdBy"
+    | "creationSource"
+    | "scheduledTaskId"
+    | "senderThreadId"
+    | "delegatedCompletion"
+    | "notification"
+  >,
+): boolean {
+  if (message.createdBy === "user" || message.scheduledTaskId !== undefined) return false;
+  return (
+    message.creationSource === "mcp" ||
+    message.senderThreadId !== undefined ||
+    message.delegatedCompletion !== undefined ||
+    message.notification?.source.kind === "delegated_task"
+  );
+}
+
 export const OrchestrationV2PlanStep = Schema.Struct({
   id: TrimmedNonEmptyString,
   text: TrimmedNonEmptyString,
@@ -1970,6 +1996,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+  /** The latest run's message came from another agent (`isOrchestrationV2MessageFromAnotherAgent`). */
+  latestRunFromAnotherAgent: Schema.optional(Schema.Boolean),
   activeRunId: Schema.NullOr(RunId),
   activityRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   activityRunStatus: Schema.optional(

@@ -98,6 +98,7 @@ export function createSidebarSortingStrategy(input: {
   items: readonly SidebarListItem[];
   enabled?: boolean;
   settledOrder: readonly string[];
+  pinnedOrder?: readonly string[];
   activeOrder?: readonly string[];
   backgroundOrder?: readonly string[];
   backgroundExpanded?: boolean;
@@ -154,7 +155,7 @@ export function createSidebarSortingStrategy(input: {
     const group = groups[target.section];
     const order =
       target.section === "pinned"
-        ? target.pinnedOrder
+        ? (input.pinnedOrder ?? target.pinnedOrder)
         : target.section === "settled"
           ? input.settledOrder
           : target.section === "background"

@@ -13,6 +13,7 @@ import {
   resolveSidebarThreadStatus,
   resolveThreadLastVisitedAt,
   sidebarFolderExpansionKeys,
+  sortPinnedThreadsForSidebar,
   sortThreadsForSidebar,
 } from "./Sidebar.logic";
 
@@ -132,6 +133,19 @@ export function sortSidebarActiveThreads<T extends ActiveSortInput>(
   // Newest message first within each status, like the Last message sort.
   const buckets = bucketByStatus(sortThreadsForSidebar(threads, true), statusGroupOf);
   return SIDEBAR_STATUS_GROUPS.flatMap((status) => buckets.get(status)!);
+}
+
+type PinnedSortInput = ActiveSortInput & Parameters<typeof sortPinnedThreadsForSidebar>[0][number];
+
+/** Pinned threads follow the sort too; only Manual keeps their dragged order. */
+export function sortSidebarPinnedThreads<T extends PinnedSortInput>(
+  threads: readonly T[],
+  sort: SidebarThreadSort,
+  statusGroupOf: (thread: T) => SidebarStatusGroup,
+): T[] {
+  return sort === "manual"
+    ? sortPinnedThreadsForSidebar(threads)
+    : sortSidebarActiveThreads(threads, sort, statusGroupOf);
 }
 
 export type SidebarFolderHeader<TGroup> =

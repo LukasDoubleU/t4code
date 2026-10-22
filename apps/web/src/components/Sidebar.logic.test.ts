@@ -2189,6 +2189,36 @@ describe("Working shelf (beta)", () => {
         unsnooze: false,
       });
     });
+
+    it("lets a sort place pinned threads, so only pinning one is a move", () => {
+      const base = {
+        pinnedOrder: ["p1", "p2"],
+        pinnedKeysById: new Map([
+          ["p1", "f"],
+          ["p2", "t"],
+        ]),
+        activeOrder: ["a1"],
+        activeKeysById: new Map([["a1", "m"]]),
+        activeTimeOrdered: true,
+        pinnedTimeOrdered: true,
+      };
+      expect(
+        planSidebarThreadDrop({
+          ...base,
+          activeKey: "p1",
+          activeSection: "pinned",
+          target: { section: "pinned", pinnedOrder: ["p2", "p1"], activeOrder: ["a1"] },
+        }),
+      ).toEqual({ kind: "none" });
+      expect(
+        planSidebarThreadDrop({
+          ...base,
+          activeKey: "a1",
+          activeSection: "active",
+          target: { section: "pinned", pinnedOrder: ["p1", "a1", "p2"], activeOrder: [] },
+        }),
+      ).toEqual({ kind: "pin", order: null, orderKey: undefined, extraAssignments: [] });
+    });
   });
 });
 

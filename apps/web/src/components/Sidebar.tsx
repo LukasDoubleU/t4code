@@ -232,7 +232,6 @@ import {
   sidebarMarkerId,
   sidebarThreadKeyAtY,
   sortInboxThreadsByReturn,
-  sortPinnedThreadsForSidebar,
   sortWorkingThreadsBySend,
   useThreadJumpHintVisibility,
   useRetainedValue,
@@ -247,6 +246,7 @@ import {
   resolveSidebarStatusGroup,
   selectSidebarViewOptions,
   sortSidebarActiveThreads,
+  sortSidebarPinnedThreads,
   type SidebarStatusGroup,
   type SidebarThreadSort,
 } from "./Sidebar.viewOptions";
@@ -436,16 +436,23 @@ function threadShellKey(thread: Pick<SidebarThreadSummary, "environmentId" | "id
 const NO_DRAGGED_ORDER: readonly string[] = [];
 const NO_DRAGGED_ORDERS: {
   readonly settledOrder: readonly string[];
+  readonly pinnedOrder: readonly string[] | undefined;
   readonly activeOrder: readonly string[] | undefined;
   readonly backgroundOrder: readonly string[];
-} = { settledOrder: NO_DRAGGED_ORDER, activeOrder: undefined, backgroundOrder: NO_DRAGGED_ORDER };
+} = {
+  settledOrder: NO_DRAGGED_ORDER,
+  pinnedOrder: undefined,
+  activeOrder: undefined,
+  backgroundOrder: NO_DRAGGED_ORDER,
+};
 
 // Where the dragged row would sort if dropped on the settled, the Background
-// or the time-ordered active shelf; the strategy previews those slots.
+// or a time-ordered pinned or active list; the strategy previews those slots.
 function resolveDraggedOrders(input: {
   readonly drag: { readonly activeKey: string; readonly occurredAt: string };
   readonly threadByKey: ReadonlyMap<string, EnvironmentThreadShell>;
   readonly settledThreads: readonly EnvironmentThreadShell[];
+  readonly pinnedThreads: readonly EnvironmentThreadShell[];
   readonly activeThreads: readonly EnvironmentThreadShell[];
   readonly backgroundThreads: readonly EnvironmentThreadShell[];
   readonly workingShelfEnabled: boolean;
@@ -456,6 +463,7 @@ function resolveDraggedOrders(input: {
     drag,
     threadByKey,
     settledThreads,
+    pinnedThreads,
     activeThreads,
     backgroundThreads,
     workingShelfEnabled,
@@ -471,6 +479,14 @@ function resolveDraggedOrders(input: {
       ...others(settledThreads),
       applySidebarThreadDrop(thread, "settled", drag.occurredAt),
     ]).map(threadShellKey),
+    pinnedOrder:
+      threadSort !== "manual"
+        ? sortSidebarPinnedThreads(
+            [...others(pinnedThreads), applySidebarThreadDrop(thread, "pinned", drag.occurredAt)],
+            threadSort,
+            statusGroupOf,
+          ).map(threadShellKey)
+        : undefined,
     activeOrder: workingShelfEnabled
       ? sortInboxThreadsByReturn(
           [...others(activeThreads), applySidebarThreadDrop(thread, "active", drag.occurredAt)],
@@ -860,7 +876,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   // Server capability only gates DRAGGING — it must not influence the
   // sort, or mixed-version fleets would render different pinned orders on
   // web and mobile from the same data.
-  const sortedPinned = sortPinnedThreadsForSidebar(pinned);
+  const sortedPinned = sortSidebarPinnedThreads(pinned, threadSort, statusGroupOf);
   const sortedActive = workingShelfEnabled
     ? sortInboxThreadsByReturn(active, inboxReturns.returnedAt)
     : sortSidebarActiveThreads(active, threadSort, statusGroupOf);
@@ -935,7 +951,7 @@ function isOptimisticDropReleased(input: {
     // before releasing the projected fields and sort timestamps.
     if (
       canonicalSection === optimisticDrop.section &&
-      thread.pinnedAt == null &&
+      (optimisticDrop.section === "pinned" || thread.pinnedAt == null) &&
       (!optimisticDrop.clearsSnooze || thread.snoozedUntil == null)
     ) {
       return true;
@@ -4028,6 +4044,7 @@ export default function Sidebar() {
   // every sortable row, keeps its identity while thread shells stream in.
   const {
     settledOrder: draggedSettledOrder,
+    pinnedOrder: draggedPinnedOrder,
     activeOrder: draggedActiveOrder,
     backgroundOrder: draggedBackgroundOrder,
   } = dragState === null
@@ -4036,6 +4053,7 @@ export default function Sidebar() {
         drag: dragState,
         threadByKey,
         settledThreads,
+        pinnedThreads,
         activeThreads,
         backgroundThreads,
         workingShelfEnabled,
@@ -4047,6 +4065,7 @@ export default function Sidebar() {
     enabled: !isContextDrag,
     boundaryLabelHeight: SIDEBAR_DRAG_LABEL_HEIGHT,
     settledOrder: draggedSettledOrder,
+    ...(draggedPinnedOrder === undefined ? {} : { pinnedOrder: draggedPinnedOrder }),
     ...(draggedActiveOrder === undefined ? {} : { activeOrder: draggedActiveOrder }),
     backgroundOrder: draggedBackgroundOrder,
     backgroundExpanded: backgroundShelfExpanded,
@@ -4086,6 +4105,7 @@ export default function Sidebar() {
             activeKeysById,
             activeReorderableKeys: activeReorderableThreadKeys,
             activeTimeOrdered: workingShelfEnabled || threadSort !== "manual",
+            pinnedTimeOrdered: threadSort !== "manual",
             backgroundAvailable,
           }).kind !== "none"
         );
@@ -4122,6 +4142,7 @@ export default function Sidebar() {
       activeKeysById,
       activeReorderableKeys: activeReorderableThreadKeys,
       activeTimeOrdered: workingShelfEnabled || threadSort !== "manual",
+      pinnedTimeOrdered: threadSort !== "manual",
       backgroundAvailable: !sidebarThreadNeedsUser(statusGroupOf(activeThread)),
     });
     if (plan.kind === "none") return;

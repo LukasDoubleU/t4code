@@ -11,6 +11,7 @@ import {
   sidebarGroupingPatch,
   sidebarSortPatch,
   sortSidebarActiveThreads,
+  sortSidebarPinnedThreads,
   type SidebarGrouping,
   type SidebarThreadSort,
 } from "./Sidebar.viewOptions";
@@ -386,6 +387,23 @@ describe("sorting and grouping threads", () => {
       expect(arrange(sort, grouping)).toEqual(expected[sort][grouping]);
     },
   );
+
+  it.each([
+    ["manual", ["input", "done", "approval", "working", "idle", "failed"]],
+    ["last_message", ["idle", "working", "failed", "approval", "done", "input"]],
+    ["status", ["approval", "input", "failed", "done", "working", "idle"]],
+  ] as const)("orders pinned threads by sort %s", (sort, expectedIds) => {
+    // Pin keys disagree with every other order, so only Manual follows them.
+    const pinKeys = ["c", "f", "d", "b", "e", "a"];
+    const pinned = active.map((entry, index) => ({
+      ...entry,
+      pinnedAt: "2026-06-01T00:00:00.000Z",
+      pinOrderKey: pinKeys[index]!,
+    }));
+    expect(sortSidebarPinnedThreads(pinned, sort, statusGroupOf).map((entry) => entry.id)).toEqual(
+      expectedIds,
+    );
+  });
 
   it("shows one machine folder when every thread runs on one machine", () => {
     const folders = groupSidebarThreads({

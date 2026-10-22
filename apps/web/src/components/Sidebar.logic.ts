@@ -218,7 +218,7 @@ export type SidebarThreadDropPlan =
     }
   | {
       readonly kind: "pin";
-      readonly order: readonly string[];
+      readonly order: readonly string[] | null;
       readonly orderKey: string | undefined;
       readonly extraAssignments: ReadonlyArray<{ readonly id: string; readonly orderKey: string }>;
     }
@@ -293,6 +293,7 @@ export function planSidebarThreadDrop(input: {
   readonly activeKeysById: ReadonlyMap<string, string | null | undefined>;
   readonly activeReorderableKeys?: ReadonlySet<string>;
   readonly activeTimeOrdered?: boolean;
+  readonly pinnedTimeOrdered?: boolean;
   // False while the thread needs the user: Background would let it straight back out.
   readonly backgroundAvailable?: boolean;
 }): SidebarThreadDropPlan {
@@ -367,6 +368,12 @@ export function planSidebarThreadDrop(input: {
         ? { kind: "background" }
         : { kind: "none" };
     case "pinned": {
+      // Like a time-ordered active list: a sort places the thread, so only a pin is a move.
+      if (input.pinnedTimeOrdered) {
+        return activeSection === "pinned"
+          ? { kind: "none" }
+          : { kind: "pin", order: null, orderKey: undefined, extraAssignments: [] };
+      }
       const order = target.pinnedOrder;
       if (
         activeSection === "pinned" &&

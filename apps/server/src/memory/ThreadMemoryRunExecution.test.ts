@@ -59,7 +59,10 @@ const layerTest = RunExecutionService.layer.pipe(
   Layer.provideMerge(NodeServices.layer),
 );
 
-const startTurnOf = (appThread: OrchestrationV2AppThread) =>
+const startTurnOf = (
+  appThread: OrchestrationV2AppThread,
+  nativeForkSource?: RunExecutionService.RunExecutionServiceV2StartRootRunInput["nativeForkSource"],
+) =>
   Effect.gen(function* () {
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const started = yield* Deferred.make<ProviderAdapter.ProviderAdapterV2TurnInput>();
@@ -92,6 +95,7 @@ const startTurnOf = (appThread: OrchestrationV2AppThread) =>
       attempt: { id: attemptId, providerTurnId: null } as OrchestrationV2RunAttempt,
       attemptId,
       providerTurnOrdinal: 1,
+      ...(nativeForkSource === undefined ? {} : { nativeForkSource }),
       message: {
         messageId: MessageId.make(`message:${appThread.id}`),
         text: "Carry on.",
@@ -149,5 +153,33 @@ it.effect("hands a pinned thread's memory to its provider turn, and none to an u
       },
     } as OrchestrationV2AppThread);
     assert.isUndefined(delegated.threadMemory);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("hands a native fork of a pinned thread the note about its source's memory", () =>
+  Effect.gen(function* () {
+    const memory = yield* ThreadMemory.ThreadMemory;
+    const sourceId = ThreadId.make("thread:pinned-source");
+    const forkId = ThreadId.make("thread:fork");
+    const fork = {
+      id: forkId,
+      pinnedAt: null,
+      lineage: { parentThreadId: sourceId, relationshipToParent: "fork", rootThreadId: sourceId },
+    } as OrchestrationV2AppThread;
+
+    const first = yield* startTurnOf(fork, { id: sourceId, pinned: true });
+    assert.equal(first.forkedMemoryNote, yield* memory.forkNote({ id: sourceId, pinned: true }));
+    assert.isDefined(first.forkedMemoryNote);
+    assert.isUndefined(first.threadMemory);
+
+    // Later runs of the fork no longer consume the native fork.
+    const later = yield* startTurnOf({ ...fork, id: ThreadId.make("thread:fork-later") });
+    assert.isUndefined(later.forkedMemoryNote);
+
+    const quietSource = yield* startTurnOf(
+      { ...fork, id: ThreadId.make("thread:fork-of-unpinned") },
+      { id: ThreadId.make("thread:never-pinned"), pinned: false },
+    );
+    assert.isUndefined(quietSource.forkedMemoryNote);
   }).pipe(Effect.provide(layerTest)),
 );

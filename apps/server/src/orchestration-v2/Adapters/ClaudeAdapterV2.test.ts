@@ -6229,7 +6229,11 @@ ${threadMemory.instructions}
         ?.append ?? "";
     const runTurn = Effect.fnUntraced(function* (
       attempt: number,
-      input: { readonly pinned: boolean; readonly nativeThreadHasTurns?: boolean },
+      input: {
+        readonly pinned: boolean;
+        readonly nativeThreadHasTurns?: boolean;
+        readonly forkedMemoryNote?: string;
+      },
     ) {
       yield* harness.runtime.startTurn({
         ...makeClaudeTestTurnInput({
@@ -6250,6 +6254,9 @@ ${threadMemory.instructions}
             : { nativeThreadHasTurns: input.nativeThreadHasTurns }),
         }),
         ...(input.pinned ? { threadMemory } : {}),
+        ...(input.forkedMemoryNote === undefined
+          ? {}
+          : { forkedMemoryNote: input.forkedMemoryNote }),
       });
       const offered = harness.offeredMessages.at(-1)?.message.content;
       yield* harness.offerAndWait(
@@ -6291,6 +6298,37 @@ ${threadMemory.instructions}
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
         ),
       ),
+  );
+
+  it.effect.each([
+    { fork: "an unpinned fork", pinned: false },
+    { fork: "a pinned fork", pinned: true },
+  ])("warns $fork off its source's memory file once, ahead of its own line", ({ pinned }) =>
+    Effect.gen(function* () {
+      const { threadMemory, runTurn } = yield* makeMemoryHarness;
+      const forkedMemoryNote = "FORK NOTE: the source's memory file is not this thread's.";
+
+      // A native fork resumes the history it copied from its source.
+      const first = yield* runTurn(1, { pinned, nativeThreadHasTurns: true, forkedMemoryNote });
+      const reminder = pinned
+        ? `${forkedMemoryNote}
+
+${threadMemory.instructions}`
+        : forkedMemoryNote;
+      assert.deepEqual(first, [
+        `<system-reminder>
+${reminder}
+</system-reminder>`,
+        "Turn 1.",
+      ]);
+
+      assert.deepEqual(yield* runTurn(2, { pinned }), ["Turn 2."]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
   );
 
   it.effect("gives the memory line again after each pin, never to an unpinned thread", () =>

@@ -2,6 +2,7 @@ import {
   isUserPinnedThread,
   threadMemoryFilePath,
   type OrchestrationV2AppThread,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -26,6 +27,14 @@ export function threadMemoryInstructions(path: string): string {
   ].join(" ");
 }
 
+/** For a fork whose copied history points at its source thread's memory file. */
+export function threadMemoryForkNote(sourcePath: string): string {
+  return [
+    `This thread was forked from another thread. The memory file named earlier in this conversation, ${sourcePath}, belongs to that thread, not to this one.`,
+    "Don't create, update or overwrite it. Reading it for context is fine.",
+  ].join(" ");
+}
+
 export class ThreadMemory extends Context.Service<
   ThreadMemory,
   {
@@ -34,6 +43,14 @@ export class ThreadMemory extends Context.Service<
     readonly forTurn: (
       thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt" | "lineage">,
     ) => Effect.Effect<{ readonly path: string; readonly instructions: string } | undefined>;
+    /**
+     * The note for a native fork's first turn, or undefined when its source
+     * never kept a memory its history could name.
+     */
+    readonly forkNote: (source: {
+      readonly id: ThreadId;
+      readonly pinned: boolean;
+    }) => Effect.Effect<string | undefined>;
   }
 >()("t3/memory/ThreadMemory") {}
 
@@ -70,7 +87,26 @@ const make = Effect.gen(function* () {
     return { path: memoryPath, instructions: threadMemoryInstructions(memoryPath) };
   });
 
-  return ThreadMemory.of({ directory, forTurn });
+  // Not gated on the setting: the source's history may name its file from
+  // before the setting was turned off.
+  const forkNote = Effect.fn("ThreadMemory.forkNote")(function* (source: {
+    readonly id: ThreadId;
+    readonly pinned: boolean;
+  }) {
+    const sourcePath = threadMemoryFilePath(directory, source.id);
+    const kept =
+      source.pinned ||
+      (yield* fileSystem.exists(sourcePath).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("Thread memory could not check a fork source's file.", {
+            cause,
+          }).pipe(Effect.as(true)),
+        ),
+      ));
+    return kept ? threadMemoryForkNote(sourcePath) : undefined;
+  });
+
+  return ThreadMemory.of({ directory, forTurn, forkNote });
 });
 
 export const layer = Layer.effect(ThreadMemory, make);

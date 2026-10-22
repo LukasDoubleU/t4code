@@ -70,6 +70,25 @@ describe("ThreadMemory", () => {
     }).pipe(Effect.provide(layerWithSetting(true))),
   );
 
+  it.effect("warns a fork off the memory file of a source that kept one", () =>
+    Effect.gen(function* () {
+      const memory = yield* ThreadMemory.ThreadMemory;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const sourcePath = path.join(memory.directory, "thread_pinned-expert.md");
+      const note = ThreadMemory.threadMemoryForkNote(sourcePath);
+
+      assert.equal(yield* memory.forkNote({ id: threadId, pinned: true }), note);
+      assert.include(note, sourcePath);
+      assert.isUndefined(yield* memory.forkNote({ id: threadId, pinned: false }));
+
+      // Unpinned since, but its file stays and the fork's history may name it.
+      yield* fileSystem.makeDirectory(memory.directory, { recursive: true });
+      yield* fileSystem.writeFileString(sourcePath, "# Notes\n");
+      assert.equal(yield* memory.forkNote({ id: threadId, pinned: false }), note);
+    }).pipe(Effect.provide(layerWithSetting(true))),
+  );
+
   it.effect("lets every memory sleep while the setting is off", () =>
     Effect.gen(function* () {
       const memory = yield* ThreadMemory.ThreadMemory;

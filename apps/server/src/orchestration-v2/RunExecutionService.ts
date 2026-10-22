@@ -565,6 +565,8 @@ export interface RunExecutionServiceV2StartRootRunInput {
   readonly attemptId: RunAttemptId;
   readonly providerTurnOrdinal: number;
   readonly nativeThreadHasTurns?: boolean;
+  /** The thread whose native history this run's fork copies, on the fork's first run. */
+  readonly nativeForkSource?: { readonly id: ThreadId; readonly pinned: boolean };
   readonly loadInheritedBackgroundTurnItems?: () => Effect.Effect<
     ReadonlyArray<InheritedBackgroundTurnItemRoute>,
     unknown
@@ -1530,6 +1532,10 @@ export const layer: Layer.Layer<
           threadMemory._tag === "Some"
             ? yield* threadMemory.value.forTurn(input.appThread)
             : undefined;
+        const forkedMemoryNote =
+          threadMemory._tag === "Some" && input.nativeForkSource !== undefined
+            ? yield* threadMemory.value.forkNote(input.nativeForkSource)
+            : undefined;
         const turnInput = {
           appThread: input.appThread,
           threadId: input.run.threadId,
@@ -1552,6 +1558,7 @@ export const layer: Layer.Layer<
           runtimePolicy: input.runtimePolicy,
           ...(appContext.length === 0 ? {} : { appContext }),
           ...(memory === undefined ? {} : { threadMemory: memory }),
+          ...(forkedMemoryNote === undefined ? {} : { forkedMemoryNote }),
         };
         // Check after the context read: ingestion can settle the run while
         // it awaits. A failed ownership read fails the start below.

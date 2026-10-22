@@ -445,6 +445,13 @@ export interface ProviderAdapterV2TurnInput {
     readonly path: string;
     readonly instructions: string;
   };
+  /**
+   * Only on a native fork's first turn when its source kept a memory: the
+   * copied history names the source's memory file, and this note says the
+   * file isn't this thread's. Adapters whose history carries the memory line
+   * deliver it once.
+   */
+  readonly forkedMemoryNote?: string;
 }
 
 export interface ProviderAdapterV2SteerInput {

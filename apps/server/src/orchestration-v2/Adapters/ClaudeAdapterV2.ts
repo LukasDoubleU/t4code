@@ -1828,17 +1828,14 @@ export function makeClaudeUserMessage(input: {
  * with a prompt instead, ahead of the user's blocks: a skill or slash command
  * runs only from the last text block.
  */
-function withClaudeThreadMemoryReminder(
-  message: SDKUserMessage,
-  instructions: string,
-): SDKUserMessage {
+function withClaudeSystemReminder(message: SDKUserMessage, text: string): SDKUserMessage {
   const content = message.message.content;
   return {
     ...message,
     message: {
       ...message.message,
       content: [
-        { type: "text", text: `<system-reminder>\n${instructions}\n</system-reminder>` },
+        { type: "text", text: `<system-reminder>\n${text}\n</system-reminder>` },
         ...(typeof content !== "string"
           ? content
           : content.length === 0
@@ -9500,10 +9497,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               yield* attachTurn;
               yield* startUserTurnForWakeReports(nativeThreadId);
               const memory = turnInput.threadMemory?.instructions;
+              const reminder = [
+                turnInput.forkedMemoryNote,
+                memory === querySession.memorySeen ? undefined : memory,
+              ]
+                .filter((part) => part !== undefined)
+                .join("\n\n");
               yield* querySession.query.offer(
-                memory === undefined || querySession.memorySeen === memory
-                  ? userMessage
-                  : withClaudeThreadMemoryReminder(userMessage, memory),
+                reminder === "" ? userMessage : withClaudeSystemReminder(userMessage, reminder),
               );
               querySession.memorySeen = memory;
               return;

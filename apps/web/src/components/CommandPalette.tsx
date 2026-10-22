@@ -77,12 +77,14 @@ import {
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
+  QuoteIcon,
   RotateCcwIcon,
   SettingsIcon,
   SquarePenIcon,
   SunIcon,
   TextSearchIcon,
 } from "lucide-react";
+import { selectedAssistantCitation } from "./chat/AssistantSelectionToolbar";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
 import {
   useDeferredValue,
@@ -778,6 +780,22 @@ function OpenCommandPaletteDialog(props: {
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
   const paletteRouteTarget = useThreadRouteTarget();
+  const composerHandleRef = useComposerHandleContext();
+  // Read before the palette input takes focus, which replaces the page selection.
+  const [selectedCitation] = useState(() =>
+    paletteRouteTarget?.kind === "server"
+      ? selectedAssistantCitation(paletteRouteTarget.threadRef)
+      : null,
+  );
+  const citeSelectionInComposer = useStableCallback(async () => {
+    const cited =
+      selectedCitation !== null &&
+      composerHandleRef?.current?.citeAssistantText(
+        selectedCitation.citation,
+        selectedCitation.sourceAnchor,
+      );
+    if (!cited) throw new Error("The composer is not ready to take the quote.");
+  });
   const projects = useProjects();
   const referenceThreadRef =
     pathname === "/pull-requests"
@@ -1669,6 +1687,18 @@ function OpenCommandPaletteDialog(props: {
       run: async () => {
         requestThreadFindOpen();
       },
+    });
+  }
+
+  if (selectedCitation !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:cite-selection",
+      title: "Cite selection in composer",
+      searchTerms: ["cite", "quote", "selection", "assistant", "reply"],
+      icon: <QuoteIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "chat.citeSelection",
+      run: citeSelectionInComposer,
     });
   }
 

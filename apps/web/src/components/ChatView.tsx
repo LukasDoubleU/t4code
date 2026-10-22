@@ -424,6 +424,7 @@ import {
   RevertConfirmHost,
 } from "./chat/ChatOverlayHosts";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
+import { selectedAssistantCitation } from "./chat/AssistantSelectionToolbar";
 import { MessagesTimeline, type MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
@@ -5883,6 +5884,13 @@ export default function ChatView(props: ChatViewProps) {
       "chat.find": () => {
         if (!isServerThread || serverConfig?.threadFind !== true) return false;
         openThreadFindStable();
+      },
+      "chat.citeSelection": () => {
+        const selected = selectedAssistantCitation(routeThreadRef);
+        if (!selected || !citeAssistantTextStable(selected.citation, selected.sourceAnchor)) {
+          return false;
+        }
+        window.getSelection()?.removeAllRanges();
       },
       "rightPanel.toggle": () => toggleRightPanelStable(),
       "rightPanel.toggleMaximized": ({ event }) => {

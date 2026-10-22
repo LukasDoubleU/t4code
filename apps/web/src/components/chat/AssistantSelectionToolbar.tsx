@@ -19,6 +19,41 @@ import {
 } from "~/lib/selectionActions";
 import { Button } from "../ui/button";
 
+function captureCitation(
+  viewport: HTMLElement,
+  threadRef: ScopedThreadRef,
+  selection: Selection | null,
+) {
+  const captured = captureAssistantTextSelection(viewport, selection);
+  const messageId = captured?.source.dataset.assistantCitationSource;
+  if (!captured || !messageId) return null;
+  const citation: AssistantCitation = {
+    version: 1,
+    ...threadRef,
+    messageId: MessageId.make(messageId),
+    ...captured.selector,
+  };
+  const sourceAnchor: AssistantCitationSourceAnchor = {
+    source: captured.source,
+    range: captured.range,
+    viewport,
+  };
+  return { citation, sourceAnchor };
+}
+
+/** The assistant text selected in the timeline, if the Cite button could cite it. */
+export function selectedAssistantCitation(threadRef: ScopedThreadRef) {
+  const selection = window.getSelection();
+  const node = selection?.anchorNode;
+  const viewport = (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>(
+    "[data-assistant-citation-viewport]",
+  );
+  const selected = viewport ? captureCitation(viewport, threadRef, selection) : null;
+  return selected && selected.citation.text.length <= ASSISTANT_CITATION_MAX_TEXT_LENGTH
+    ? selected
+    : null;
+}
+
 export function AssistantSelectionToolbar({
   viewport,
   threadRef,
@@ -31,6 +66,7 @@ export function AssistantSelectionToolbar({
   const [selection, setSelection] = useState<{
     citation: AssistantCitation;
     position: SelectionActionPoint;
+    lastLine: DOMRect;
     sourceAnchor: AssistantCitationSourceAnchor;
   } | null>(null);
   const toolbarRef = useRef<HTMLButtonElement>(null);
@@ -48,35 +84,35 @@ export function AssistantSelectionToolbar({
     if (!viewport) return;
     const clear = () => setSelection(null);
     const update = (pointer: SelectionActionPoint | null) => {
-      const nativeSelection = window.getSelection();
-      const captured = captureAssistantTextSelection(viewport, nativeSelection);
-      const messageId = captured?.source.dataset.assistantCitationSource;
-      if (!captured || !messageId) {
+      const captured = captureCitation(viewport, threadRef, window.getSelection());
+      if (!captured) {
         clear();
         return;
       }
-      const rect = captured.range.getBoundingClientRect();
+      const { citation, sourceAnchor } = captured;
+      const { range } = sourceAnchor;
+      const rect = range.getBoundingClientRect();
       const viewportRect = viewport.getBoundingClientRect();
       if (!isSelectionRectVisible(rect, [viewportRect])) {
         clear();
         return;
       }
       // A selection can cross blocks with different clipping ancestors.
-      const common = captured.range.commonAncestorContainer;
+      const common = range.commonAncestorContainer;
       const walker = document.createTreeWalker(common, NodeFilter.SHOW_TEXT);
       let node = common.nodeType === Node.TEXT_NODE ? common : walker.nextNode();
       let visible = false;
       for (; node && !visible; node = walker.nextNode()) {
-        if (!captured.range.intersectsNode(node)) continue;
+        if (!range.intersectsNode(node)) continue;
         if (node.parentElement && getComputedStyle(node.parentElement).userSelect === "none")
           continue;
         const fragment = document.createRange();
         fragment.selectNodeContents(node);
-        if (node === captured.range.startContainer) {
-          fragment.setStart(node, captured.range.startOffset);
+        if (node === range.startContainer) {
+          fragment.setStart(node, range.startOffset);
         }
-        if (node === captured.range.endContainer) {
-          fragment.setEnd(node, captured.range.endOffset);
+        if (node === range.endContainer) {
+          fragment.setEnd(node, range.endOffset);
         }
         if (!fragment.toString().trim()) continue;
         const lines = Array.from(fragment.getClientRects());
@@ -107,7 +143,8 @@ export function AssistantSelectionToolbar({
         clear();
         return;
       }
-      const rects = captured.range.getClientRects();
+      const rects = range.getClientRects();
+      const lastLine = rects.item(rects.length - 1) ?? rect;
       const pointerOnText =
         pointer !== null &&
         Array.from(rects).some(
@@ -117,20 +154,30 @@ export function AssistantSelectionToolbar({
             pointer.y >= line.top - 8 &&
             pointer.y <= line.bottom + 8,
         );
-      setSelection({
-        sourceAnchor: { source: captured.source, range: captured.range, viewport },
-        citation: {
-          version: 1,
-          ...threadRef,
-          messageId: MessageId.make(messageId),
-          ...captured.selector,
-        },
-        position: resolveSelectionActionPosition({
-          bounds: viewportRect,
-          selectionRect: rects.item(rects.length - 1) ?? rect,
-          pointer: pointerOnText ? pointer : null,
-          viewport: { width: window.innerWidth, height: window.innerHeight },
-        }),
+      setSelection((previous) => {
+        // The same selection, moved by a scroll: keep the button where it was on the text.
+        const followed =
+          pointer === null &&
+          previous !== null &&
+          previous.citation.messageId === citation.messageId &&
+          previous.citation.start === citation.start &&
+          previous.citation.end === citation.end
+            ? {
+                x: previous.position.x + lastLine.right - previous.lastLine.right,
+                y: previous.position.y + lastLine.bottom - previous.lastLine.bottom,
+              }
+            : null;
+        return {
+          sourceAnchor,
+          citation,
+          lastLine,
+          position: resolveSelectionActionPosition({
+            bounds: viewportRect,
+            selectionRect: lastLine,
+            pointer: pointerOnText ? pointer : followed,
+            viewport: { width: window.innerWidth, height: window.innerHeight },
+          }),
+        };
       });
     };
     const actions = observeSelectionActions({

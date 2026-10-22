@@ -5,6 +5,7 @@ import {
   MessageId,
   NodeId,
   type OrchestrationV2Command,
+  type OrchestrationV2ConversationMessage,
   type OrchestrationV2Run,
   type OrchestrationV2Subagent,
   type OrchestrationV2ProviderThread,
@@ -708,6 +709,96 @@ it.effect("waitForThread reads the run again only when the run updates", () =>
     expect(result).toMatchObject({ timedOut: false, run: { id: runId, status: "completed" } });
     expect(reads).toBe(2);
   }),
+);
+
+it.effect(
+  "waitForThread wakes for a message that waits on the turn, not one edited or started",
+  () =>
+    Effect.gen(function* () {
+      const projectId = ProjectId.make("project:thread-management:wait-wake");
+      const threadId = ThreadId.make("thread:thread-management:wait-wake:target");
+      const runId = RunId.make("run:thread-management:wait-wake:target");
+      const waitingThreadId = ThreadId.make("thread:thread-management:wait-wake:waiting");
+      const waitingRunId = RunId.make("run:thread-management:wait-wake:waiting");
+      const ownRunId = RunId.make("run:thread-management:wait-wake:own");
+      const watching = yield* Deferred.make<void>();
+      const messages = yield* Queue.unbounded<OrchestrationV2StoredEvent>();
+      const message = (id: string, createdAt: DateTime.Utc, runId = waitingRunId) =>
+        ({
+          id: MessageId.make(id),
+          threadId: waitingThreadId,
+          runId,
+          role: "user",
+          createdBy: "user",
+          text: id,
+          createdAt,
+        }) as unknown as OrchestrationV2ConversationMessage;
+      // Queued before the wait started; editing it updates it during the wait.
+      const edited = message("message:wait-wake:queued-earlier", DateTime.makeUnsafe(-60_000));
+      // Started a turn of its own, as for a background subagent whose run ended.
+      const started = message("message:wait-wake:started", DateTime.makeUnsafe(0), ownRunId);
+      const arrived = message("message:wait-wake:arrived", DateTime.makeUnsafe(0));
+      const stored = (sequence: number, payload: OrchestrationV2ConversationMessage) =>
+        ({
+          sequence,
+          event: { type: "message.updated", threadId: waitingThreadId, payload },
+        }) as unknown as OrchestrationV2StoredEvent;
+      const layerTest = ThreadManagementService.layer.pipe(
+        Layer.provide(Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({})),
+        Layer.provide(
+          Layer.mock(Orchestrator.OrchestratorV2)({
+            getThreadEventSequence: () => Effect.succeed(0),
+            restartContinuationPending: () => Effect.succeed(false),
+            streamStoredEventsFrom: (input) =>
+              input?.eventType === "message.updated" && input.threadId === waitingThreadId
+                ? Stream.fromEffect(Deferred.succeed(watching, undefined)).pipe(
+                    Stream.drain,
+                    Stream.concat(Stream.fromQueue(messages)),
+                  )
+                : Stream.never,
+            getThreadRecords: (id) =>
+              Effect.succeed(
+                (id === waitingThreadId
+                  ? {
+                      thread: { id, projectId, deletedAt: null },
+                      // `arrived` was sent as a steer: it belongs to the running turn.
+                      runs: [
+                        { id: waitingRunId, status: "running" },
+                        { id: ownRunId, status: "running", userMessageId: started.id },
+                      ],
+                      messages: [started, arrived],
+                      providerTurns: [],
+                      providerThreads: [],
+                      providerSessions: [],
+                    }
+                  : {
+                      thread: { id, projectId, deletedAt: null },
+                      runs: [{ id: runId, status: "running" }],
+                    }) as unknown as OrchestrationV2ThreadProjection,
+              ),
+          }),
+        ),
+        Layer.provide(ServerSettings.layerTest()),
+        Layer.provide(layerReceiptsTest),
+      );
+      const service = yield* ThreadManagementService.ThreadManagementService.pipe(
+        Effect.provide(layerTest),
+      );
+      const fiber = yield* service
+        .waitForThread({ projectId, threadId, runId, timeoutMs: 60 * 60 * 1_000, waitingThreadId })
+        .pipe(Effect.forkChild);
+      yield* Effect.raceFirst(Deferred.await(watching), Fiber.await(fiber));
+      yield* Queue.offer(messages, stored(1, edited));
+      yield* Queue.offer(messages, stored(2, started));
+      yield* Queue.offer(messages, stored(3, arrived));
+      const result = yield* Fiber.join(fiber);
+
+      expect(result).toMatchObject({
+        timedOut: false,
+        run: { id: runId, status: "running" },
+        messageReceived: { message: { id: arrived.id }, delivery: "steered" },
+      });
+    }),
 );
 
 it.effect("waitForThread follows a restart continuation instead of the cut run", () =>

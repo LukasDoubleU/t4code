@@ -112,7 +112,7 @@ import {
   runtimeModeRank,
   taskPrompt,
 } from "./delegatedTaskModes.ts";
-import { isLiveCallerShell } from "./threadAccess.ts";
+import { isLiveCallerShell, receivedMessage } from "./threadAccess.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
@@ -2894,6 +2894,7 @@ const make = Effect.gen(function* () {
             Math.max(1, input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS),
           ),
           ...(input.untilDelegatedWorkSettled === true ? { untilDelegatedWorkSettled: true } : {}),
+          ...(scope.thread === undefined ? {} : { waitingThreadId: scope.thread.threadId }),
         })
         .pipe(Effect.mapError(threadManagementFailure));
       return {
@@ -2906,6 +2907,9 @@ const make = Effect.gen(function* () {
           : {
               resultRun: { runId: result.resultRun.id, status: runOutcome(result.resultRun) },
             }),
+        ...(result.messageReceived === undefined
+          ? {}
+          : { messageReceived: yield* receivedMessage(threadManagement, result.messageReceived) }),
       } satisfies OrchestratorMcpThreadWaitResult;
     }),
     interruptThread: Effect.fn("OrchestratorMcpService.interruptThread")(function* (scope, input) {

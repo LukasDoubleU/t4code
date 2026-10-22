@@ -554,6 +554,19 @@ export const OrchestratorMcpThreadWaitInput = Schema.Struct({
 });
 export type OrchestratorMcpThreadWaitInput = typeof OrchestratorMcpThreadWaitInput.Type;
 
+/** The message for the waiting thread that ended a `t3_thread_wait` early. */
+export const OrchestratorMcpThreadWaitMessage = Schema.Struct({
+  messageId: MessageId,
+  createdBy: OrchestrationV2Actor,
+  /** The thread that sent it, and that thread's title. */
+  senderThreadId: Schema.optional(ThreadId),
+  senderTitle: Schema.optional(Schema.String),
+  preview: Schema.String,
+  /** `steered` reaches this turn once the wait returns; `queued` starts the next turn. */
+  delivery: Schema.Literals(["steered", "queued"]),
+});
+export type OrchestratorMcpThreadWaitMessage = typeof OrchestratorMcpThreadWaitMessage.Type;
+
 export const OrchestratorMcpThreadWaitResult = Schema.Struct({
   threadId: ThreadId,
   runId: Schema.NullOr(RunId),
@@ -561,6 +574,7 @@ export const OrchestratorMcpThreadWaitResult = Schema.Struct({
   timedOut: Schema.Boolean,
   /** With untilDelegatedWorkSettled, once settled: the run whose reply is the thread's result. */
   resultRun: Schema.optional(Schema.Struct({ runId: RunId, status: OrchestrationV2RunStatus })),
+  messageReceived: Schema.optional(OrchestratorMcpThreadWaitMessage),
 });
 export type OrchestratorMcpThreadWaitResult = typeof OrchestratorMcpThreadWaitResult.Type;
 

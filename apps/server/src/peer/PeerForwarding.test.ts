@@ -3,6 +3,8 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   EnvironmentId,
+  MessageId,
+  type OrchestrationV2ConversationMessage,
   type OrchestrationV2Run,
   type OrchestrationV2ThreadShell,
   type SourceControlCloneRepositoryInput,
@@ -13,7 +15,9 @@ import {
 } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import { McpSchema, McpServer } from "effect/ai";
@@ -68,12 +72,16 @@ const nothingSeen: Seen = {
 /** The box user's own thread, which no link started. */
 const usersThread = ThreadId.make("thread:box-users-own");
 
+type BoxWait = (
+  input: ThreadManagement.ThreadManagementWaitInput,
+) => Effect.Effect<ThreadManagement.ThreadManagementWaitResult>;
+
 /**
  * B's threads: one `auto` thread in `boxProject` that the laptop's link
- * started, whose run finishes on the third wait, and the box user's own.
- * Every send and wait is recorded.
+ * started, whose run finishes on the third wait unless `wait` says otherwise,
+ * and the box user's own. Every send and wait is recorded.
  */
-const boxThreads = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>) => {
+const boxThreads = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>, wait?: BoxWait) => {
   const base = { ...liveThreadShell(boxThread, { runtimeMode: "auto" }), projectId: boxProject };
   const linked = Ref.get(linkSession).pipe(
     Effect.map((sessionId) => ({ ...base, linkOrigin: { sessionId, label: "T3 Code · Laptop" } })),
@@ -123,11 +131,15 @@ const boxThreads = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>) => {
       })),
     waitForThread: (input) =>
       Ref.updateAndGet(seen, (current) => ({ ...current, waits: [...current.waits, input] })).pipe(
-        Effect.map(({ waits }) => ({
-          threadId: input.threadId,
-          run: run(waits.length < 3 ? "running" : "completed"),
-          timedOut: waits.length < 3,
-        })),
+        Effect.flatMap(({ waits }) =>
+          wait !== undefined
+            ? wait(input)
+            : Effect.succeed({
+                threadId: input.threadId,
+                run: run(waits.length < 3 ? "running" : "completed"),
+                timedOut: waits.length < 3,
+              }),
+        ),
       ),
   });
 };
@@ -191,7 +203,7 @@ const boxProjects = (seen: Ref.Ref<Seen>) =>
  * OAuth. `linkSession` is filled in once A links, so B's fixture thread reads
  * as one that link started.
  */
-const serveBox = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>) =>
+const serveBox = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>, wait?: BoxWait) =>
   servePeer(
     box,
     Layer.mergeAll(
@@ -200,7 +212,7 @@ const serveBox = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>) =>
       McpHttpServer.layerThreadToolkit,
     ).pipe(
       Layer.provide(NodeCrypto.layer),
-      Layer.provide(boxThreads(seen, linkSession)),
+      Layer.provide(boxThreads(seen, linkSession, wait)),
       Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
       Layer.provide(boxLaunches(seen)),
       Layer.provide(
@@ -241,9 +253,11 @@ const mcpClient = McpSchema.McpServerClient.of({
 
 /**
  * Environment A: its own orchestrator toolkit with forwarding, and a thread
- * caller whose modes the test picks. Its local threads never matter here.
+ * caller whose modes the test picks. Its local threads never matter here,
+ * except that `incoming` reaches a waiting caller's thread once completed.
  */
 const makeLaptop = Effect.gen(function* () {
+  const incoming = yield* Deferred.make<ThreadManagement.ThreadManagementIncomingMessage>();
   const linking = yield* layerLinkingEnvironment(laptop).pipe(Layer.build);
   const layerHere = Layer.mergeAll(
     McpHttpServer.layerOrchestratorToolkit,
@@ -288,6 +302,7 @@ const makeLaptop = Effect.gen(function* () {
           Effect.succeed({
             thread: liveThreadShell(threadId, { runtimeMode: "full-access" }),
           } as never),
+        awaitIncomingMessage: () => Deferred.await(incoming),
       }),
     ),
     Layer.provide(
@@ -336,7 +351,7 @@ const makeLaptop = Effect.gen(function* () {
         ),
         Effect.provideService(McpSchema.McpServerClient, mcpClient),
       );
-  return { links: Context.get(linking, PeerLinks.PeerLinks), call };
+  return { links: Context.get(linking, PeerLinks.PeerLinks), call, incoming };
 });
 
 const failureOf = (result: McpSchema.CallToolResult) => {
@@ -462,6 +477,81 @@ it.effect("keeps a forwarded wait short and its retries scoped to the caller", (
       expect(retried).toBe(first);
       expect(other).not.toBe(first);
       expect(first).not.toContain("same-key");
+    }),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
+
+it.effect("ends a forwarded wait when a message reaches the waiting thread here", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const seen = yield* Ref.make<Seen>(nothingSeen);
+      const linkSession = yield* Ref.make("");
+      const waitingThere = yield* Deferred.make<void>();
+      const readAgain = yield* Deferred.make<void>();
+      // B's run keeps running: the wait there holds until the run is read
+      // again, and that read answers at once.
+      const b = yield* serveBox(seen, linkSession, (input) =>
+        Effect.gen(function* () {
+          if (input.timeoutMs > 1) {
+            yield* Deferred.succeed(waitingThere, undefined);
+            yield* Deferred.await(readAgain);
+          } else {
+            yield* Deferred.succeed(readAgain, undefined);
+          }
+          return {
+            threadId: input.threadId,
+            run: { id: boxRun, status: "running" } as unknown as OrchestrationV2Run,
+            timedOut: true,
+          };
+        }),
+      );
+      const a = yield* makeLaptop;
+      yield* linkTo(a.links, b, "auto");
+      yield* Ref.set(linkSession, (yield* b.linkedSessions)[0]!.sessionId);
+
+      const waiting = yield* a
+        .call("thread:laptop-full", "t3_thread_wait", {
+          environmentId: box.environmentId,
+          threadId: boxThread,
+          timeoutMs: 600_000,
+        })
+        .pipe(Effect.forkChild);
+      // Another thread here answers while the wait is held there.
+      yield* Deferred.await(waitingThere);
+      const sender = ThreadId.make("thread:laptop-sender");
+      const messageId = MessageId.make("message:laptop-answer");
+      yield* Deferred.succeed(a.incoming, {
+        message: {
+          id: messageId,
+          createdBy: "agent",
+          senderThreadId: sender,
+          text: "Done here.",
+        } as OrchestrationV2ConversationMessage,
+        delivery: "steered" as const,
+      });
+      const waited = yield* Fiber.join(waiting);
+      expect(waited.structuredContent).toEqual({
+        threadId: boxThread,
+        runId: boxRun,
+        status: "running",
+        timedOut: false,
+        messageReceived: {
+          messageId,
+          createdBy: "agent",
+          senderThreadId: sender,
+          senderTitle: sender,
+          preview: "Done here.",
+          delivery: "steered",
+        },
+      });
+      // The held piece, then one short read of the run's state; the box
+      // never watches for the laptop thread's messages itself.
+      const waits = (yield* Ref.get(seen)).waits;
+      expect(waits.map(({ timeoutMs }) => timeoutMs)).toEqual([
+        PeerForwarding.FORWARDED_WAIT_CHUNK_MS,
+        1,
+      ]);
+      expect(waits.every((input) => input.waitingThreadId === undefined)).toBe(true);
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

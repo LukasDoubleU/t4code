@@ -2882,6 +2882,11 @@ const make = Effect.gen(function* () {
           }),
           threadId: input.threadId,
           ...(parent === undefined ? {} : { senderThreadId: parent.thread.id }),
+          // Only a link forwards a message from a thread on another machine; an agent here
+          // sends as its own thread.
+          ...(input.sentFrom === undefined || scope.client?.linked !== true
+            ? {}
+            : { sentFrom: input.sentFrom }),
           messageId,
           text: input.message,
           attachments: [],

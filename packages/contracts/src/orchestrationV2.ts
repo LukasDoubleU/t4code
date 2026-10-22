@@ -130,11 +130,26 @@ export const OrchestrationV2DelegatedFrom = Schema.Struct({
 export type OrchestrationV2DelegatedFrom = typeof OrchestrationV2DelegatedFrom.Type;
 
 /**
+ * The thread in a linked environment that sent this message. `senderThreadId` names only threads
+ * here, which a client of this environment can look up; this one may be on a machine it has never
+ * seen, so it carries that machine's own name for itself.
+ */
+export const OrchestrationV2SentFrom = Schema.Struct({
+  ...OrchestrationV2DelegatedFrom.fields,
+  label: Schema.String,
+});
+export type OrchestrationV2SentFrom = typeof OrchestrationV2SentFrom.Type;
+
+/**
  * The thread whose agent started this one with `t3_thread_launch`, here or in
  * a linked environment. Unlike `delegatedFrom`, this thread is not its
  * subagent but a top-level thread of its own; a pinned launcher's are its topics.
  */
-export const OrchestrationV2LaunchedBy = OrchestrationV2DelegatedFrom;
+export const OrchestrationV2LaunchedBy = Schema.Struct({
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+  title: Schema.String,
+});
 export type OrchestrationV2LaunchedBy = typeof OrchestrationV2LaunchedBy.Type;
 
 export const OrchestrationV2NativeRefStrength = Schema.Literals(["strong", "weak", "none"]);
@@ -1201,6 +1216,7 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
   ...OrchestrationV2CreationFields,
   scheduledTaskId: Schema.optional(ScheduledTaskId),
   senderThreadId: Schema.optional(ThreadId),
+  sentFrom: Schema.optional(OrchestrationV2SentFrom),
   /**
    * The message is the script a provider-native workflow run executes, not prose. Clients show
    * the workflow's opening instead and keep the script behind a disclosure.
@@ -1519,6 +1535,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
     messageId: MessageId,
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
+    sentFrom: Schema.optional(OrchestrationV2SentFrom),
     workflowScript: OrchestrationV2ConversationMessage.fields.workflowScript,
     inputIntent: OrchestrationV2UserMessageInputIntent,
     text: Schema.String,
@@ -2300,6 +2317,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     messageId: MessageId,
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
+    sentFrom: Schema.optional(OrchestrationV2SentFrom),
     workflowScript: OrchestrationV2ConversationMessage.fields.workflowScript,
     inputIntent: OrchestrationV2UserMessageInputIntent,
     text: Schema.String,
@@ -3008,6 +3026,7 @@ export const OrchestrationV2Command = Schema.Union([
     ...OrchestrationV2CreationFields,
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
+    sentFrom: Schema.optional(OrchestrationV2SentFrom),
     commandId: CommandId,
     threadId: ThreadId,
     messageId: MessageId,

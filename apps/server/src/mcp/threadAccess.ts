@@ -227,11 +227,16 @@ export const receivedMessage = Effect.fn("mcp.receivedMessage")(function* (
       : yield* threads
           .getThreadShell(message.senderThreadId)
           .pipe(Effect.orElseSucceed(() => null));
+  // A thread on a linked machine is not here, but t3_thread_send finds it there by its id.
+  const remote = message.senderThreadId === undefined ? message.sentFrom : undefined;
   return {
     messageId: message.id,
     createdBy: message.createdBy,
     ...(message.senderThreadId === undefined ? {} : { senderThreadId: message.senderThreadId }),
     ...(sender === null ? {} : { senderTitle: sender.title }),
+    ...(remote === undefined
+      ? {}
+      : { senderThreadId: remote.threadId, senderTitle: `${remote.title} · ${remote.label}` }),
     preview: truncate(message.text.replace(/\s+/g, " "), WAIT_MESSAGE_PREVIEW_CHARS),
     delivery,
   } satisfies OrchestratorMcpThreadWaitMessage;

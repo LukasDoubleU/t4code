@@ -1,6 +1,7 @@
 import {
   type OrchestrationV2Actor,
   type OrchestrationV2CreationSource,
+  type OrchestrationV2SentFrom,
   ScheduledTaskId,
 } from "@t3tools/contracts";
 
@@ -50,4 +51,21 @@ export function resolveUserMessagePresentation(message: {
           : "agent",
     scheduledTaskId: undefined,
   };
+}
+
+/**
+ * The label of a folded message from another agent. A thread on a linked machine is named with
+ * that machine, since a title alone reads as a thread here.
+ */
+export function agentMessageSenderLabel(input: {
+  /** The sending thread's current title, when this client sees that thread. */
+  readonly senderTitle: string | undefined;
+  readonly sentFrom: Pick<OrchestrationV2SentFrom, "title" | "label"> | undefined;
+  /** This client's own name for the sender's machine, when it is connected there. */
+  readonly environmentLabel?: string | undefined;
+}): string {
+  const title = input.senderTitle?.trim() || input.sentFrom?.title.trim() || "Agent";
+  if (input.sentFrom === undefined) return title;
+  const machine = input.environmentLabel?.trim() || input.sentFrom.label.trim();
+  return machine ? `${title} · ${machine}` : title;
 }

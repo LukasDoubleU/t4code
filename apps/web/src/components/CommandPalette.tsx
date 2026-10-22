@@ -77,6 +77,7 @@ import {
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
+  PlayIcon,
   QuoteIcon,
   RotateCcwIcon,
   SettingsIcon,
@@ -85,6 +86,9 @@ import {
   TextSearchIcon,
 } from "lucide-react";
 import { selectedAssistantCitation } from "./chat/AssistantSelectionToolbar";
+import { goAheadTarget } from "./chat/AssistantReactions.logic";
+import { useReplyReactions } from "./chat/AssistantReactions";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
 import {
   useDeferredValue,
@@ -128,7 +132,7 @@ import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesys
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
 import { serverEnvironment } from "../state/server";
-import { threadEnvironment } from "../state/threads";
+import { environmentThreadDetails, threadEnvironment } from "../state/threads";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -460,6 +464,7 @@ const selectCommandPaletteClientSettings = (settings: ClientSettings) => ({
   sidebarProjectGroupingOverrides: settings.sidebarProjectGroupingOverrides,
   sidebarProjectSortOrder: settings.sidebarProjectSortOrder,
   sidebarThreadSortOrder: settings.sidebarThreadSortOrder,
+  timestampFormat: settings.timestampFormat,
 });
 
 function useSortedProjectGroups(environmentLabelById: ReadonlyMap<EnvironmentId, string>) {
@@ -795,6 +800,16 @@ function OpenCommandPaletteDialog(props: {
         selectedCitation.sourceAnchor,
       );
     if (!cited) throw new Error("The composer is not ready to take the quote.");
+  });
+  const goAheadThreadRef =
+    paletteRouteTarget?.kind === "server" ? paletteRouteTarget.threadRef : null;
+  const replyReactions = useReplyReactions(goAheadThreadRef?.environmentId ?? null);
+  const [goAheadReply] = useState(() => {
+    const thread =
+      goAheadThreadRef === null
+        ? null
+        : appAtomRegistry.get(environmentThreadDetails.threadAtom(goAheadThreadRef));
+    return thread === null ? null : goAheadTarget(thread.projection, thread.projection.thread.id);
   });
   const projects = useProjects();
   const referenceThreadRef =
@@ -1699,6 +1714,18 @@ function OpenCommandPaletteDialog(props: {
       icon: <QuoteIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "chat.citeSelection",
       run: citeSelectionInComposer,
+    });
+  }
+
+  if (goAheadReply !== null && replyReactions.available) {
+    actionItems.push({
+      kind: "action",
+      value: "action:go-ahead",
+      title: "👍 Go ahead with the latest reply",
+      searchTerms: ["go ahead", "approve", "thumbs up", "react", "reply", "continue"],
+      icon: <PlayIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "chat.goAhead",
+      run: () => replyReactions.goAhead(goAheadReply, clientSettings.timestampFormat),
     });
   }
 

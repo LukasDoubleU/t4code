@@ -110,6 +110,8 @@ jobs:
             echo "RELEASE_VERSION=$version"
             echo "RELEASE_TAG=$tag"
             echo "RELEASE_KIND=$kind"
+            # The release notes list what was merged since that release.
+            echo "PREVIOUS_RELEASE_TAG=${latest:-}"
           } >> "$GITHUB_ENV"
 
       # The build scripts run Vite+ (`vp`), which installs pnpm 11.10.0 from
@@ -221,7 +223,20 @@ jobs:
           notes="$RUNNER_TEMP/release-notes.md"
           if [[ "$RELEASE_KIND" == release ]]; then
             title="t4code v$RELEASE_VERSION"
-            echo "Windows x64 build of $GITHUB_SHA. The installer is unsigned, so SmartScreen warns when a copy downloaded in a browser is first run." > "$notes"
+            # The checkout is shallow, so the compare API lists the fork's
+            # "Merge #<pr>: <title>" commits since the previous release.
+            whats_new=""
+            if [[ -n "$PREVIOUS_RELEASE_TAG" ]]; then
+              whats_new="$(gh api --paginate "repos/$GITHUB_REPOSITORY/compare/$PREVIOUS_RELEASE_TAG...$GITHUB_SHA" \
+                --jq '.commits[].commit.message | split("\n")[0] | select(test("^Merge #[0-9]+: ")) | capture("^Merge #(?<n>[0-9]+): (?<t>.*)$") | "- \((.t[0:1] | ascii_upcase) + .t[1:]) (#\(.n))"')"
+            fi
+            {
+              if [[ -n "$whats_new" ]]; then
+                printf "## What's new\n\n%s\n\n" "$whats_new"
+              fi
+              echo "Windows x64 build of $GITHUB_SHA. The installer is unsigned, so SmartScreen warns when a copy downloaded in a browser is first run."
+            } > "$notes"
+            cat "$notes"
             create_flags=()
             publish_flags=(--latest)
           else

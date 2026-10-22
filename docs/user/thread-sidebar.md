@@ -43,9 +43,14 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
-## Pin and reorder threads
+## Experts: pin and reorder threads
 
-Pin a thread from its menu to keep it above your active work.
+Pin a thread from its menu to keep it above your active work. Pinned threads form the
+**Experts** section, for the threads you keep for weeks. On web and desktop, click its header,
+which shows how many there are, to collapse or expand it; each device remembers its choice.
+Collapsed, the section keeps only the thread you have open, and a thread dropped onto the
+header is pinned as the menu's **Pin** would. Experts lists the pinned threads of every
+environment the app is connected to, and a row from another machine names that machine.
 
 On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
 a notification with **Undo** for five seconds. Undo restores the thread's previous
@@ -65,17 +70,17 @@ scroll position instead of following the thread to its new place in the list.
 Automatic settlement skips pinned threads. Settling a thread yourself removes its pin.
 
 On web and desktop, drag a thread between sections to change its state. Drag a thread up into
-the pinned section to pin it at the spot you drop it; drag a pinned thread down into the active
+Experts to pin it at the spot you drop it; drag a pinned thread down into the active
 list to unpin it. Dragging a thread onto the **Settled** header settles it, and dragging a settled
 thread into the active list un-settles it. A snoozed thread can be dragged out of the snoozed
 shelf, which wakes it, but threads cannot be dragged into the shelf because snoozing needs a wake
-time. Dragging a pinned thread out of the pinned section does not ask for unpin confirmation.
-Pinned and active boundary labels appear only while dragging, without moving the rows. The
-other rows slide aside to show where the thread will land. When you cross into another section,
+time. Dragging a pinned thread out of Experts does not ask for unpin confirmation.
+The Active boundary label, and the Experts label while nothing is pinned, appear only while
+dragging, without moving the rows. The other rows slide aside to show where the thread will land. When you cross into another section,
 the dragged thread shows the action the drop performs, with its icon: **Pin**, **Unpin**,
 **Settle**, **Un-settle**, **Wake**, **Background**, or **Bring to front**. Its status and hover
 actions hide during the drag. A pinned
-thread keeps its pin only while it stays in the pinned section; once it leaves, the badge takes
+thread keeps its pin only while it stays in Experts; once it leaves, the badge takes
 over. Reordering within the same section shows no badge. When there are no pins, drag to the top
 edge to pin a thread. Section labels stay readable for the whole drag, and the section the
 thread is over takes the accent color. Section labels also
@@ -190,7 +195,7 @@ Turn on **Settings → Beta → Working section** on web and desktop, or **Setti
 Thread behavior → Working section** on iOS and Android, to move threads that are working or
 monitoring into a collapsed **Working** section below the active list. A thread returns to the top
 of the active list when it finishes, fails, or needs an approval or answer. The Working section
-lists the thread you last sent work to first. Pinned threads stay in the pinned section. Each
+lists the thread you last sent work to first. Pinned threads stay in Experts. Each
 device keeps its own choice.
 
 While this is on, the active list is ordered by when each thread last came back to you, so you

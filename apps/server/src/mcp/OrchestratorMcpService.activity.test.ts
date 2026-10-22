@@ -1,5 +1,6 @@
 import {
   EnvironmentId,
+  MessageId,
   NodeId,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadShell,
@@ -10,6 +11,7 @@ import {
   ScheduledTaskId,
   ThreadId,
 } from "@t3tools/contracts";
+import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -749,5 +751,93 @@ it("readThread exposes the stored sender thread only for thread-sent messages", 
       { messageId: "message-from-user" },
     ]);
     expect(result.items[1]).not.toHaveProperty("senderThreadId");
+  }).pipe(Effect.provide(layer), Effect.runPromise);
+});
+
+it("readThread shows citations the way the agent received them", async () => {
+  const shell = liveThreadShell(parentThreadId);
+  const replyId = MessageId.make("message-cited-reply");
+  const stored = `${serializeAssistantCitation({
+    version: 1,
+    environmentId,
+    threadId: parentThreadId,
+    messageId: replyId,
+    text: "Ship it behind a flag.",
+    start: 0,
+    end: 22,
+    prefix: "",
+    suffix: "",
+    comment: "Which flag?",
+  })} Thanks`;
+  const projection = {
+    ...idleThreadProjection(shell),
+    messages: [
+      {
+        id: replyId,
+        role: "assistant",
+        text: "Ship it behind a flag.",
+        createdAt: DateTime.makeUnsafe("2026-08-04T11:59:00.000Z"),
+      },
+      { id: "message-citing", role: "user", text: stored, createdAt: now },
+    ],
+    visibleTurnItems: [
+      {
+        position: 0,
+        visibility: "local",
+        sourceThreadId: parentThreadId,
+        sourceItemId: "item-message-citing",
+        item: {
+          id: "item-message-citing",
+          type: "user_message",
+          messageId: "message-citing",
+          runId: activeRunId,
+          status: "completed",
+          title: null,
+          text: stored,
+          updatedAt: now,
+        },
+      },
+    ],
+  } as unknown as OrchestrationV2ThreadProjection;
+  const requestedMessageIds: unknown[] = [];
+  const layer = layerOrchestratorService.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
+          getThreadShell: () => Effect.succeed(shell),
+          getThreadRecords: (_threadId, _fields, filter) => {
+            if (filter?.messageIds) requestedMessageIds.push(filter.messageIds);
+            return Effect.succeed(projection);
+          },
+          getProjectThreadRecords: () => Effect.succeed(projection),
+          getTimelinePage: () =>
+            Effect.succeed({ items: projection.visibleTurnItems, totalItems: 1, hasMore: false }),
+        }),
+        ServerSettings.layerTest(),
+        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
+        NodeCrypto.layer,
+      ),
+    ),
+  );
+
+  await Effect.gen(function* () {
+    const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+    const result = yield* service.readThread(makeScope(), { threadId: parentThreadId });
+    expect(requestedMessageIds).toEqual([["message-citing", replyId]]);
+    expect(result.items[0]?.text).toBe(
+      [
+        "Quoted from an earlier assistant reply (2026-08-04 11:59 UTC):",
+        "> Ship it behind a flag.",
+        "",
+        "User comment: Which flag?",
+        "",
+        "Thanks",
+      ].join("\n"),
+    );
   }).pipe(Effect.provide(layer), Effect.runPromise);
 });

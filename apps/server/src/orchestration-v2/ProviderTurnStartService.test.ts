@@ -4,6 +4,7 @@ import { it as effectIt } from "@effect/vitest";
 import {
   CheckpointScopeId,
   ContextTransferId,
+  EnvironmentId,
   MessageId,
   NodeId,
   ProviderSessionId,
@@ -18,6 +19,7 @@ import {
   type OrchestrationV2ThreadProjection,
   OrchestrationV2DomainEvent,
 } from "@t3tools/contracts";
+import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -1172,6 +1174,59 @@ effectIt.effect("does not mistake a failed state read for a superseded run", () 
     const finalizeCheck = yield* Effect.flip(controls.shouldFinalizeRun!());
     expect(startCheck._tag).toBe("ProjectionStoreReadError");
     expect(finalizeCheck._tag).toBe("ProjectionStoreReadError");
+  }),
+);
+
+effectIt.effect("starts the provider turn with each citation as a readable quote", () =>
+  Effect.gen(function* () {
+    const threadId = ThreadId.make("thread-native-account-command");
+    const replyId = MessageId.make("reply-native-account-command");
+    const stored = `${serializeAssistantCitation({
+      version: 1,
+      environmentId: EnvironmentId.make("environment-native-account-command"),
+      threadId,
+      messageId: replyId,
+      text: "Run the migration first.",
+      start: 0,
+      end: 24,
+      prefix: "",
+      suffix: " Then deploy.",
+      comment: "Before the deploy?",
+    })}\nGo ahead.`;
+    const harness = makeLocalCommandHarness({ text: stored, failReadsAfterRunning: true });
+    const projection = harness.projection();
+    const userMessage = projection.messages.at(-1)!;
+    harness.setProjection({
+      ...projection,
+      messages: [
+        {
+          ...userMessage,
+          id: replyId,
+          role: "assistant",
+          text: "Run the migration first. Then deploy.",
+          createdAt: DateTime.makeUnsafe("2026-09-04T11:58:00Z"),
+        },
+        userMessage,
+      ],
+    });
+
+    yield* harness.start;
+
+    expect(harness.getThreadRecords).toHaveBeenCalledWith(threadId, ["messages"], {
+      messageIds: [replyId],
+      messageRoles: ["assistant"],
+    });
+    expect(harness.startRootRun.mock.calls[0]?.[0].message.text).toBe(
+      [
+        "Quoted from an earlier assistant reply (2026-09-04 11:58 UTC):",
+        "> Run the migration first.",
+        "",
+        "User comment: Before the deploy?",
+        "",
+        "Go ahead.",
+      ].join("\n"),
+    );
+    expect(harness.projection().messages.at(-1)?.text).toBe(stored);
   }),
 );
 

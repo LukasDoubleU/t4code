@@ -397,6 +397,37 @@ describe("t3_thread_wait wakes on a message for the waiting thread", () => {
     ),
   );
 
+  it.live("ends at once on an answer that was queued just before the wait began", () =>
+    withThreads(({ service, orchestrator, provider }) =>
+      Effect.gen(function* () {
+        // B answers between A's send and A's wait call.
+        const sent = yield* service.sendToThread(scopeOf(answerer), {
+          threadId: waiter,
+          message: answer,
+          mode: "queue",
+        });
+        expect(sent.delivery).toBe("queued");
+
+        const waited = yield* service.waitForThread(scopeOf(waiter), {
+          threadId: answerer,
+          timeoutMs: 600_000,
+        });
+        expect(waited).toMatchObject({
+          threadId: answerer,
+          status: "running",
+          timedOut: false,
+          messageReceived: {
+            messageId: sent.messageId,
+            senderThreadId: answerer,
+            delivery: "steered",
+          },
+        });
+        expect(yield* Queue.take(provider.steers)).toEqual({ threadId: waiter, text: answer });
+        expect(queuedRuns(yield* orchestrator.getThreadProjection(waiter))).toEqual([]);
+      }),
+    ),
+  );
+
   it.live("ends on a message from the user", () =>
     withThreads(({ service, orchestrator, provider, watching }) =>
       Effect.gen(function* () {

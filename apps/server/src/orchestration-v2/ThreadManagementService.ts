@@ -168,7 +168,7 @@ export interface ThreadManagementWaitInput {
   readonly untilDelegatedWorkSettled?: boolean;
   /**
    * The thread whose turn is blocked in this wait. A message that reaches it
-   * after the wait started ends the wait (`awaitIncomingMessage`).
+   * ends the wait (`awaitIncomingMessage`).
    */
   readonly waitingThreadId?: ThreadId;
 }
@@ -433,9 +433,10 @@ export interface ThreadManagementServiceShape {
   ) => Effect.Effect<ThreadManagementWaitResult, ThreadManagementError>;
   /**
    * The first message that reaches `threadId` from now on, from the user, an
-   * agent or T3 itself. A queued one joins the thread's running turn as a
-   * steer when that turn can take one, so the agent blocked in a wait gets it
-   * once instead of again as its next turn.
+   * agent or T3 itself, or one already queued during its running turn that
+   * the turn can take. A queued one joins the running turn as a steer when
+   * that turn can take one, so the agent blocked in a wait gets it once
+   * instead of again as its next turn.
    */
   readonly awaitIncomingMessage: (
     threadId: ThreadId,
@@ -954,14 +955,57 @@ const make = Effect.gen(function* () {
   );
 
   /**
+   * The oldest message queued during the thread's running turn that the turn
+   * can take as a steer now. One that would stay queued is left out: it would
+   * end every later wait of the turn the moment it starts.
+   */
+  const queuedForRunningTurn = Effect.fn("ThreadManagementService.queuedForRunningTurn")(function* (
+    threadId: ThreadId,
+  ) {
+    const records = yield* orchestrator.getThreadRecords(threadId, [
+      "runs",
+      "providerTurns",
+      "providerThreads",
+      "providerSessions",
+    ]);
+    const turn = activeSteeringTarget(records);
+    const queued = records.runs.filter((run) => run.status === "queued");
+    if (turn?.startedAt == null || queued.length === 0) return undefined;
+    const turnStartedAt = turn.startedAt;
+    const { messages } = yield* orchestrator.getThreadRecords(threadId, ["messages"], {
+      messageIds: queued.map((run) => run.userMessageId),
+    });
+    return messages
+      .filter(
+        (message) =>
+          message.role === "user" &&
+          queued.some((run) => run.userMessageId === message.id) &&
+          message.delegatedCompletion === undefined &&
+          message.notification === undefined &&
+          // One queued before the turn started waits for a turn of its own.
+          DateTime.isGreaterThanOrEqualTo(message.createdAt, turnStartedAt),
+      )
+      .toSorted((left, right) => DateTime.Order(left.createdAt, right.createdAt))[0];
+  });
+
+  /**
    * Marks where `threadId`'s messages stand now and returns the wait for the
    * next one, so a message that arrives while the caller still reads counts.
+   * A message already queued during the running turn counts as well: it
+   * reached the thread just before the wait did.
    */
   const watchIncomingMessages = Effect.fn("ThreadManagementService.watchIncomingMessages")(
     function* (threadId: ThreadId) {
       const since = yield* DateTime.now;
       const afterSequence = yield* orchestrator.getThreadEventSequence(threadId);
-      return orchestrator
+      const alreadyQueued = queuedForRunningTurn(threadId).pipe(
+        Effect.flatMap((message) =>
+          message === undefined
+            ? Effect.succeed(undefined)
+            : deliverIncomingMessage(threadId, message),
+        ),
+      );
+      const arriving = orchestrator
         .streamStoredEventsFrom({ threadId, afterSequence, eventType: "message.updated" })
         .pipe(
           Stream.map((stored) => stored.event),
@@ -983,6 +1027,11 @@ const make = Effect.gen(function* () {
             }),
           ),
         );
+      return alreadyQueued.pipe(
+        Effect.flatMap((incoming) =>
+          incoming === undefined ? arriving : Effect.succeed(incoming),
+        ),
+      );
     },
   );
 

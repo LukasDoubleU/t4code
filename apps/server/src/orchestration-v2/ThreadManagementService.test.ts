@@ -801,6 +801,114 @@ it.effect(
     }),
 );
 
+it.effect("waitForThread steers in an answer queued during the waiting turn before it began", () =>
+  Effect.gen(function* () {
+    const projectId = ProjectId.make("project:thread-management:wait-queued");
+    const threadId = ThreadId.make("thread:thread-management:wait-queued:target");
+    const runId = RunId.make("run:thread-management:wait-queued:target");
+    const waitingThreadId = ThreadId.make("thread:thread-management:wait-queued:waiting");
+    const turnRunId = RunId.make("run:thread-management:wait-queued:turn");
+    const dispatched: Array<OrchestrationV2Command> = [];
+    const at = (seconds: number) => DateTime.makeUnsafe(seconds * 1_000);
+    const queued = (name: string, createdAt: number, extra: object = {}) => ({
+      run: {
+        id: RunId.make(`run:thread-management:wait-queued:${name}`),
+        status: "queued",
+        userMessageId: MessageId.make(`message:thread-management:wait-queued:${name}`),
+      },
+      message: {
+        id: MessageId.make(`message:thread-management:wait-queued:${name}`),
+        runId: RunId.make(`run:thread-management:wait-queued:${name}`),
+        role: "user",
+        createdBy: "agent",
+        text: name,
+        createdAt: at(createdAt),
+        ...extra,
+      },
+    });
+    // The waiting turn started at 10 s. Only the answer arrived during it and
+    // can join it: the earlier prompt waits for a turn of its own, and a
+    // delegated task's report cannot be steered in.
+    const earlier = queued("earlier", 5);
+    const report = queued("report", 20, {
+      delegatedCompletion: { parentRunId: turnRunId, generation: 1, taskIds: [] },
+    });
+    const answer = queued("answer", 30);
+    const waitingThread = {
+      thread: { id: waitingThreadId, projectId, deletedAt: null },
+      runs: [
+        {
+          id: turnRunId,
+          status: "running",
+          startedAt: at(10),
+          activeAttemptId: "attempt:turn",
+          providerThreadId: "provider-thread:turn",
+        },
+        earlier.run,
+        report.run,
+        answer.run,
+      ],
+      messages: [earlier.message, report.message, answer.message],
+      providerTurns: [{ runAttemptId: "attempt:turn", status: "running" }],
+      providerThreads: [{ id: "provider-thread:turn", providerSessionId: "session:turn" }],
+      providerSessions: [
+        { id: "session:turn", capabilities: { turns: { supportsActiveSteering: true } } },
+      ],
+    };
+    const layerTest = ThreadManagementService.layer.pipe(
+      Layer.provide(Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({})),
+      Layer.provide(
+        Layer.mock(Orchestrator.OrchestratorV2)({
+          getThreadEventSequence: () => Effect.succeed(0),
+          restartContinuationPending: () => Effect.succeed(false),
+          streamStoredEventsFrom: () => Stream.never,
+          dispatch: (command) =>
+            Effect.sync(() => {
+              dispatched.push(command as OrchestrationV2Command);
+              return { sequence: 1, storedEvents: [] } as never;
+            }),
+          getThreadRecords: (id) =>
+            Effect.succeed(
+              (id === waitingThreadId
+                ? waitingThread
+                : {
+                    thread: { id, projectId, deletedAt: null },
+                    runs: [{ id: runId, status: "running" }],
+                  }) as unknown as OrchestrationV2ThreadProjection,
+            ),
+        }),
+      ),
+      Layer.provide(ServerSettings.layerTest()),
+      Layer.provide(layerReceiptsTest),
+    );
+    const service = yield* ThreadManagementService.ThreadManagementService.pipe(
+      Effect.provide(layerTest),
+    );
+    const result = yield* service.waitForThread({
+      projectId,
+      threadId,
+      runId,
+      timeoutMs: 60 * 60 * 1_000,
+      waitingThreadId,
+    });
+
+    expect(result).toMatchObject({
+      timedOut: false,
+      run: { id: runId, status: "running" },
+      messageReceived: { message: { id: answer.message.id }, delivery: "steered" },
+    });
+    expect(dispatched).toEqual([
+      {
+        type: "queued-message.promote-to-steer",
+        commandId: CommandId.make(`server:wait-wake-steer:${answer.run.id}`),
+        threadId: waitingThreadId,
+        queuedRunId: answer.run.id,
+        targetRunId: turnRunId,
+      },
+    ]);
+  }),
+);
+
 it.effect("waitForThread follows a restart continuation instead of the cut run", () =>
   Effect.gen(function* () {
     const projectId = ProjectId.make("project:thread-management:wait-restart");

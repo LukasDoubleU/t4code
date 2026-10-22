@@ -249,6 +249,8 @@ if ($env:SSH_CONNECTION -or $env:SSH_CLIENT) {
   # An app started from an SSH session runs outside the desktop session.
   Write-Host 'Connected over SSH, so T4 Code was not started: start it on that machine.'
 } else {
-  Start-Process -FilePath $app.Exe
-  Write-Host 'Started T4 Code.'
+  # Started through Explorer, the app belongs to no console: started directly, it stays attached
+  # to this script's window, and closing that window ends T4 Code and every running agent.
+  Start-Process -FilePath (Join-Path $env:WINDIR 'explorer.exe') -ArgumentList ('"{0}"' -f $app.Exe)
+  Write-Host 'Started T4 Code. This window can be closed.'
 }

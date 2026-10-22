@@ -138,7 +138,7 @@ function PassageChips(props: {
   };
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1">
+    <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1">
       {passageReactionChips(props.reactions).map((chip) => (
         <span
           key={chip.key}

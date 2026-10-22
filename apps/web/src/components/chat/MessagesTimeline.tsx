@@ -2765,6 +2765,14 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
             />
           </AssistantCitationSource>
         </div>
+        {/* Under the reply itself: a passage can be on a reply that shows no footer. */}
+        <AssistantPassageReactionChips
+          environmentId={ctx.activeThreadEnvironmentId}
+          threadRef={ctx.threadRef}
+          messageId={row.message.id}
+          projectedItem={row.projectedItem}
+          reactions={row.message.passageReactions}
+        />
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
           routeThreadKey={ctx.routeThreadKey}
@@ -2867,8 +2875,7 @@ function AssistantMessageMeta({
 }) {
   const ctx = use(TimelineRowCtx);
   // A reaction chip stays visible, so its footer does too; the buttons still wait for hover.
-  const reacted =
-    (message.reactions?.length ?? 0) > 0 || (message.passageReactions?.length ?? 0) > 0;
+  const reacted = (message.reactions?.length ?? 0) > 0;
   const revealButtonsOnly = !alwaysVisible && (ctx.alwaysShowMessageTimes || reacted);
   // A reply taller than the chat area keeps its time here too: its header is out of view.
   const timeOnlyInTurnFold =
@@ -2892,13 +2899,6 @@ function AssistantMessageMeta({
         environmentId={ctx.activeThreadEnvironmentId}
         projectedItem={projectedItem}
         reactions={message.reactions}
-      />
-      <AssistantPassageReactionChips
-        environmentId={ctx.activeThreadEnvironmentId}
-        threadRef={ctx.threadRef}
-        messageId={message.id}
-        projectedItem={projectedItem}
-        reactions={message.passageReactions}
       />
       <div
         className={cn(

@@ -45,6 +45,12 @@ sh install-t4.sh --dry-run   # download and check only, show the rest
 
 **Pair the desktop app.** On the server, `t3 pair` prints a one-time pairing link, `t3 pair --tailscale` one with a Tailscale HTTPS address. In the desktop app, open **Settings → Connections**, choose **Add environment** and paste it. See upstream's [remote access](../../docs/user/remote-access.md) guide for the other ways to connect.
 
+**T3 Connect.** For links between this server and your other machines, sign the server in to T3 Connect with `t3 connect`, then run `t3 service restart`: the running service only picks up the sign-in after a restart. Three things trip up a headless install:
+
+- `t3 connect` asks whether to download the relay client and waits for an answer, so run it in a terminal: over SSH use `ssh -t`, or it hangs without a prompt.
+- Its device approval expires after ten minutes; open the link and confirm the code promptly, or run it again.
+- After the restart, `journalctl --user -u t3code.service` should say that T3 Connect is reachable from other devices.
+
 **Update** by running the script again after a release; it backs up `userdata` first. `t3 update` on the server, and the update a client offers for a connected server, take this repository's releases as well, never upstream's, but make no backup. The repository and tag prefix they use are set in `packages/shared/src/cliRelease.ts`.
 
 **Restore a backup:** stop the service (`systemctl --user stop t3code.service`), delete `statev2.sqlite-wal` and `statev2.sqlite-shm` in `userdata`, copy the backup's files over `userdata`, then install the version that wrote them with `--version` and start the service with `t3 service restart`.

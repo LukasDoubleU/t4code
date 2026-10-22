@@ -5,7 +5,8 @@
 
 .DESCRIPTION
   Finds a release of the fork, downloads its Windows installer and checks it
-  against the release's SHA256SUMS, quits T4 Code, backs up the files in the
+  against the release's SHA256SUMS, asks T4 Code whether turns run, quits it
+  once none does or the user agrees, backs up the files in the
   T3 home's userdata, runs the installer silently, removes all but the newest
   install backups and starts the app again.
 
@@ -14,6 +15,9 @@
 
 .EXAMPLE
   pwsh -File scripts/t4/install-t4.ps1 -WhatIf
+
+.EXAMPLE
+  pwsh -File scripts/t4/install-t4.ps1 -Wait 60
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -24,7 +28,11 @@ param(
   # Install backups to keep after a successful install; older ones are removed.
   [ValidateRange(1, [int]::MaxValue)]
   [int] $KeepBackups = 3,
-  # Quit T4 Code without asking, even while agents or terminals run in it.
+  # Minutes to wait for running turns and terminal commands to finish before quitting T4 Code.
+  [ValidateRange(0, [int]::MaxValue)]
+  [int] $Wait = 0,
+  # Quit T4 Code without asking, even while turns or terminal commands run in
+  # it, or when it can't be asked.
   [switch] $Force
 )
 
@@ -81,16 +89,106 @@ function Get-AppProcesses($app) {
   Get-CimInstance Win32_Process | Where-Object { Test-Under $_.ExecutablePath $app.Dir }
 }
 
-# Agents and terminals are direct children of the app's processes. Its own
-# helpers ship with the app or live in the T3 home's tools (the T3 Connect
-# tunnel, the headless browser); git and gh run briefly for the server itself.
-function Get-AgentProcesses($app, $appProcesses) {
-  $ids = @($appProcesses.ProcessId)
-  $helpers = @($app.Dir, (Join-Path $t3Home 'tools'))
-  Get-CimInstance Win32_Process | Where-Object {
-    $_.ParentProcessId -in $ids -and $_.ProcessId -notin $ids -and
-    $_.Name -notin 'conhost.exe', 'git.exe', 'gh.exe' -and -not (Test-Under $_.ExecutablePath $helpers)
+# The installed app's own t3 CLI, run as plain Node the way the app runs its
+# server, so it opens the database at the version the server runs. Its output,
+# or nothing when it fails. The executable is a GUI app, which PowerShell
+# doesn't wait for when it is called directly.
+function Invoke-AppCli($app, [string[]] $arguments) {
+  $archive = Join-Path $app.Dir 'resources\server.asar'
+  if (-not (Test-Path -LiteralPath $archive)) { return $null }
+  $output = [IO.Path]::GetTempFileName()
+  $errors = [IO.Path]::GetTempFileName()
+  $env:ELECTRON_RUN_AS_NODE = '1'
+  try {
+    # Windows paths can't contain quotes, so quoting each argument is enough.
+    $quoted = @(Join-Path $archive 'apps\server\dist\bin.mjs') + $arguments | ForEach-Object { '"{0}"' -f $_ }
+    $run = Start-Process -FilePath $app.Exe -ArgumentList $quoted -Wait -PassThru -NoNewWindow `
+      -RedirectStandardOutput $output -RedirectStandardError $errors -WhatIf:$false
+    if ($run.ExitCode -eq 0) { Get-Content -LiteralPath $output -Raw }
+  } finally {
+    $env:ELECTRON_RUN_AS_NODE = $null
+    Remove-Item -LiteralPath $output, $errors -Force -ErrorAction SilentlyContinue -WhatIf:$false
   }
+}
+
+# A short-lived token that only reads, for asking the server what runs in it.
+function Open-ServerSession($app) {
+  $issued = Invoke-AppCli $app @('auth', 'session', 'issue', '--base-dir', $t3Home, '--scope', 'orchestration:read',
+    '--ttl', "$($Wait + 10)m", '--label', 'install-t4', '--json')
+  if (-not $issued) { return $null }
+  try { $issued | ConvertFrom-Json } catch { $null }
+}
+
+function Close-ServerSession($app, $session) {
+  if ($session) { Invoke-AppCli $app @('auth', 'session', 'revoke', '--base-dir', $t3Home, $session.sessionId) | Out-Null }
+}
+
+# What quitting would interrupt, as .Work, or $null when the server can't be
+# asked. Threads count while their turn is preparing, starting, running or
+# waiting for an answer; a provider session kept warm between turns is no turn.
+function Get-RunningWork($session) {
+  try {
+    $state = Get-Content -LiteralPath (Join-Path $userdata 'server-runtime.json') -Raw | ConvertFrom-Json
+    $snapshot = Invoke-RestMethod "$($state.origin)/api/orchestration/shell" -TimeoutSec 30 -Headers @{
+      authorization = "Bearer $($session.token)"
+      'x-t3-orchestration-protocol' = '2'
+    }
+  } catch { return $null }
+  if ($null -eq $snapshot.threads) { return $null }
+  $turns = @($snapshot.threads) + @($snapshot.archivedThreads) | Where-Object activityRunStatus |
+    ForEach-Object { '"{0}" ({1})' -f $_.title, $_.activityRunStatus }
+  # Terminals are shells the server starts without a command, unlike those
+  # provider CLIs start through. One counts while its shell has a child, a
+  # command running in it; a shell at its prompt doesn't, as a warm session doesn't.
+  $processes = @(Get-CimInstance Win32_Process)
+  $commands = $processes | Where-Object {
+    $_.ParentProcessId -eq $state.pid -and $_.Name -match '^(pwsh|powershell|cmd|bash|sh|zsh|fish|nu)\.exe$' -and
+    $_.CommandLine -notmatch '(?i)\s[/-](c|k|lc|command|file|encodedcommand)(\s|$)'
+  } | ForEach-Object {
+    $shell = $_
+    $child = $processes | Where-Object {
+      $_.ParentProcessId -eq $shell.ProcessId -and $_.Name -notin 'conhost.exe', 'OpenConsole.exe'
+    } | Select-Object -First 1
+    if ($child) { "a terminal ($($shell.Name)) running $($child.Name)" }
+  }
+  [pscustomobject]@{ Work = @(@($turns) + @($commands) | Where-Object { $_ }) }
+}
+
+# Waits up to -Wait minutes for running work to finish, then asks before
+# quitting what still runs, or when the server can't be asked.
+function Confirm-Quit($app) {
+  $session = Open-ServerSession $app
+  $running = $null
+  try {
+    $deadline = (Get-Date).AddMinutes($Wait)
+    $waiting = $false
+    while ($session -and ($running = Get-RunningWork $session) -and $running.Work.Count -gt 0 -and
+      -not $WhatIfPreference -and (Get-Date) -lt $deadline) {
+      if (-not $waiting) {
+        Write-Host "Waiting for T4 Code to finish (-Wait $Wait):"
+        $running.Work | ForEach-Object { Write-Host "  $_" }
+        $waiting = $true
+      }
+      Start-Sleep -Seconds 15
+    }
+  } finally {
+    Close-ServerSession $app $session
+  }
+  if (-not $running) {
+    Write-Host 'Could not ask T4 Code what runs in it. Quitting stops any turns and terminal commands.'
+    $advice = 'pass -Force to quit it anyway'
+  } elseif ($running.Work.Count -gt 0) {
+    Write-Host 'T4 Code is running:'
+    $running.Work | ForEach-Object { Write-Host "  $_" }
+    Write-Host 'Quitting stops them.'
+    $advice = 'pass -Wait <minutes> to let them finish, or -Force to quit it anyway'
+  } else {
+    if ($waiting) { Write-Host 'They finished.' }
+    return
+  }
+  if ($Force -or $WhatIfPreference) { return }
+  if ([Console]::IsInputRedirected) { Fail "cancelled; $advice" }
+  if ((Read-Host 'Quit T4 Code now? [y/N]') -notmatch '^y(es)?$') { Fail 'cancelled; T4 Code keeps running' }
 }
 
 function Wait-AppExit($app, [int] $seconds) {
@@ -101,14 +199,7 @@ function Wait-AppExit($app, [int] $seconds) {
 function Stop-App($app) {
   $processes = @(Get-AppProcesses $app)
   if ($processes.Count -eq 0) { return }
-  $agents = @(Get-AgentProcesses $app $processes)
-  if ($agents.Count -gt 0) {
-    $names = ($agents | Group-Object Name | ForEach-Object { "$($_.Name) x$($_.Count)" }) -join ', '
-    Write-Host "T4 Code is running agents or terminals ($names). Quitting stops them."
-    if (-not $Force -and -not $WhatIfPreference -and (Read-Host 'Quit T4 Code now? [y/N]') -notmatch '^y(es)?$') {
-      Fail 'cancelled; T4 Code keeps running'
-    }
-  }
+  Confirm-Quit $app
   if (-not $PSCmdlet.ShouldProcess('T4 Code', 'Quit')) { return }
 
   # --quit makes the running app quit the way Quit in its tray menu does. It

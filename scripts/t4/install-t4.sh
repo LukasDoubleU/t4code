@@ -5,11 +5,13 @@
 #   sh install-t4.sh                        newest release
 #   sh install-t4.sh --version 0.1.2-t4.14  a given release, as a version or tag
 #   sh install-t4.sh --dry-run              download and check only, show the rest
+#   sh install-t4.sh --wait 60              let running turns finish first
 #
 # Finds a release of the fork, downloads its Linux archive, checks it against
 # the release's SHA256SUMS and unpacks it into
 # <T3 home>/runtime/versions/<version>, the layout of upstream's install.sh and
-# `t3 update`. Then it stops the background service, backs up the files in
+# `t3 update`. Then it asks the server whether turns run, stops the
+# background service once none does or the user agrees, backs up the files in
 # the T3 home's userdata, points the `t3` launcher at the new version,
 # switches the service to it and removes all but the newest install backups.
 # scripts/t4/README.md describes each step.
@@ -39,8 +41,11 @@ Usage: install-t4.sh [options]
                         (t4-v0.1.2-t4.14). Defaults to the newest release.
   --dry-run             Download and check the archive, then only show what
                         would change.
+  --wait <minutes>      Wait up to that long for running turns and terminal
+                        commands to finish before restarting the service.
   --force               Restart the background service without asking, even
-                        while agents or terminals run in it.
+                        while turns or terminal commands run in it, or when
+                        the server can't be asked.
   --skip-backup         Don't back up userdata before installing.
   --keep-backups <n>    Install backups to keep after a successful install
                         (default 3); older ones are removed.
@@ -56,9 +61,107 @@ say() {
   printf '%s\n' "$1"
 }
 
+# --- Running work -----------------------------------------------------------
+
+# The threads in a shell snapshot (GET /api/orchestration/shell) whose turn is
+# preparing, starting, running or waiting for an answer, one `"<title>"
+# (<status>)` line each. A provider session kept warm between turns is no
+# turn. Fails when the file is no snapshot.
+running_turns() {
+  grep -oE '"([^"\\]|\\.)*"|[][{}:,]|[^][{}:,"[:space:]]+' "$1" | awk '
+    function text(token) {
+      token = substr(token, 2, length(token) - 2)
+      gsub(/\\"/, "\"", token)
+      gsub(/\\\\/, "\\", token)
+      return token
+    }
+    function thread() {
+      return depth == 3 && kind[3] == "{" && (key[1] == "threads" || key[1] == "archivedThreads")
+    }
+    $0 == "{" || $0 == "[" {
+      depth++
+      kind[depth] = $0
+      want_key = ($0 == "{")
+      if (thread()) { title = ""; status = "" }
+      next
+    }
+    $0 == "}" || $0 == "]" {
+      if (thread() && status != "" && status != "null") printf "\"%s\" (%s)\n", title, text(status)
+      depth--
+      want_key = 0
+      next
+    }
+    $0 == ":" { next }
+    $0 == "," { want_key = (kind[depth] == "{"); next }
+    want_key {
+      key[depth] = text($0)
+      want_key = 0
+      if (depth == 1 && key[1] == "threads") snapshot = 1
+      next
+    }
+    thread() && key[3] == "title" { title = text($0) }
+    thread() && key[3] == "activityRunStatus" { status = $0 }
+    END { exit !snapshot }
+  '
+}
+
+# Terminals run in t3code-terminal-<id>.scope units, their shells children of
+# the server process $1. One counts while its shell has a child, a command
+# running in it; a shell at its prompt doesn't, as a warm session doesn't.
+running_commands() {
+  processes="$(cat /proc/[0-9]*/stat 2> /dev/null |
+    awk '{ line = $0; sub(/.*\) /, "", line); split(line, field, " "); print $1, field[2] }')"
+  for shell in $(printf '%s\n' "$processes" | awk -v parent="$1" '$2 == parent { print $1 }'); do
+    grep -q '/t3code-terminal-' "/proc/$shell/cgroup" 2> /dev/null || continue
+    child="$(printf '%s\n' "$processes" | awk -v parent="$shell" '$2 == parent { print $1; exit }')"
+    [ -n "$child" ] || continue
+    printf 'a terminal in %s running %s\n' "$(readlink "/proc/$shell/cwd" 2> /dev/null || echo '?')" \
+      "$(cat "/proc/$child/comm" 2> /dev/null || echo '?')"
+  done
+}
+
+# The CLI of the version the service runs issues a short-lived token that
+# only reads; a newer one could migrate the database under the server.
+session_id=
+token=
+open_session() {
+  server_t3="$versions_dir/$service_version/t3"
+  { [ -n "$service_version" ] && [ -x "$server_t3" ]; } || return 1
+  issued="$("$server_t3" auth session issue --base-dir "$t3_home" --scope orchestration:read \
+    --ttl "$((wait_minutes + 10))m" --label install-t4 --json 2> /dev/null)" || return 1
+  session_id="$(printf '%s\n' "$issued" | sed -n 's/^ *"sessionId": *"\([^"]*\)".*/\1/p')"
+  token="$(printf '%s\n' "$issued" | sed -n 's/^ *"token": *"\([^"]*\)".*/\1/p')"
+  [ -n "$token" ]
+}
+
+close_session() {
+  if [ -n "$session_id" ]; then
+    "$server_t3" auth session revoke --base-dir "$t3_home" "$session_id" > /dev/null 2>&1 || true
+  fi
+  session_id=
+}
+
+# What a restart would interrupt, one line each. Fails when the server can't
+# be asked.
+running_work() {
+  state="$(cat "$userdata/server-runtime.json" 2> /dev/null)" || return 1
+  origin="$(printf '%s\n' "$state" | sed -n 's/.*"origin":"\([^"]*\)".*/\1/p')"
+  server_pid="$(printf '%s\n' "$state" | sed -n 's/.*"pid":\([0-9]*\).*/\1/p')"
+  { [ -n "$origin" ] && [ -n "$server_pid" ] && [ -n "$token" ]; } || return 1
+  # The token goes through stdin, so no process listing shows it.
+  shell_status="$(printf 'header = "authorization: Bearer %s"\n' "$token" |
+    curl --silent --config - --max-time 30 --header 'x-t3-orchestration-protocol: 2' \
+      --output "$work/shell.json" --write-out '%{http_code}' "$origin/api/orchestration/shell")" || return 1
+  [ "$shell_status" = 200 ] && running_turns "$work/shell.json" && running_commands "$server_pid"
+}
+
+# The functions alone, for tests.
+if [ "${INSTALL_T4_FUNCTIONS_ONLY:-}" = 1 ]; then return 0; fi
+
 version=
 dry_run=false
 force=false
+wait_minutes=0
 skip_backup=false
 keep_backups=3
 while [ $# -gt 0 ]; do
@@ -67,6 +170,8 @@ while [ $# -gt 0 ]; do
     --version=*) version="${1#*=}"; shift ;;
     --dry-run) dry_run=true; shift ;;
     --force) force=true; shift ;;
+    --wait) [ $# -ge 2 ] || fail "--wait needs a value"; wait_minutes="$2"; shift 2 ;;
+    --wait=*) wait_minutes="${1#*=}"; shift ;;
     --skip-backup) skip_backup=true; shift ;;
     --keep-backups) [ $# -ge 2 ] || fail "--keep-backups needs a value"; keep_backups="$2"; shift 2 ;;
     --keep-backups=*) keep_backups="${1#*=}"; shift ;;
@@ -76,6 +181,7 @@ while [ $# -gt 0 ]; do
 done
 case "$keep_backups" in '' | *[!0-9]*) fail "--keep-backups must be a whole number" ;; esac
 [ "$keep_backups" -ge 1 ] || fail "--keep-backups must be at least 1"
+case "$wait_minutes" in '' | *[!0-9]*) fail "--wait must be a whole number of minutes" ;; esac
 
 [ "$(uname -s)" = Linux ] || fail "this installs the Linux server; on Windows, use install-t4.ps1"
 case "$(uname -m)" in
@@ -91,6 +197,7 @@ staging=
 service_stopped=false
 cleanup() {
   status=$?
+  close_session
   rm -rf "$work"
   if [ -n "$staging" ]; then rm -rf "$staging"; fi
   if [ "$status" -ne 0 ] && "$service_stopped"; then
@@ -236,22 +343,45 @@ fi
 # --- Stop the service -------------------------------------------------------
 
 if "$service_active"; then
-  # Agents and terminals run in t3code-<name>-<id>.scope units of their own.
-  scopes="$(systemctl --user list-units --type=scope --state=running --plain --no-legend 't3code-*.scope' 2> /dev/null |
-    awk '{ print $1 }')" || scopes=
-  if [ -n "$scopes" ]; then
-    names="$(printf '%s\n' "$scopes" | sed 's/^t3code-\(.*\)-[^-]*\.scope$/\1/' | sort | uniq -c |
-      awk '{ printf "%s%s x%s", sep, $2, $1; sep = ", " }')"
-    say "The T4 Code server is running agents or terminals ($names). Restarting it stops them."
-    if ! "$force" && ! "$dry_run"; then
-      [ -t 0 ] || fail "cancelled; pass --force to restart it anyway"
-      printf 'Restart the T4 Code server now? [y/N] '
-      read -r answer || answer=
-      case "$answer" in
-        y | Y | yes | Yes | YES) ;;
-        *) fail "cancelled; the T4 Code server keeps running" ;;
-      esac
-    fi
+  asked=false
+  waiting=false
+  running=
+  if open_session; then
+    deadline=$(($(date +%s) + wait_minutes * 60))
+    while :; do
+      if ! running="$(running_work)"; then
+        asked=false
+        break
+      fi
+      asked=true
+      if [ -z "$running" ] || "$dry_run" || [ "$(date +%s)" -ge "$deadline" ]; then break; fi
+      if ! "$waiting"; then
+        say "Waiting for the T4 Code server to finish (--wait $wait_minutes):"
+        printf '%s\n' "$running" | sed 's/^/  /'
+        waiting=true
+      fi
+      sleep 15
+    done
+    close_session
+  fi
+  if "$asked" && [ -z "$running" ] && "$waiting"; then say "They finished."; fi
+  if ! "$asked"; then
+    say "Could not ask the T4 Code server what runs in it. Restarting it stops any turns and terminal commands."
+    advice="pass --force to restart it anyway"
+  elif [ -n "$running" ]; then
+    say "The T4 Code server is running:"
+    printf '%s\n' "$running" | sed 's/^/  /'
+    say "Restarting it stops them."
+    advice="pass --wait <minutes> to let them finish, or --force to restart it anyway"
+  fi
+  if { ! "$asked" || [ -n "$running" ]; } && ! "$force" && ! "$dry_run"; then
+    [ -t 0 ] || fail "cancelled; $advice"
+    printf 'Restart the T4 Code server now? [y/N] '
+    read -r answer || answer=
+    case "$answer" in
+      y | Y | yes | Yes | YES) ;;
+      *) fail "cancelled; the T4 Code server keeps running" ;;
+    esac
   fi
   if "$dry_run"; then
     say "Would stop the background service."

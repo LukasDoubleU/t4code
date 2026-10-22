@@ -188,7 +188,9 @@ import {
   rememberTimelinePosition,
   timelineContentOverflowsViewport,
 } from "./timelineScrollAnchoring";
+import { AssistantPassageReactionChips } from "./AssistantPassageReactions";
 import { AssistantReactionActions, AssistantReactionChips } from "./AssistantReactions";
+import { reactableReply } from "./AssistantReactions.logic";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { promptLinkFor } from "../promptLinks/copyPromptLink";
 import { PierreEntryIcon } from "./PierreEntryIcon";
@@ -2744,6 +2746,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           <AssistantCitationSource
             messageId={row.message.id}
             {...(ctx.threadRef ? { threadRef: ctx.threadRef } : {})}
+            reactionItemId={reactableReply(row.projectedItem)?.itemId}
             itemKey={row.id}
             request={ctx.citationRequest}
             listRef={ctx.listRef}
@@ -2762,6 +2765,14 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
             />
           </AssistantCitationSource>
         </div>
+        {/* Under the reply itself: a passage can be on a reply that shows no footer. */}
+        <AssistantPassageReactionChips
+          environmentId={ctx.activeThreadEnvironmentId}
+          threadRef={ctx.threadRef}
+          messageId={row.message.id}
+          projectedItem={row.projectedItem}
+          reactions={row.message.passageReactions}
+        />
         <AssistantChangedFilesSection
           turnSummary={row.assistantTurnDiffSummary}
           routeThreadKey={ctx.routeThreadKey}

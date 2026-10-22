@@ -908,6 +908,7 @@ function timelineItem(input: {
           reactions: input.row.item.reactions.map((reaction) => ({
             emoji: reaction.emoji,
             reactedAt: DateTime.formatIso(reaction.reactedAt),
+            ...(reaction.passage === undefined ? {} : { passage: reaction.passage.text }),
           })),
         }
       : {}),

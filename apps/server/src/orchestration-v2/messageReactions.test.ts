@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  EnvironmentId,
   EventId,
   MessageId,
   NodeId,
@@ -10,11 +11,13 @@ import {
   RunId,
   ThreadId,
   TurnItemId,
+  type AssistantPassage,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2MessageReaction,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
+import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -422,5 +425,181 @@ it.effect.each(storageCases)(
       );
       const next = yield* thread.startRun("message:next", "Thanks.", at("13:30:00"));
       assert.equal(next.text, "Thanks.");
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+/** `text` as it sits in `reply`, the way the selection toolbar captures it. */
+const passageOf = (reply: string, text: string): AssistantPassage => {
+  const start = reply.indexOf(text);
+  return { text, start, end: start + text.length, prefix: "", suffix: "" };
+};
+
+it.effect("sets and clears reactions on passages, one per passage, without starting a turn", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:reactions-passage");
+    yield* createThread(threadId);
+    const text = "Option A: patch it. Option B: rewrite the parser.";
+    const answer = replyItem({
+      threadId,
+      id: "reply:passage",
+      text,
+      repliedAt: at("13:20:00"),
+      ordinal: 1,
+    });
+    yield* projections.apply(itemEvent(answer));
+    const optionA = passageOf(text, "Option A: patch it.");
+    const optionB = passageOf(text, "Option B: rewrite the parser.");
+    const react = (
+      id: string,
+      emoji: "👍" | "👎",
+      reacted: boolean,
+      passage: AssistantPassage | undefined,
+    ) =>
+      orchestrator.dispatch({
+        type: "message.reaction.set",
+        commandId: CommandId.make(`reactions-passage-${id}`),
+        threadId,
+        itemId: answer.id,
+        emoji,
+        reacted,
+        ...(passage === undefined ? {} : { passage }),
+      });
+    const stored = Effect.gen(function* () {
+      const item = (yield* projections.getTurnItem({
+        threadId,
+        itemId: answer.id,
+      })) as AssistantReplyItem;
+      return (item.reactions ?? []).map((reaction) => [reaction.emoji, reaction.passage?.text]);
+    });
+
+    yield* react("whole", "👍", true, undefined);
+    yield* react("b-up", "👍", true, optionB);
+    yield* react("a-down", "👎", true, optionA);
+    assert.deepEqual(yield* stored, [
+      ["👍", undefined],
+      ["👍", optionB.text],
+      ["👎", optionA.text],
+    ]);
+
+    // 👎 on B replaces its 👍; the whole reply and A keep theirs.
+    yield* react("b-down", "👎", true, optionB);
+    assert.deepEqual(yield* stored, [
+      ["👍", undefined],
+      ["👎", optionA.text],
+      ["👎", optionB.text],
+    ]);
+
+    yield* react("whole-clear", "👍", false, undefined);
+    yield* react("a-clear", "👎", false, optionA);
+    assert.deepEqual(yield* stored, [["👎", optionB.text]]);
+    assert.deepEqual((yield* projections.getThreadRecords(threadId, ["runs"])).runs, []);
+  }).pipe(Effect.provide(layerOrchestrator)),
+);
+
+it.effect("rejects 👎 without a passage, and 👎 as a Go ahead", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:reactions-thumbs-down");
+    yield* createThread(threadId);
+    const answer = replyItem({
+      threadId,
+      id: "reply:thumbs-down",
+      text: "Drop the cache.",
+      repliedAt: at("13:20:00"),
+      ordinal: 1,
+    });
+    yield* projections.apply(itemEvent(answer));
+    for (const [id, extra] of [
+      ["whole", {}],
+      ["go-ahead", { passage: passageOf(answer.text, "Drop"), goAhead: true }],
+    ] as const) {
+      const error = yield* orchestrator
+        .dispatch({
+          type: "message.reaction.set",
+          commandId: CommandId.make(`reactions-thumbs-down-${id}`),
+          threadId,
+          itemId: answer.id,
+          emoji: "👎",
+          reacted: true,
+          ...extra,
+        })
+        .pipe(Effect.flip);
+      assert.instanceOf(error, Orchestrator.OrchestratorDispatchError);
+    }
+    const item = yield* projections.getTurnItem({ threadId, itemId: answer.id });
+    assert.isUndefined((item as AssistantReplyItem).reactions);
+  }).pipe(Effect.provide(layerOrchestrator)),
+);
+
+it.effect.each(storageCases)(
+  "$storage: tells the next turn about a passage reaction once, quoting the passage",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const thread = yield* makeDeliveryThread("reactions-passage-once");
+      yield* thread.startRun("message:first", "How do we fix the parser?", at("13:00:00"));
+      const text = "Two ways:\n\nOption A: patch it.\nOption B: rewrite\nthe parser.";
+      const answer = yield* thread.reply("reply:options", text, at("13:20:10"));
+      yield* thread.react(answer, [
+        thumbsUp(at("13:25:00")),
+        { emoji: "👎", reactedAt: at("13:26:00"), passage: passageOf(text, "Option A: patch it.") },
+        {
+          emoji: "👍",
+          reactedAt: at("13:27:00"),
+          passage: passageOf(text, "Option B: rewrite\nthe parser."),
+        },
+      ]);
+
+      const next = yield* thread.startRun("message:second", "Go with B.", at("13:30:00"));
+      assert.equal(
+        next.text,
+        [
+          'The user reacted 👍 to your reply from 2026-10-22 13:20 UTC ("Two ways:").',
+          "",
+          "The user reacted 👎 to this passage of your reply from 2026-10-22 13:20 UTC:",
+          "> Option A: patch it.",
+          "",
+          "The user reacted 👍 to this passage of your reply from 2026-10-22 13:20 UTC:",
+          "> Option B: rewrite",
+          "> the parser.",
+          "",
+          "Go with B.",
+        ].join("\n"),
+      );
+      const later = yield* thread.startRun("message:third", "Now test it.", at("13:40:00"));
+      assert.equal(later.text, "Now test it.");
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it.effect.each(storageCases)(
+  "$storage: Go ahead on a passage reaches the agent as its citation, not again as a note",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const thread = yield* makeDeliveryThread("reactions-passage-go-ahead");
+      yield* thread.startRun("message:first", "Which option?", at("13:00:00"));
+      const text = "Option A: patch it. Option B: rewrite the parser.";
+      const answer = yield* thread.reply("reply:go-ahead", text, at("13:20:10"));
+      const passage = passageOf(text, "Option B: rewrite the parser.");
+      yield* thread.react(answer, [
+        { emoji: "👍", reactedAt: at("13:25:00"), goAhead: true, passage },
+      ]);
+
+      const goAhead = yield* thread.startRun(
+        "message:go-ahead",
+        serializeAssistantCitation({
+          version: 1,
+          environmentId: EnvironmentId.make("environment:reactions"),
+          threadId: ThreadId.make("thread:reactions-passage-go-ahead"),
+          messageId: MessageId.make("reply:go-ahead"),
+          ...passage,
+          comment: "👍 Go ahead.",
+        }),
+        at("13:25:00"),
+      );
+      assert.match(goAhead.text, /^Quoted from an earlier assistant reply\b/);
+      assert.include(goAhead.text, "> Option B: rewrite the parser.\n\nUser comment: 👍 Go ahead.");
+      assert.notInclude(goAhead.text, "The user reacted");
     }).pipe(Effect.provide(storeLayer)),
 );

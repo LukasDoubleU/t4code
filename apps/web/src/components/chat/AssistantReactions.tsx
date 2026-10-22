@@ -6,9 +6,12 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import {
   AuthOrchestrationOperateScope,
+  type AssistantCitation,
+  type AssistantPassage,
   type EnvironmentId,
   type OrchestrationV2MessageReactionEmoji,
   type OrchestrationV2ProjectedTurnItem,
+  type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { PlayIcon, ThumbsUpIcon } from "lucide-react";
@@ -23,6 +26,7 @@ import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { citationPassage, passageGoAheadText } from "./AssistantPassageReactions.logic";
 import {
   goAheadText,
   latestReplyItemId,
@@ -58,20 +62,31 @@ export function useReplyReactions(environmentId: EnvironmentId | null) {
   });
 
   const react = async (
-    reply: ReactableReply,
+    reply: ReactionTarget,
     emoji: OrchestrationV2MessageReactionEmoji,
     reacted: boolean,
+    passage?: AssistantPassage,
   ) => {
     if (environmentId === null) return;
     const result = await setReaction({
       environmentId,
-      input: { threadId: reply.threadId, itemId: reply.itemId, emoji, reacted },
+      input: {
+        threadId: reply.threadId,
+        itemId: reply.itemId,
+        emoji,
+        reacted,
+        ...(passage === undefined ? {} : { passage }),
+      },
     });
     reportFailure(reacted ? `Could not react ${emoji}` : `Could not remove ${emoji}`, result);
   };
 
   // Sends through the queue like any message, so it starts a turn now or after the running one.
-  const goAhead = async (reply: ReactableReply, timestampFormat: TimestampFormat) => {
+  const sendGoAhead = async (
+    reply: ReactionTarget,
+    passage: AssistantPassage | undefined,
+    messageText: (turnItems: ReadonlyArray<OrchestrationV2TurnItem>) => string,
+  ) => {
     if (environmentId === null) return;
     const thread = appAtomRegistry.get(
       environmentThreadDetails.threadAtom(scopeThreadRef(environmentId, reply.threadId)),
@@ -87,14 +102,11 @@ export function useReplyReactions(environmentId: EnvironmentId | null) {
           emoji: "👍",
           reacted: true,
           goAhead: true,
+          ...(passage === undefined ? {} : { passage }),
         },
       }),
     );
-    const text = goAheadText({
-      latest: latestReplyItemId(thread.turnItems, reply.threadId) === reply.itemId,
-      repliedAt: reply.repliedAt,
-      timestampFormat,
-    });
+    const text = messageText(thread.turnItems);
     reportFailure(
       "Could not send Go ahead",
       await startTurn({
@@ -110,8 +122,23 @@ export function useReplyReactions(environmentId: EnvironmentId | null) {
     );
   };
 
-  return { available: supported && canOperate, react, goAhead };
+  const goAhead = (reply: ReactableReply, timestampFormat: TimestampFormat) =>
+    sendGoAhead(reply, undefined, (turnItems) =>
+      goAheadText({
+        latest: latestReplyItemId(turnItems, reply.threadId) === reply.itemId,
+        repliedAt: reply.repliedAt,
+        timestampFormat,
+      }),
+    );
+
+  /** Go ahead with a passage: its citation with the approval, so the agent reads the quote. */
+  const goAheadOnPassage = (reply: ReactionTarget, citation: AssistantCitation) =>
+    sendGoAhead(reply, citationPassage(citation), () => passageGoAheadText(citation));
+
+  return { available: supported && canOperate, react, goAhead, goAheadOnPassage };
 }
+
+type ReactionTarget = Pick<ReactableReply, "threadId" | "itemId">;
 
 /** 👍 and Go ahead with the reply's footer actions, revealed on hover like them. */
 export function AssistantReactionActions(props: {

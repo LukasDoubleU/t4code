@@ -714,7 +714,14 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
         updatedAt: DateTime.formatIso(item.updatedAt),
         ...(item.type === "user_message" ? { inputIntent: item.inputIntent } : {}),
         ...(item.type === "assistant_message" && item.reactions !== undefined
-          ? { reactions: item.reactions.map((reaction) => reaction.emoji) }
+          ? {
+              reactions: item.reactions.flatMap((reaction) =>
+                reaction.passage === undefined ? [reaction.emoji] : [],
+              ),
+              passageReactions: item.reactions.flatMap(({ emoji, passage }) =>
+                passage === undefined ? [] : [{ emoji, passage }],
+              ),
+            }
           : {}),
       };
       committedMessageIds.add(message.id);

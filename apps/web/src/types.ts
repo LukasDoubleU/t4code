@@ -1,5 +1,6 @@
 import { imageMimeType } from "@t3tools/shared/image";
 import type {
+  AssistantPassage,
   ChatFileAttachment as ContractChatFileAttachment,
   ChatImageAttachment as ContractChatImageAttachment,
   ChatUnknownAttachment as ContractChatUnknownAttachment,
@@ -96,8 +97,15 @@ export interface ChatMessage {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly inputIntent?: OrchestrationV2UserMessageInputIntent | undefined;
-  /** The user's reactions on an assistant reply. */
+  /** The user's reactions on an assistant reply as a whole. */
   readonly reactions?: ReadonlyArray<OrchestrationV2MessageReactionEmoji> | undefined;
+  readonly passageReactions?: ReadonlyArray<ChatPassageReaction> | undefined;
+}
+
+/** The user's reaction on a passage of an assistant reply. */
+export interface ChatPassageReaction {
+  readonly emoji: OrchestrationV2MessageReactionEmoji;
+  readonly passage: AssistantPassage;
 }
 
 export interface ProposedPlan {

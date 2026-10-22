@@ -1,6 +1,7 @@
 import {
   ASSISTANT_CITATION_MAX_TEXT_LENGTH,
   MessageId,
+  TurnItemId,
   type AssistantCitation,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -18,6 +19,9 @@ import {
   type SelectionActionPoint,
 } from "~/lib/selectionActions";
 import { Button } from "../ui/button";
+import { AssistantSelectionReactions } from "./AssistantPassageReactions";
+import { selectionToolbarState } from "./AssistantPassageReactions.logic";
+import { useReplyReactions } from "./AssistantReactions";
 
 function captureCitation(
   viewport: HTMLElement,
@@ -38,7 +42,10 @@ function captureCitation(
     range: captured.range,
     viewport,
   };
-  return { citation, sourceAnchor };
+  // Set on a finished reply of the thread itself, the one kind a reaction can go on.
+  const reactionItem = captured.source.dataset.assistantReactionItem;
+  const reactionItemId = reactionItem ? TurnItemId.make(reactionItem) : null;
+  return { citation, sourceAnchor, reactionItemId };
 }
 
 /** The assistant text selected in the timeline, if the Cite button could cite it. */
@@ -68,8 +75,10 @@ export function AssistantSelectionToolbar({
     position: SelectionActionPoint;
     lastLine: DOMRect;
     sourceAnchor: AssistantCitationSourceAnchor;
+    reactionItemId: TurnItemId | null;
   } | null>(null);
-  const toolbarRef = useRef<HTMLButtonElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const reactions = useReplyReactions(threadRef.environmentId);
   const actionsRef = useRef<ReturnType<typeof observeSelectionActions> | null>(null);
 
   useLayoutEffect(() => {
@@ -89,7 +98,7 @@ export function AssistantSelectionToolbar({
         clear();
         return;
       }
-      const { citation, sourceAnchor } = captured;
+      const { citation, sourceAnchor, reactionItemId } = captured;
       const { range } = sourceAnchor;
       const rect = range.getBoundingClientRect();
       const viewportRect = viewport.getBoundingClientRect();
@@ -170,6 +179,7 @@ export function AssistantSelectionToolbar({
         return {
           sourceAnchor,
           citation,
+          reactionItemId,
           lastLine,
           position: resolveSelectionActionPosition({
             bounds: viewportRect,
@@ -203,10 +213,11 @@ export function AssistantSelectionToolbar({
       ) {
         return;
       }
-      if (toolbar.disabled) return;
+      const firstAction = toolbar.querySelector<HTMLButtonElement>("button:not(:disabled)");
+      if (!firstAction) return;
       event.preventDefault();
       event.stopPropagation();
-      toolbar.focus({ preventScroll: true });
+      firstAction.focus({ preventScroll: true });
     };
     document.addEventListener("keydown", focusActions, true);
     document.addEventListener("selectionchange", actions.selectionChanged);
@@ -219,29 +230,32 @@ export function AssistantSelectionToolbar({
   }, [threadRef, viewport]);
 
   if (!selection) return null;
-  const tooLong = selection.citation.text.length > ASSISTANT_CITATION_MAX_TEXT_LENGTH;
+  const { tooLong, citeLabel, reactionItemId } = selectionToolbarState({
+    text: selection.citation.text,
+    reactionItemId: selection.reactionItemId,
+    reactionsAvailable: reactions.available,
+  });
   const dismiss = () => {
     actionsRef.current?.cancel();
     setSelection(null);
   };
-  const cite = () => {
-    if (tooLong || !onCite(selection.citation, selection.sourceAnchor)) return false;
+  const release = () => {
     window.getSelection()?.removeAllRanges();
     dismiss();
+  };
+  const cite = () => {
+    if (tooLong || !onCite(selection.citation, selection.sourceAnchor)) return false;
+    release();
     return true;
   };
   return createPortal(
-    <Button
+    <div
       ref={toolbarRef}
-      type="button"
-      size="xs"
-      variant="glass"
-      disabled={tooLong}
-      aria-label={tooLong ? "Selection is too long to cite" : "Cite selection in composer"}
-      className="fixed z-50 max-w-[calc(100vw-1rem)]"
+      role="group"
+      aria-label="Selected text"
+      className="fixed z-50 flex max-w-[calc(100vw-1rem)] items-center gap-1"
       style={{ left: selection.position.x, top: selection.position.y }}
       onPointerDown={(event) => event.preventDefault()}
-      onClick={cite}
       onKeyDown={(event) => {
         event.stopPropagation();
         if (event.key === "Escape" && !event.nativeEvent.isComposing) {
@@ -250,9 +264,27 @@ export function AssistantSelectionToolbar({
         }
       }}
     >
-      <QuoteIcon aria-hidden="true" className="size-3.5" />
-      {tooLong ? "Shorten selection" : "Cite"}
-    </Button>,
+      <Button
+        type="button"
+        size="xs"
+        variant="glass"
+        disabled={tooLong}
+        aria-label={citeLabel}
+        onClick={cite}
+      >
+        <QuoteIcon aria-hidden="true" className="size-3.5" />
+        {tooLong ? "Shorten selection" : "Cite"}
+      </Button>
+      {reactionItemId === null ? null : (
+        <AssistantSelectionReactions
+          reactions={reactions}
+          reply={{ threadId: threadRef.threadId, itemId: reactionItemId }}
+          citation={selection.citation}
+          disabled={tooLong}
+          onDone={release}
+        />
+      )}
+    </div>,
     document.body,
   );
 }

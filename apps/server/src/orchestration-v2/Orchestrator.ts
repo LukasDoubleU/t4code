@@ -8798,11 +8798,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: `Item ${command.itemId} is not a finished assistant reply in thread ${command.threadId}.`,
       });
     }
+    // 👎 says "not this one", which needs the passage it is about; Go ahead is always 👍.
+    if (command.emoji === "👎" && (command.passage === undefined || command.goAhead === true)) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "👎 is only for a passage of a reply, and never a Go ahead.",
+      });
+    }
     const now = yield* DateTime.now;
     const updated = withReaction(reply, {
       emoji: command.emoji,
       reacted: command.reacted,
       goAhead: command.goAhead === true,
+      passage: command.passage,
       at: now,
     });
     if (updated === null) return;

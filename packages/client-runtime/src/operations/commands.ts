@@ -7,6 +7,7 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
   OrchestrationV2CheckpointUnavailableError,
   WS_METHODS,
+  type AssistantPassage,
   type ChatAttachment,
   type MessageId,
   type ModelSelection,
@@ -125,6 +126,7 @@ export interface SetMessageReactionInput extends ThreadCommandInput {
   readonly emoji: OrchestrationV2MessageReactionEmoji;
   readonly reacted: boolean;
   readonly goAhead?: boolean;
+  readonly passage?: AssistantPassage;
 }
 
 export interface UpdateThreadMetadataInput extends ThreadCommandInput {
@@ -570,6 +572,7 @@ export const setMessageReaction = Effect.fn("EnvironmentCommands.setMessageReact
     emoji: input.emoji,
     reacted: input.reacted,
     ...(input.goAhead === true ? { goAhead: true } : {}),
+    ...(input.passage === undefined ? {} : { passage: input.passage }),
   });
 });
 

@@ -150,11 +150,21 @@ On web and desktop, hover over the final response of a turn to find two buttons 
   with your reply from 15:20." Like any message, it starts a turn now or waits in the queue
   while the agent is working.
 
-The agent learns about a silent 👍 with the next message it receives in the thread, whether
-you send it from the composer, the queue, or another agent. That message starts with one line
-per reaction, such as `The user reacted 👍 to your reply from 2026-10-22 13:20 UTC ("Release
-plan").` Each reaction is mentioned once, and a 👍 you remove before then is not mentioned.
-Agents reading the thread through T3 Code's tools also see the reactions.
+To react to one part of a response, such as one option out of several, select that text.
+Beside **Cite**, the selection offers 👍, 👎 and **Go ahead**:
+
+- 👍 and 👎 mark the passage without sending anything. Each one shows under the response with
+  the start of the passage; hover over it to see the passage highlighted, and click its × to
+  remove it. A passage holds one reaction, so 👎 replaces a 👍 on it.
+- **Go ahead** sends the passage as a quote with the comment "👍 Go ahead." and marks it 👍.
+
+The agent learns about a silent reaction with the next message it receives in the thread,
+whether you send it from the composer, the queue, or another agent. That message starts with
+a note per reaction, such as `The user reacted 👍 to your reply from 2026-10-22 13:20 UTC
+("Release plan").` A reaction on a passage says `The user reacted 👎 to this passage of your
+reply from 2026-10-22 13:20 UTC:` and quotes the passage. Each reaction is mentioned once, and
+one you remove before then is not mentioned. Agents reading the thread through T3 Code's tools
+also see the reactions, with the passages they are about.
 
 To approve the latest response from the keyboard, assign a shortcut to `chat.goAhead` in
 [Settings → Keybindings](./keybindings.md), or choose **👍 Go ahead with the latest reply** in

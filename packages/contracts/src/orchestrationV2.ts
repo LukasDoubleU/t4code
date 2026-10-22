@@ -37,6 +37,7 @@ import {
   TrimmedNonEmptyString,
   TurnItemId,
 } from "./baseSchemas.ts";
+import { AssistantPassage } from "./assistantCitations.ts";
 import { AuthMcpClientAccess } from "./auth.ts";
 import { ChatAttachment } from "./chatAttachment.ts";
 import {
@@ -1165,7 +1166,8 @@ export const OrchestrationV2Notification = Schema.Struct({
 });
 export type OrchestrationV2Notification = typeof OrchestrationV2Notification.Type;
 
-export const OrchestrationV2MessageReactionEmoji = Schema.Literals(["👍"]);
+/** 👎 is only for a passage of a reply. */
+export const OrchestrationV2MessageReactionEmoji = Schema.Literals(["👍", "👎"]);
 export type OrchestrationV2MessageReactionEmoji = typeof OrchestrationV2MessageReactionEmoji.Type;
 
 /** The user's reaction on an assistant reply. The agent learns it with the next input it gets. */
@@ -1174,6 +1176,8 @@ export const OrchestrationV2MessageReaction = Schema.Struct({
   reactedAt: Schema.DateTimeUtc,
   /** Set with "Go ahead": the message the user sent says it, so no input repeats it. */
   goAhead: Schema.optional(Schema.Boolean),
+  /** The passage the reaction is about, found again like a citation. Absent for the whole reply. */
+  passage: Schema.optional(AssistantPassage),
 });
 export type OrchestrationV2MessageReaction = typeof OrchestrationV2MessageReaction.Type;
 
@@ -2981,6 +2985,8 @@ export const OrchestrationV2Command = Schema.Union([
     emoji: OrchestrationV2MessageReactionEmoji,
     reacted: Schema.Boolean,
     goAhead: Schema.optional(Schema.Boolean),
+    /** A passage of the reply; absent for the whole reply. A passage holds one reaction. */
+    passage: Schema.optional(AssistantPassage),
   }),
   Schema.Struct({
     type: Schema.Literal("prepared-run.release"),

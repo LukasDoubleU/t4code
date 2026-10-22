@@ -30,7 +30,7 @@ It is based on upstream `v0.1.1` and follows upstream releases. Only Windows bui
 
 - Every message shows its time, relative by default (`Worked for 26s · 10m ago`). A reply longer than the screen shows it at its end too.
 - **Readable citations.** Cite a passage of a reply and comment on it: the agent receives the quote in place with your comment after it, and your sent message shows the quote. [Quote an assistant response](./docs/user/composer.md#quote-an-assistant-response)
-- **Reactions.** React 👍 to a reply without starting a turn; the agent learns it with your next message. **Go ahead** approves the reply and starts a turn. [React to a response](./docs/user/composer.md#react-to-a-response)
+- **Reactions.** React 👍 to a reply, or 👍 or 👎 to a passage you select in it, without starting a turn; the agent learns it with your next message. **Go ahead** approves the reply or the passage and starts a turn. [React to a response](./docs/user/composer.md#react-to-a-response)
 - The new-thread picker (<kbd>Ctrl</kbd>+<kbd>N</kbd>) lists projects by name.
 
 **Windows desktop**
@@ -60,12 +60,12 @@ Install the official `v0.1.1` over T4 Code: everything stays, and it only warns 
 
 T4 Code merges each upstream release rather than rebasing, and drops a change once upstream ships it. Until then it carries these upstream pull requests:
 
-| Change | Upstream |
-| --- | --- |
-| Linked environments | `#16653`, `#16654`, `#16655`, `#16684`, `#16695`, `#16698`, `#16719`, `#17130` |
-| Tray | `#19176` |
-| Group threads by project | `#21039` |
-| Sort threads by last message | `#22032` |
+| Change                       | Upstream                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------ |
+| Linked environments          | `#16653`, `#16654`, `#16655`, `#16684`, `#16695`, `#16698`, `#16719`, `#17130` |
+| Tray                         | `#19176`                                                                       |
+| Group threads by project     | `#21039`                                                                       |
+| Sort threads by last message | `#22032`                                                                       |
 
 Everything else is a fork patch, tracked in this repository's issues. A daily workflow comments on the upkeep issue (#13) when upstream publishes a release or a carried pull request changes state.
 

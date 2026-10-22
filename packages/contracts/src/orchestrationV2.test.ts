@@ -18,6 +18,7 @@ import {
   ProviderThreadId,
   RunAttemptId,
   RunId,
+  ScheduledTaskId,
   ThreadId,
   TrimmedNonEmptyString,
   TurnItemId,
@@ -43,6 +44,7 @@ import {
   OrchestrationV2ThreadShell,
   OrchestrationV2TurnItem,
   OrchestrationV2TurnItemJson,
+  isOrchestrationV2MessageFromAnotherAgent,
 } from "./orchestrationV2.ts";
 
 const now = DateTime.makeUnsafe("2026-04-20T00:00:00.000Z");
@@ -1566,5 +1568,51 @@ describe("latestProviderTurnForAttempt", () => {
     ];
     expect(latestProviderTurnForAttempt(turns, RunAttemptId.make("goal-attempt"))?.id).toBe("last");
     expect(latestProviderTurnForAttempt(turns, null)).toBeUndefined();
+  });
+});
+
+describe("isOrchestrationV2MessageFromAnotherAgent", () => {
+  const agent = { createdBy: "agent", creationSource: "server" } as const;
+
+  it("counts messages other agents sent and delegated reports and questions", () => {
+    for (const message of [
+      { createdBy: "agent", creationSource: "mcp" },
+      { ...agent, senderThreadId: ThreadId.make("sender") },
+      {
+        ...agent,
+        delegatedCompletion: { parentRunId: RunId.make("run-1"), generation: 1, taskIds: [] },
+      },
+      {
+        ...agent,
+        notification: {
+          source: { kind: "delegated_task", taskIds: [] },
+          outcome: "updated",
+          summary: TrimmedNonEmptyString.make("Delegated task has a question"),
+        },
+      },
+    ] as const) {
+      expect(isOrchestrationV2MessageFromAnotherAgent(message)).toBe(true);
+    }
+  });
+
+  it("leaves the user's messages, their scheduled tasks and the agent's own wakes out", () => {
+    for (const message of [
+      { createdBy: "user", creationSource: "web", senderThreadId: ThreadId.make("sender") },
+      {
+        createdBy: "agent",
+        creationSource: "mcp",
+        scheduledTaskId: ScheduledTaskId.make("task-1"),
+      },
+      {
+        ...agent,
+        notification: {
+          source: { kind: "command" },
+          outcome: "completed",
+          summary: TrimmedNonEmptyString.make("Background command finished"),
+        },
+      },
+    ] as const) {
+      expect(isOrchestrationV2MessageFromAnotherAgent(message)).toBe(false);
+    }
   });
 });

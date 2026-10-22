@@ -18,7 +18,8 @@ It is based on upstream `v0.1.1` and follows upstream releases. Only Windows bui
 
 **Long-lived threads**
 
-- **Memory for pinned threads.** A pinned thread keeps a memory file that its agent reads after every compaction and keeps current. A brain icon on the card shows it; **Open memory** opens the file. [Keep a memory](./docs/user/thread-sidebar.md#keep-a-memory-for-a-pinned-thread)
+- **Experts.** Pinned threads form a collapsible Experts section that gathers them from every connected machine, one line per expert with the details on hover. [Experts](./docs/user/thread-sidebar.md#experts-pin-and-reorder-threads)
+- **Memory for pinned threads.** A pinned thread keeps a memory file that its agent reads after every compaction and keeps current. A brain icon on the expert's row shows it; **Open memory** opens the file. [Keep a memory](./docs/user/thread-sidebar.md#keep-a-memory-for-a-pinned-thread)
 - **Background section.** Threads that agents start on their own wait there and come forward only while they need you: a question, an approval or a failed run. The **Status** sort puts the same things first. [Keep agents' threads in the background](./docs/user/thread-sidebar.md#keep-agents-threads-in-the-background)
 - **Sidebar.** Group threads by project, sort by last message, both in one menu; compact cards; the Background and Settled shelves stay at the bottom. [Sort and group threads](./docs/user/thread-sidebar.md#sort-and-group-threads)
 

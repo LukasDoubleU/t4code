@@ -37,7 +37,11 @@ function layout(
   const rects = items.map((item) => {
     const height =
       item.kind === "thread"
-        ? (item.section === "pinned" || item.section === "active" ? cardHeight : 36) * scale
+        ? (item.section === "active" || item.section === "working"
+            ? cardHeight
+            : item.section === "pinned"
+              ? 28
+              : 36) * scale
         : item.marker === "pinned-header" || item.marker === "pinned-divider"
           ? 0
           : (item.marker.endsWith("placeholder") ? 0 : 32) * scale;
@@ -352,7 +356,7 @@ describe("sidebar drag projection", () => {
       sidebarMarkerId("pinned-header"),
     );
     expect(result.get(sidebarMarkerId("pinned-header"))).toEqual(stationary);
-    expect(result.get("p1")).toEqual({ ...stationary, y: 83 });
+    expect(result.get("p1")).toEqual({ ...stationary, y: 29 });
     expect(result.get(sidebarMarkerId("pinned-divider"))).toEqual(stationary);
     expect(result.get("a1")).toEqual(stationary);
   });
@@ -402,10 +406,11 @@ describe("sidebar drag projection", () => {
     expect(result.get("second")).toEqual(stationary);
   });
 
+  // The 28px expert row leaves its slot and lands as an 82px card, so what follows it moves 54.
   it.each([
-    [sidebarMarkerId("pinned-divider"), 0, 0],
-    ["a1", -83, 0],
-    ["a2", -83, -83],
+    [sidebarMarkerId("pinned-divider"), 54, 54],
+    ["a1", -29, 54],
+    ["a2", -29, -29],
   ] as const)(
     "opens the active pointer slot over %s without adding an empty pinned row",
     (over, a1Offset, a2Offset) => {
@@ -420,10 +425,10 @@ describe("sidebar drag projection", () => {
       ];
       const result = preview({ items, settledOrder: [], settledExpanded: true }, "p", over);
       expect(result.get(sidebarMarkerId("pinned-header"))).toEqual(stationary);
-      expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(-83);
+      expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(-29);
       expect(result.get("a1")?.y).toBe(a1Offset);
       expect(result.get("a2")?.y).toBe(a2Offset);
-      expect(result.get(sidebarMarkerId("settled-header"))?.y).toBe(0);
+      expect(result.get(sidebarMarkerId("settled-header"))?.y).toBe(54);
     },
   );
 
@@ -510,7 +515,8 @@ describe("sidebar drag projection", () => {
       2,
       70,
     );
-    expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(32 + 141);
+    // The arriving card takes an expert row: 28 × 2, plus the gap.
+    expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(32 + 57);
   });
 
   it("keeps the pinned header above the first arriving pin", () => {
@@ -528,14 +534,16 @@ describe("sidebar drag projection", () => {
       sidebarMarkerId("pinned-header"),
     );
     expect(result.get(sidebarMarkerId("pinned-header"))).toEqual(stationary);
-    expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(83);
-    expect(result.get("a1")?.y).toBe(83);
-    expect(result.get(sidebarMarkerId("settled-header"))?.y).toBe(0);
+    // The 82px card arrives as a one-line expert, so the rows below rise by the difference.
+    expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(29);
+    expect(result.get("a1")?.y).toBe(29);
+    expect(result.get(sidebarMarkerId("settled-header"))?.y).toBe(-54);
   });
 
+  // No card is measured here, so the arriving card takes the default 70.
   it.each([
-    ["p", -83, -1],
-    ["s", 0, 82],
+    ["p", -29, 41],
+    ["s", 0, 70],
   ] as const)(
     "replaces the empty Active target when %s enters",
     (active, dividerOffset, settledOffset) => {
@@ -712,6 +720,43 @@ describe("sidebar drag projection", () => {
     });
   });
 
+  describe("a collapsed Experts section", () => {
+    const items = [
+      pinnedHeader,
+      divider,
+      thread("a1", "active"),
+      thread("a2", "active"),
+      settledHeader,
+      marker("settled-placeholder"),
+    ];
+    const input = { items, settledOrder: [], settledExpanded: false, pinnedExpanded: false };
+
+    it("hides a row dropped onto its header, as the collapsed shelves do", () => {
+      const result = preview(input, "a2", sidebarMarkerId("pinned-header"));
+      expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(0);
+      expect(result.get("a1")).toEqual(stationary);
+    });
+
+    it("keeps the open thread visible when it arrives", () => {
+      const result = preview(
+        { ...input, routeThreadKey: "a2" },
+        "a2",
+        sidebarMarkerId("pinned-header"),
+      );
+      expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(29);
+    });
+
+    it("takes the header's measured height instead of the drag label's", () => {
+      const strategy = createSidebarSortingStrategy({ ...input, boundaryLabelHeight: 24 });
+      const args = layout(items, "a2", "a1");
+      const rects = args.rects.map((rect, index) =>
+        index === 0 ? { ...rect, height: 32, bottom: rect.top + 32 } : rect,
+      );
+      // The header is 32 tall in place of the zero-height boundary below it.
+      expect(strategy({ ...args, rects, index: 1 })?.y).toBe(32);
+    });
+  });
+
   it("preserves a collapsed snoozed header while another section changes", () => {
     const items = [
       pinnedHeader,
@@ -743,11 +788,12 @@ describe("sidebar drag projection", () => {
       marker("settled-placeholder"),
     ];
     const input = { items, settledOrder: [], settledExpanded: false };
-    expect(preview(input, "p", "a1").get("a2")?.y).toBe(0);
+    // The expert leaves 29 and lands as an 83 card slot.
+    expect(preview(input, "p", "a1").get("a2")?.y).toBe(54);
     const byTime = preview({ ...input, activeOrder: ["a1", "a2", "p"] }, "p", "a1");
-    expect(byTime.get("a2")?.y).toBe(-83);
-    expect(byTime.get(sidebarMarkerId("working-header"))).toEqual(stationary);
-    expect(byTime.get("w")).toEqual(stationary);
+    expect(byTime.get("a2")?.y).toBe(-29);
+    expect(byTime.get(sidebarMarkerId("working-header"))).toEqual({ ...stationary, y: 54 });
+    expect(byTime.get("w")).toEqual({ ...stationary, y: 54 });
   });
 
   it("derives missing card geometry from the measured root scale", () => {
@@ -758,15 +804,14 @@ describe("sidebar drag projection", () => {
       settledHeader,
       thread("s", "settled"),
     ];
-    const result = preview(
-      { items, settledOrder: [], settledExpanded: true },
-      "s",
-      sidebarMarkerId("pinned-header"),
-      0.75,
-    );
-    expect(result.get(sidebarMarkerId("pinned-header"))).toEqual(stationary);
-    expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(53.5);
-    expect(result.get(sidebarMarkerId("active-placeholder"))?.y).toBe(53.5);
+    const input = { items, settledOrder: [], settledExpanded: true };
+    const asCard = preview(input, "s", sidebarMarkerId("active-placeholder"), 0.75);
+    expect(asCard.get(sidebarMarkerId("settled-header"))?.y).toBe(70 * 0.75);
+    // Pinned, it is an expert row: 28 × 0.75, plus the gap.
+    const asExpert = preview(input, "s", sidebarMarkerId("pinned-header"), 0.75);
+    expect(asExpert.get(sidebarMarkerId("pinned-header"))).toEqual(stationary);
+    expect(asExpert.get(sidebarMarkerId("pinned-divider"))?.y).toBe(22);
+    expect(asExpert.get(sidebarMarkerId("active-placeholder"))?.y).toBe(22);
   });
 
   it("updates the projection when the target or measured geometry changes", () => {
@@ -777,9 +822,9 @@ describe("sidebar drag projection", () => {
     });
     const args = layout(pinned, "p1", "p1");
     expect(strategy({ ...args, index: 2 })?.y).toBe(0);
-    expect(strategy({ ...args, index: 2, overIndex: 4 })?.y).toBe(-83);
+    expect(strategy({ ...args, index: 2, overIndex: 4 })?.y).toBe(-29);
     const smaller = layout(pinned, "p1", "a1", 0.75);
-    expect(strategy({ ...smaller, index: 2 })?.y).toBe(-62.5);
+    expect(strategy({ ...smaller, index: 2 })?.y).toBe(-22);
   });
 
   it.each(["active", "settled"] as const)(

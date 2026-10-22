@@ -46,6 +46,8 @@ import {
   sortLogicalProjectsForSidebar,
   sortInboxThreadsByReturn,
   resolveSidebarDropTarget,
+  resolveSidebarExpertsSection,
+  resolveSidebarRowVariant,
   resolveSidebarFolderDot,
   planSidebarThreadDrop,
   sidebarMarkerId,
@@ -142,6 +144,74 @@ describe("resolveSidebarThreadSection", () => {
     expect(resolveSidebarThreadSection({ snoozed: false, settled: true, pinned: true })).toBe(
       "settled",
     );
+  });
+});
+
+describe("resolveSidebarRowVariant", () => {
+  it("gives experts one line and keeps full cards for the live sections", () => {
+    expect(resolveSidebarRowVariant("pinned")).toBe("expert");
+    expect(resolveSidebarRowVariant("active")).toBe("card");
+    expect(resolveSidebarRowVariant("working")).toBe("card");
+    for (const section of ["background", "snoozed", "settled"] as const) {
+      expect(resolveSidebarRowVariant(section)).toBe("slim");
+    }
+  });
+});
+
+describe("resolveSidebarExpertsSection", () => {
+  const pinned = ["p1", "p2", "p3"];
+  const keyOf = (key: string) => key;
+
+  it("lists every pin with the count while expanded", () => {
+    expect(
+      resolveSidebarExpertsSection({ pinned, collapsed: false, routeThreadKey: null, keyOf }),
+    ).toEqual({ rows: pinned, label: "Experts (3)", expanded: true });
+  });
+
+  it("keeps only the open thread while collapsed, and still counts every pin", () => {
+    expect(
+      resolveSidebarExpertsSection({ pinned, collapsed: true, routeThreadKey: null, keyOf }),
+    ).toEqual({ rows: [], label: "Experts (3)", expanded: false });
+    expect(
+      resolveSidebarExpertsSection({ pinned, collapsed: true, routeThreadKey: "p2", keyOf }).rows,
+    ).toEqual(["p2"]);
+    expect(
+      resolveSidebarExpertsSection({ pinned, collapsed: true, routeThreadKey: "a1", keyOf }).rows,
+    ).toEqual([]);
+  });
+
+  it("pins a thread dropped onto the collapsed header like the menu's Pin", () => {
+    const experts = resolveSidebarExpertsSection({
+      pinned,
+      collapsed: true,
+      routeThreadKey: null,
+      keyOf,
+    });
+    const items: SidebarListItem[] = [
+      { kind: "marker", marker: "pinned-header" },
+      ...experts.rows.map((key) => ({ kind: "thread" as const, key, section: "pinned" as const })),
+      { kind: "marker", marker: "pinned-divider" },
+      { kind: "thread", key: "a1", section: "active" },
+      { kind: "thread", key: "a2", section: "active" },
+    ];
+    const target = resolveSidebarDropTarget(items, "a2", sidebarMarkerId("pinned-header"));
+    expect(target?.section).toBe("pinned");
+    expect(
+      planSidebarThreadDrop({
+        activeKey: "a2",
+        activeSection: "active",
+        target: target!,
+        pinnedOrder: pinned,
+        pinnedKeysById: new Map([
+          ["p1", "a"],
+          ["p2", "b"],
+          ["p3", "c"],
+        ]),
+        activeOrder: ["a1", "a2"],
+        activeKeysById: new Map(),
+        pinnedTimeOrdered: !experts.expanded,
+      }),
+    ).toEqual({ kind: "pin", order: null, orderKey: undefined, extraAssignments: [] });
   });
 });
 

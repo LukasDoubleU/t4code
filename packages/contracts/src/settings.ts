@@ -453,6 +453,7 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   // Threads agents start wait in a Background section until the user writes in them.
   sidebarBackgroundSection: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  sidebarExpertsCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarProjectGroupingMode: SidebarProjectGroupingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE)),
   ),
@@ -1661,6 +1662,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarSortByStatus: Schema.optionalKey(Schema.Boolean),
   sidebarThreadGrouping: Schema.optionalKey(SidebarThreadGrouping),
   sidebarBackgroundSection: Schema.optionalKey(Schema.Boolean),
+  sidebarExpertsCollapsed: Schema.optionalKey(Schema.Boolean),
   timestampFormat: Schema.optionalKey(TimestampFormat),
   alwaysShowMessageTimes: Schema.optionalKey(Schema.Boolean),
   messageTimeStyle: Schema.optionalKey(MessageTimeStyle),

@@ -841,3 +841,64 @@ it("readThread shows citations the way the agent received them", async () => {
     );
   }).pipe(Effect.provide(layer), Effect.runPromise);
 });
+
+it("readThread lists the user's reactions on an assistant reply", async () => {
+  const shell = liveThreadShell(parentThreadId);
+  const reactedAt = DateTime.makeUnsafe("2026-08-04T12:01:00.000Z");
+  const projection = {
+    ...idleThreadProjection(shell),
+    messages: [
+      { id: "message-reacted-reply", role: "assistant", text: "Ship it.", createdAt: now },
+      { id: "message-plain-reply", role: "assistant", text: "Done.", createdAt: now },
+    ],
+    visibleTurnItems: ["message-reacted-reply", "message-plain-reply"].map(
+      (messageId, position) => ({
+        position,
+        visibility: "local",
+        sourceThreadId: parentThreadId,
+        sourceItemId: `item-${messageId}`,
+        item: {
+          id: `item-${messageId}`,
+          type: "assistant_message",
+          messageId,
+          runId: activeRunId,
+          status: "completed",
+          title: null,
+          text: "Ship it.",
+          updatedAt: now,
+          ...(position === 0 ? { reactions: [{ emoji: "👍", reactedAt, goAhead: true }] } : {}),
+        },
+      }),
+    ),
+  } as unknown as OrchestrationV2ThreadProjection;
+  const layer = layerOrchestratorService.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
+          getThreadShell: () => Effect.succeed(shell),
+          getThreadRecords: () => Effect.succeed(projection),
+          getProjectThreadRecords: () => Effect.succeed(projection),
+          getTimelinePage: () =>
+            Effect.succeed({ items: projection.visibleTurnItems, totalItems: 2, hasMore: false }),
+        }),
+        ServerSettings.layerTest(),
+        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
+        NodeCrypto.layer,
+      ),
+    ),
+  );
+
+  await Effect.gen(function* () {
+    const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+    const result = yield* service.readThread(makeScope(), { threadId: parentThreadId });
+    expect(result.items[0]?.reactions).toEqual([
+      { emoji: "👍", reactedAt: "2026-08-04T12:01:00.000Z" },
+    ]);
+    expect(result.items[1]).not.toHaveProperty("reactions");
+  }).pipe(Effect.provide(layer), Effect.runPromise);
+});

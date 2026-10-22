@@ -47,7 +47,13 @@ import {
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { useUiStateStore } from "../uiStateStore";
-import { readThreadMemoryPath, useOpenThreadMemory } from "../threadMemory";
+import {
+  readEnvironmentSupportsFreshStart,
+  readThreadMemoryPath,
+  useFreshStartThread,
+  useOpenLinkedThread,
+  useOpenThreadMemory,
+} from "../threadMemory";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
@@ -96,6 +102,8 @@ export function useThreadActionMenu(input: {
   });
   const handleNewThread = useNewThreadHandler();
   const openThreadMemory = useOpenThreadMemory();
+  const freshStartThread = useFreshStartThread();
+  const openLinkedThread = useOpenLinkedThread();
   const background = useSidebarBackground();
   const delegatedUnderParent = useDelegatedUnderParent();
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
@@ -135,6 +143,7 @@ export function useThreadActionMenu(input: {
         snooze: readEnvironmentSupportsSnooze(threadRef.environmentId),
         pinning: readEnvironmentSupportsPinning(threadRef.environmentId),
         titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
+        freshStart: readEnvironmentSupportsFreshStart(threadRef.environmentId),
       };
       const isRegeneratingTitle = thread.titleRegeneration != null;
       const snoozePresets = resolveSnoozePresets(now, timestampFormat);
@@ -152,6 +161,8 @@ export function useThreadActionMenu(input: {
         projectFilter: null,
         isPinned,
         hasMemory: memoryPath !== null,
+        continuedIn: thread.source.continuedIn !== undefined,
+        continuedFrom: thread.source.continuedFrom !== undefined,
         isSettled,
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
         isSnoozed,
@@ -260,6 +271,18 @@ export function useThreadActionMenu(input: {
         case "open-memory":
           if (memoryPath !== null) await openThreadMemory(threadRef, memoryPath);
           return;
+        case "fresh-start":
+          await freshStartThread(threadRef);
+          return;
+        case "open-continued-in":
+        case "open-continued-from": {
+          const linked =
+            action === "open-continued-in"
+              ? thread.source.continuedIn
+              : thread.source.continuedFrom;
+          if (linked !== undefined) await openLinkedThread(threadRef.environmentId, linked);
+          return;
+        }
         case "auto-settle:enabled":
         case "auto-settle:disabled":
           await reportFailure("Failed to update auto-settle", () =>

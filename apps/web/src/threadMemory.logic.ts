@@ -26,16 +26,28 @@ export function activeThreadMemoryPath(input: {
     : null;
 }
 
+/** From this many turns without a change to the memory file, its tooltip says so. */
+export const MEMORY_STALE_TURNS = 20;
+
 /**
  * `entry` is undefined until the server answers and null when the file does
  * not exist yet; `updated` is its modification time as "5m ago".
+ * `unchangedTurns` counts the turns since the file last changed.
  */
 export function threadMemoryTooltipLabel(input: {
   readonly entry: FilesystemEntryMetadata | null | undefined;
   readonly failed: boolean;
   readonly updated: string | null;
+  readonly unchangedTurns?: number | undefined;
 }): string {
   if (input.entry === undefined) return input.failed ? "Memory" : "Memory…";
-  if (input.entry === null || input.entry.kind !== "file") return "No notes yet";
-  return input.updated === null ? "Memory" : `Memory updated ${input.updated}`;
+  const stale =
+    input.unchangedTurns !== undefined && input.unchangedTurns >= MEMORY_STALE_TURNS
+      ? input.unchangedTurns
+      : null;
+  if (input.entry === null || input.entry.kind !== "file") {
+    return stale === null ? "No notes yet" : `No notes yet after ${stale} turns`;
+  }
+  const label = input.updated === null ? "Memory" : `Memory updated ${input.updated}`;
+  return stale === null ? label : `${label} · unchanged for ${stale} turns`;
 }

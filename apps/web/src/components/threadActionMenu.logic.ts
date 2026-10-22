@@ -8,6 +8,9 @@ export type ThreadActionMenuId =
   | "pin"
   | "unpin"
   | "open-memory"
+  | "fresh-start"
+  | "open-continued-in"
+  | "open-continued-from"
   | "settle"
   | "unsettle"
   | "auto-settle"
@@ -76,6 +79,10 @@ export interface ThreadActionMenuState {
   readonly isPinned: boolean;
   /** A pinned thread whose memory is active. */
   readonly hasMemory?: boolean;
+  /** A fresh start continued this thread in another one. */
+  readonly continuedIn?: boolean;
+  /** This thread continues another one after a fresh start. */
+  readonly continuedFrom?: boolean;
   readonly isSettled: boolean;
   readonly autoSettleEnabled: boolean;
   readonly isSnoozed: boolean;
@@ -94,6 +101,7 @@ export interface ThreadActionMenuState {
     readonly snooze: boolean;
     readonly pinning: boolean;
     readonly titleRegeneration: boolean;
+    readonly freshStart?: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
 }
@@ -108,6 +116,8 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "project-settings",
     "mark-unread",
     "open-memory",
+    "open-continued-in",
+    "open-continued-from",
     "move-to-background",
     "bring-to-front",
     "copy",
@@ -139,6 +149,27 @@ export function buildThreadActionMenuItems(
       : []),
     ...(state.hasMemory === true
       ? [{ id: "open-memory" as const, label: "Open memory", icon: "brain" }]
+      : []),
+    ...(state.isPinned && state.supports.freshStart === true
+      ? [{ id: "fresh-start" as const, label: "Fresh start", icon: "rotate-ccw" }]
+      : []),
+    ...(state.continuedIn === true
+      ? [
+          {
+            id: "open-continued-in" as const,
+            label: "Continued in new thread",
+            icon: "arrow-right",
+          },
+        ]
+      : []),
+    ...(state.continuedFrom === true
+      ? [
+          {
+            id: "open-continued-from" as const,
+            label: "Continued from earlier thread",
+            icon: "arrow-left",
+          },
+        ]
       : []),
     ...(state.supports.settlement
       ? [

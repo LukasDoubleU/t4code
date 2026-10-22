@@ -1,25 +1,43 @@
 import {
   isUserPinnedThread,
+  threadMemoryFileName,
   threadMemoryFilePath,
   type OrchestrationV2AppThread,
+  type OrchestrationV2ProviderTurn,
+  type OrchestrationV2ProviderTurnTokenUsage,
+  type ProviderThreadId,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import type { PlatformError } from "effect/PlatformError";
 
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
+
+/** Versions of one thread's memory file kept in its backup folder. */
+export const MEMORY_BACKUPS_KEPT = 20;
+const BACKUP_NAME = /^\d{6}-.+\.md$/;
+
+/** The share of the context window at which a pinned thread is told to save its memory. */
+export const MEMORY_NUDGE_CONTEXT_SHARE = 0.85;
 
 /**
  * The same text on every turn of a thread, so the provider's prompt cache
  * stays valid until the thread is pinned, unpinned or the setting changes.
  */
-export function threadMemoryInstructions(path: string): string {
+export function threadMemoryInstructions(path: string, continuedFrom?: ThreadId): string {
   return [
     `This thread keeps a memory file: ${path}`,
+    ...(continuedFrom === undefined
+      ? []
+      : [
+          `It continues thread ${continuedFrom} and took over that thread's memory: read the file before anything else and carry on in the role it describes.`,
+        ]),
     "Read it at the start of a session and again after every compaction.",
     "Keep it current: the thread's purpose, the current state, decisions and their reasons, the user's preferences, and open points.",
     "Not the history, which stays in the thread. Keep it under about 8k tokens and never put secrets in it.",
@@ -35,13 +53,61 @@ export function threadMemoryForkNote(sourcePath: string): string {
   ].join(" ");
 }
 
+/** For the first turn after the context came close to its limit. */
+export function threadMemoryNudge(path: string): string {
+  return [
+    "This conversation is close to its context limit and will be compacted soon.",
+    `Before you continue, update the memory file ${path} with anything worth keeping that it does not hold yet.`,
+  ].join(" ");
+}
+
+function contextNearlyFull(usage: OrchestrationV2ProviderTurnTokenUsage): boolean {
+  const limit = Math.min(
+    usage.maxTokens != null && usage.maxTokens > 0 ? usage.maxTokens : Infinity,
+    usage.autoCompactThreshold ?? Infinity,
+  );
+  return Number.isFinite(limit) && usage.usedTokens >= limit * MEMORY_NUDGE_CONTEXT_SHARE;
+}
+
+/**
+ * Whether the next turn on this provider thread should be told to save its
+ * memory: its newest usage report is close to the limit and the newest one
+ * from an earlier attempt was not. So the reminder comes once per approach to
+ * the limit, and again only after a compaction brought the context down.
+ * Providers that report no window never get it.
+ */
+export function memoryNudgeDue(
+  providerTurns: ReadonlyArray<
+    Pick<OrchestrationV2ProviderTurn, "id" | "providerThreadId" | "runAttemptId" | "tokenUsage">
+  >,
+  providerThreadId: ProviderThreadId,
+): boolean {
+  const reports = providerTurns
+    .flatMap((turn) =>
+      turn.providerThreadId === providerThreadId && turn.tokenUsage !== undefined
+        ? [{ attempt: turn.runAttemptId ?? turn.id, usage: turn.tokenUsage }]
+        : [],
+    )
+    // Ties go to the later entry, since live upserts append.
+    .toSorted(
+      (left, right) => Date.parse(left.usage.updatedAt) - Date.parse(right.usage.updatedAt),
+    );
+  const latest = reports.at(-1);
+  if (latest === undefined || !contextNearlyFull(latest.usage)) return false;
+  const before = reports.findLast((report) => report.attempt !== latest.attempt);
+  return before === undefined || !contextNearlyFull(before.usage);
+}
+
+/** What a turn's end found in a thread's memory file. */
+export type MemoryTurnRecord = "changed" | "unchanged" | "missing";
+
 export class ThreadMemory extends Context.Service<
   ThreadMemory,
   {
     readonly directory: string;
     /** The memory a turn of this thread carries, or undefined while it sleeps. */
     readonly forTurn: (
-      thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt" | "lineage">,
+      thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt" | "lineage" | "continuedFrom">,
     ) => Effect.Effect<{ readonly path: string; readonly instructions: string } | undefined>;
     /**
      * The note for a native fork's first turn, or undefined when its source
@@ -51,6 +117,16 @@ export class ThreadMemory extends Context.Service<
       readonly id: ThreadId;
       readonly pinned: boolean;
     }) => Effect.Effect<string | undefined>;
+    /**
+     * Moves a thread's memory file and its backups to another thread, so only
+     * that thread writes them from now on.
+     */
+    readonly handOver: (from: ThreadId, to: ThreadId) => Effect.Effect<void, PlatformError>;
+    /**
+     * Keeps a copy of the memory file when it differs from the newest one
+     * kept, and says whether it did.
+     */
+    readonly recordTurn: (threadId: ThreadId) => Effect.Effect<MemoryTurnRecord, PlatformError>;
   }
 >()("t3/memory/ThreadMemory") {}
 
@@ -62,9 +138,11 @@ const make = Effect.gen(function* () {
   // Below the state directory rather than the bare T3 home, so a dev server
   // sharing a home with an install still keeps its own memories.
   const directory = path.join(config.stateDir, "memory");
+  const backupDirectory = (threadId: ThreadId) =>
+    path.join(directory, "backups", threadMemoryFileName(threadId).replace(/\.md$/, ""));
 
   const forTurn = Effect.fn("ThreadMemory.forTurn")(function* (
-    thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt" | "lineage">,
+    thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt" | "lineage" | "continuedFrom">,
   ) {
     if (!isUserPinnedThread(thread)) return undefined;
     const current = yield* settings.getSettings.pipe(
@@ -84,7 +162,10 @@ const make = Effect.gen(function* () {
         ),
       );
     const memoryPath = threadMemoryFilePath(directory, thread.id);
-    return { path: memoryPath, instructions: threadMemoryInstructions(memoryPath) };
+    return {
+      path: memoryPath,
+      instructions: threadMemoryInstructions(memoryPath, thread.continuedFrom),
+    };
   });
 
   // Not gated on the setting: the source's history may name its file from
@@ -106,7 +187,46 @@ const make = Effect.gen(function* () {
     return kept ? threadMemoryForkNote(sourcePath) : undefined;
   });
 
-  return ThreadMemory.of({ directory, forTurn, forkNote });
+  const handOver = Effect.fn("ThreadMemory.handOver")(function* (from: ThreadId, to: ThreadId) {
+    const moves = [
+      [threadMemoryFilePath(directory, from), threadMemoryFilePath(directory, to)],
+      [backupDirectory(from), backupDirectory(to)],
+    ] as const;
+    for (const [source, target] of moves) {
+      if (!(yield* fileSystem.exists(source))) continue;
+      yield* fileSystem.makeDirectory(path.dirname(target), { recursive: true });
+      yield* fileSystem.rename(source, target);
+    }
+  });
+
+  const recordTurn = Effect.fn("ThreadMemory.recordTurn")(function* (threadId: ThreadId) {
+    const file = threadMemoryFilePath(directory, threadId);
+    if (!(yield* fileSystem.exists(file))) return "missing" as const;
+    const content = yield* fileSystem.readFileString(file);
+    const backups = backupDirectory(threadId);
+    yield* fileSystem.makeDirectory(backups, { recursive: true });
+    // A sequence number leads the name, so versions sort oldest first even
+    // when two land in the same millisecond; the time is for people.
+    const kept = (yield* fileSystem.readDirectory(backups))
+      .filter((name) => BACKUP_NAME.test(name))
+      .toSorted();
+    const newest = kept.at(-1);
+    if (
+      newest !== undefined &&
+      (yield* fileSystem.readFileString(path.join(backups, newest))) === content
+    ) {
+      return "unchanged" as const;
+    }
+    const sequence = newest === undefined ? 1 : Number.parseInt(newest, 10) + 1;
+    const name = `${String(sequence).padStart(6, "0")}-${DateTime.formatIso(yield* DateTime.now).replaceAll(":", "-")}.md`;
+    yield* fileSystem.writeFileString(path.join(backups, name), content);
+    for (const old of [...kept, name].slice(0, -MEMORY_BACKUPS_KEPT)) {
+      yield* fileSystem.remove(path.join(backups, old));
+    }
+    return "changed" as const;
+  });
+
+  return ThreadMemory.of({ directory, forTurn, forkNote, handOver, recordTurn });
 });
 
 export const layer = Layer.effect(ThreadMemory, make);

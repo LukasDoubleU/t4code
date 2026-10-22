@@ -5,11 +5,33 @@ import { buildThreadActionMenuItems } from "./components/threadActionMenu.logic"
 import {
   activeThreadMemoryDirectory,
   activeThreadMemoryPath,
+  MEMORY_STALE_TURNS,
   threadMemoryTooltipLabel,
 } from "./threadMemory.logic";
 
 const threadId = ThreadId.make("thread:1");
 const directory = "/home/me/.t3/userdata/memory";
+
+const menuState: Parameters<typeof buildThreadActionMenuItems>[0] = {
+  canOperate: false,
+  branch: null,
+  projectFilter: null,
+  isPinned: true,
+  isSettled: false,
+  autoSettleEnabled: true,
+  isSnoozed: false,
+  canSnoozeNow: true,
+  isRegeneratingTitle: false,
+  isRunning: false,
+  supports: {
+    settlement: true,
+    autoSettleOptOut: true,
+    snooze: true,
+    pinning: true,
+    titleRegeneration: true,
+  },
+  snoozePresets: [],
+};
 
 describe("thread memory indicator", () => {
   it("is active only for a pinned thread on a server that keeps memories with the setting on", () => {
@@ -47,33 +69,46 @@ describe("thread memory indicator", () => {
     );
   });
 
+  it("says when the memory has not changed for many turns", () => {
+    const file = { kind: "file", byteLength: 10, modifiedAt: "2026-10-01T11:55:00.000Z" } as const;
+    const label = (entry: typeof file | null, unchangedTurns: number) =>
+      threadMemoryTooltipLabel({ entry, failed: false, updated: "3w ago", unchangedTurns });
+    expect(label(file, MEMORY_STALE_TURNS - 1)).toBe("Memory updated 3w ago");
+    expect(label(file, MEMORY_STALE_TURNS)).toBe(
+      `Memory updated 3w ago · unchanged for ${MEMORY_STALE_TURNS} turns`,
+    );
+    expect(label(null, 31)).toBe("No notes yet after 31 turns");
+  });
+
   it("offers Open memory in the thread menu only while the memory is active", () => {
-    const menuIds = (hasMemory: boolean) =>
-      buildThreadActionMenuItems({
-        canOperate: false,
-        branch: null,
-        projectFilter: null,
-        isPinned: true,
-        hasMemory,
-        isSettled: false,
-        autoSettleEnabled: true,
-        isSnoozed: false,
-        canSnoozeNow: true,
-        isRegeneratingTitle: false,
-        isRunning: false,
-        supports: {
-          settlement: true,
-          autoSettleOptOut: true,
-          snooze: true,
-          pinning: true,
-          titleRegeneration: true,
-        },
-        snoozePresets: [],
-      });
+    const menuIds = (hasMemory: boolean) => buildThreadActionMenuItems({ ...menuState, hasMemory });
     const openMemory = menuIds(true).find((item) => item.id === "open-memory");
     // Reading the memory needs no permission to change threads.
     expect(openMemory).toMatchObject({ label: "Open memory" });
     expect(openMemory?.disabled).toBeUndefined();
     expect(menuIds(false).some((item) => item.id === "open-memory")).toBe(false);
+  });
+
+  it("offers Fresh start for a pinned thread, and links the two threads it joins", () => {
+    const ids = (state: Partial<Parameters<typeof buildThreadActionMenuItems>[0]>) =>
+      buildThreadActionMenuItems({ ...menuState, ...state }).map((item) => item.id);
+    const freshStart = { ...menuState.supports, freshStart: true };
+    expect(ids({ supports: freshStart })).toContain("fresh-start");
+    expect(ids({ supports: freshStart, isPinned: false })).not.toContain("fresh-start");
+    // A server without fresh starts.
+    expect(ids({})).not.toContain("fresh-start");
+    // Fresh start changes threads; following a link only navigates.
+    const items = buildThreadActionMenuItems({
+      ...menuState,
+      supports: freshStart,
+      continuedIn: true,
+    });
+    expect(items.find((item) => item.id === "fresh-start")?.disabled).toBe(true);
+    expect(items.find((item) => item.id === "open-continued-in")).toMatchObject({
+      label: "Continued in new thread",
+    });
+    expect(items.find((item) => item.id === "open-continued-in")?.disabled).toBeUndefined();
+    expect(ids({ continuedFrom: true })).toContain("open-continued-from");
+    expect(ids({})).not.toContain("open-continued-in");
   });
 });

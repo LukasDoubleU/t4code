@@ -465,6 +465,12 @@ export const OrchestrationV2AppThread = Schema.Struct({
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  /** The pinned thread this one took over with a fresh start, memory included. */
+  continuedFrom: Schema.optional(ThreadId),
+  /** The thread a fresh start continued this one in. */
+  continuedIn: Schema.optional(ThreadId),
+  /** Turns a pinned thread has ended since its memory file last changed. */
+  memoryUnchangedTurns: Schema.optional(NonNegativeInt),
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtc).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -2005,6 +2011,9 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  continuedFrom: Schema.optional(ThreadId),
+  continuedIn: Schema.optional(ThreadId),
+  memoryUnchangedTurns: Schema.optional(NonNegativeInt),
   lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   titleRegeneration: Schema.optional(
     Schema.NullOr(
@@ -2734,6 +2743,8 @@ export const OrchestrationV2Command = Schema.Union([
     linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
     /** Only the server sets this, with `linkOrigin`, for a linked environment's delegated task. */
     delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+    /** Only the server sets this, for a fresh start's new thread. */
+    continuedFrom: Schema.optional(ThreadId),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({
@@ -2813,6 +2824,17 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
   }),
+  /**
+   * Continues a pinned thread in `newThreadId`, which takes over its pin and
+   * memory. The server runs it as a sequence of other commands; the
+   * orchestrator never receives it.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.fresh-start"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    newThreadId: ThreadId,
+  }),
   Schema.Struct({
     type: Schema.Literal("thread.pin.reorder"),
     commandId: CommandId,
@@ -2851,6 +2873,9 @@ export const OrchestrationV2Command = Schema.Union([
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
     /** Link (object) or unlink (null) a pull request (#8160); absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+    continuedIn: Schema.optional(ThreadId),
+    /** Alone, it leaves the thread's update time alone: the server counts turns with it. */
+    memoryUnchangedTurns: Schema.optional(NonNegativeInt),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request.link"),

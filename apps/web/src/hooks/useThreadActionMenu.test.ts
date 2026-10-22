@@ -61,6 +61,7 @@ vi.mock("../state/entities", () => ({
     worktreePath: null,
     runtime: null,
     latestRun: null,
+    source: {},
   }),
   useDelegatedUnderParent: () => new Set(),
   useProjects: () => [{ id: "project", environmentId: "secondary" }],

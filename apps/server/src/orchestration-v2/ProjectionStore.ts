@@ -1663,6 +1663,15 @@ export function threadShellFromProjection(
 
     autoSettleDisabledAt: projection.thread.autoSettleDisabledAt ?? null,
     pinOrderKey: projection.thread.pinOrderKey ?? null,
+    ...(projection.thread.continuedFrom === undefined
+      ? {}
+      : { continuedFrom: projection.thread.continuedFrom }),
+    ...(projection.thread.continuedIn === undefined
+      ? {}
+      : { continuedIn: projection.thread.continuedIn }),
+    ...(projection.thread.memoryUnchangedTurns === undefined
+      ? {}
+      : { memoryUnchangedTurns: projection.thread.memoryUnchangedTurns }),
     lastVisitedAt: projection.thread.lastVisitedAt,
     titleRegeneration: projection.thread.titleRegeneration ?? null,
     limitRecovery: projection.thread.limitRecovery ?? null,
@@ -1908,6 +1917,15 @@ function shellFromState(input: {
 
     autoSettleDisabledAt: input.state.thread.autoSettleDisabledAt ?? null,
     pinOrderKey: input.state.thread.pinOrderKey ?? null,
+    ...(input.state.thread.continuedFrom === undefined
+      ? {}
+      : { continuedFrom: input.state.thread.continuedFrom }),
+    ...(input.state.thread.continuedIn === undefined
+      ? {}
+      : { continuedIn: input.state.thread.continuedIn }),
+    ...(input.state.thread.memoryUnchangedTurns === undefined
+      ? {}
+      : { memoryUnchangedTurns: input.state.thread.memoryUnchangedTurns }),
     lastVisitedAt: input.state.thread.lastVisitedAt,
     titleRegeneration: input.state.thread.titleRegeneration ?? null,
     limitRecovery: input.state.thread.limitRecovery ?? null,

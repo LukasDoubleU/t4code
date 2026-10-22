@@ -4,7 +4,14 @@ import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
 import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import { ThreadTerminalStatusButton } from "./ThreadStatusIndicators";
 import { ThreadMemoryIndicator, ThreadMemoryLastUpdate } from "./ThreadMemoryIndicator";
-import { readThreadMemoryPath, useOpenThreadMemory, useThreadMemoryPath } from "../threadMemory";
+import {
+  readEnvironmentSupportsFreshStart,
+  readThreadMemoryPath,
+  useFreshStartThread,
+  useOpenLinkedThread,
+  useOpenThreadMemory,
+  useThreadMemoryPath,
+} from "../threadMemory";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -1336,7 +1343,7 @@ function SidebarThreadMemoryLine(props: { readonly threadRef: ScopedThreadRef })
     <div className="flex min-w-0 items-center gap-2">
       <BrainIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />
       <div className="min-w-0 truncate text-foreground/75">
-        <ThreadMemoryLastUpdate environmentId={props.threadRef.environmentId} path={path} />
+        <ThreadMemoryLastUpdate threadRef={props.threadRef} path={path} />
       </div>
     </div>
   );
@@ -4793,6 +4800,8 @@ export default function Sidebar() {
   );
 
   const openThreadMemory = useOpenThreadMemory();
+  const freshStartThread = useFreshStartThread();
+  const openLinkedThread = useOpenLinkedThread();
   const handleThreadContextMenu = useStableCallback(
     (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
       void (async () => {
@@ -4859,6 +4868,8 @@ export default function Sidebar() {
                 : null,
               isPinned,
               hasMemory: memoryPath !== null,
+              continuedIn: thread.source.continuedIn !== undefined,
+              continuedFrom: thread.source.continuedFrom !== undefined,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
               isSnoozed,
@@ -4872,6 +4883,7 @@ export default function Sidebar() {
                 snooze: supportsSnooze,
                 pinning: supportsPinning,
                 titleRegeneration: supportsTitleRegeneration,
+                freshStart: readEnvironmentSupportsFreshStart(thread.environmentId),
               },
               snoozePresets,
             }),
@@ -4951,6 +4963,18 @@ export default function Sidebar() {
           case "open-memory":
             if (memoryPath !== null) await openThreadMemory(threadRef, memoryPath);
             return;
+          case "fresh-start":
+            await freshStartThread(threadRef);
+            return;
+          case "open-continued-in":
+          case "open-continued-from": {
+            const linked =
+              clicked.value === "open-continued-in"
+                ? thread.source.continuedIn
+                : thread.source.continuedFrom;
+            if (linked !== undefined) await openLinkedThread(thread.environmentId, linked);
+            return;
+          }
           case "auto-settle:enabled":
           case "auto-settle:disabled": {
             const result = await setThreadAutoSettle(

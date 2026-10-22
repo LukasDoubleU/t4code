@@ -90,6 +90,7 @@ import * as StorageCleanup from "./storageCleanup.ts";
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
+import * as ThreadFreshStart from "./memory/ThreadFreshStart.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
 import * as ThreadMemory from "./memory/ThreadMemory.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
@@ -509,6 +510,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(DatabaseStorage.DatabaseStorage)({}),
   Layer.mock(TerminalManager.TerminalManager)({}),
   Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+  Layer.mock(ThreadFreshStart.ThreadFreshStart)({}),
   Layer.mock(ThreadManagement.ThreadManagementService)({}),
   Layer.mock(ThreadMemory.ThreadMemory)({ directory: "/unused" }),
   Layer.mock(ThreadSearch.ThreadSearch)({}),

@@ -396,3 +396,65 @@ it.effect("finds a thread id without its environment wherever it is", () =>
     }),
   ),
 );
+
+it.effect("names where an expert continues after a fresh start, here and over a link", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const continued = (id: string, project: string, continuedIn: string) => ({
+        ...thread(id, project),
+        settledOverride: "settled" as const,
+        continuedIn: ThreadId.make(continuedIn),
+      });
+      const continuation = (id: string, project: string, continuedFrom: string) => ({
+        ...thread(id, project, { pinned: true }),
+        continuedFrom: ThreadId.make(continuedFrom),
+      });
+      const b = yield* serveEnvironment(box, [
+        continued("thread:box-expert-old", "project:box", "thread:box-expert"),
+        continuation("thread:box-expert", "project:box", "thread:box-expert-old"),
+      ]);
+      const a = yield* makeLaptop([
+        continued("thread:laptop-expert-old", "project:laptop", "thread:laptop-expert"),
+        continuation("thread:laptop-expert", "project:laptop", "thread:laptop-expert-old"),
+      ]);
+      yield* linkTo(a.links, b, "full-access");
+
+      const read = yield* a.call(agent, "t3_thread_read", { threadId: "thread:laptop-expert-old" });
+      expect(read.structuredContent).toMatchObject({
+        thread: { threadId: "thread:laptop-expert-old", continuedIn: "thread:laptop-expert" },
+      });
+      const listed = yield* a.call(agent, "t3_thread_list", { pinned: true });
+      expect(listed.structuredContent).toMatchObject({
+        threads: [
+          { threadId: "thread:laptop-expert", continuedFrom: "thread:laptop-expert-old" },
+          { threadId: "thread:box-expert", continuedFrom: "thread:box-expert-old" },
+        ],
+      });
+
+      // An agent that kept the old id learns where to send instead.
+      for (const [env, old, next] of [
+        [a, "thread:laptop-expert-old", "thread:laptop-expert"],
+        [b, "thread:box-expert-old", "thread:box-expert"],
+      ] as const) {
+        const sent = yield* a.call(agent, "t3_thread_send", { threadId: old, message: "Hi." });
+        expect(failureOf(sent)).toMatchObject({ code: "thread_not_sendable" });
+        expect(failureOf(sent).message).toContain(next);
+        expect(yield* Ref.get(env.sends)).toEqual([]);
+      }
+
+      // Brought back by the user, the old thread takes messages again.
+      const revived = yield* makeLaptop([
+        {
+          ...continued("thread:laptop-expert-old", "project:laptop", "thread:laptop-expert"),
+          settledOverride: "active",
+        },
+      ]);
+      const sent = yield* revived.call(agent, "t3_thread_send", {
+        threadId: "thread:laptop-expert-old",
+        message: "Back again.",
+      });
+      expect(sent.structuredContent).toMatchObject({ delivery: "started" });
+      expect(yield* Ref.get(revived.sends)).toEqual(["thread:laptop-expert-old"]);
+    }),
+  ),
+);

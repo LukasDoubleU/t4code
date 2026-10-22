@@ -1,20 +1,36 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useRouter } from "@tanstack/react-router";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   createEnvironmentRpcQueryAtomFamily,
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { WS_METHODS, type EnvironmentId, type ScopedThreadRef } from "@t3tools/contracts";
+import {
+  WS_METHODS,
+  type EnvironmentId,
+  type ScopedThreadRef,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { stackedThreadToast, toastManager } from "./components/ui/toast";
 import { connectionAtomRuntime } from "./connection/runtime";
 import { useOpenInPreferredEditor } from "./editorPreferences";
 import { useCopyToClipboard } from "./hooks/useCopyToClipboard";
+import { readLocalApi } from "./localApi";
 import { appAtomRegistry } from "./rpc/atomRegistry";
+import { waitForThreadShell } from "./state/entities";
 import { usePrimaryEnvironmentId } from "./state/environments";
-import { primaryServerAvailableEditorsAtom, serverEnvironment } from "./state/server";
+import {
+  environmentServerConfigsAtom,
+  primaryServerAvailableEditorsAtom,
+  serverEnvironment,
+} from "./state/server";
+import { threadEnvironment } from "./state/threads";
+import { useOrchestrationCommand } from "./state/use-orchestration-command";
 import { activeThreadMemoryDirectory, activeThreadMemoryPath } from "./threadMemory.logic";
+import { buildThreadRouteParams } from "./threadRoutes";
 
 const threadMemoryDirectoryAtom = Atom.family((environmentId: EnvironmentId) =>
   Atom.make((get) =>
@@ -72,6 +88,63 @@ export function useOpenThreadMemory() {
           description: error instanceof Error ? error.message : path,
         }),
       );
+    }
+  };
+}
+
+export function readEnvironmentSupportsFreshStart(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadFreshStart === true
+  );
+}
+
+/** Opens the other end of a fresh start: the thread it continued in, or the one it continues. */
+export function useOpenLinkedThread() {
+  const router = useRouter();
+  return (environmentId: EnvironmentId, threadId: ThreadId) =>
+    router.navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(scopeThreadRef(environmentId, threadId)),
+    });
+}
+
+/**
+ * Continues a pinned thread in a new one that takes over its pin and memory,
+ * then opens the new thread.
+ */
+export function useFreshStartThread() {
+  const freshStart = useOrchestrationCommand(threadEnvironment.freshStart, {
+    reportFailure: false,
+  });
+  const openLinkedThread = useOpenLinkedThread();
+  return async (threadRef: ScopedThreadRef) => {
+    const confirmed = await readLocalApi()?.dialogs.confirm(
+      [
+        "Start this thread fresh?",
+        "A new pinned thread takes its place and its memory, and this one is settled.",
+      ].join("\n"),
+    );
+    if (confirmed !== true) return;
+    const result = await freshStart({
+      environmentId: threadRef.environmentId,
+      input: { threadId: threadRef.threadId },
+    });
+    if (result._tag === "Failure") {
+      if (isAtomCommandInterrupted(result)) return;
+      const error = squashAtomCommandFailure(result);
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not start fresh",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        }),
+      );
+      return;
+    }
+    const continuation = scopeThreadRef(threadRef.environmentId, result.value.newThreadId);
+    if (await waitForThreadShell(continuation)) {
+      await openLinkedThread(continuation.environmentId, continuation.threadId);
     }
   };
 }

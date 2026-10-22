@@ -435,6 +435,12 @@ The target runtime and interaction modes may not be broader than the caller's.
 Stable command and message IDs are derived from `clientRequestId` for
 idempotent retries.
 
+A pinned thread the user continued with a fresh start refuses messages with
+`thread_not_sendable` while it stays settled, naming the thread that took over
+its memory, so an agent holding the old ID does not wake a thread that no longer
+keeps it. List and read results report the pair as `continuedIn` and
+`continuedFrom`.
+
 ### `t3_thread_wait`
 
 Waits for a selected run to become `completed`, `failed`, `cancelled`,

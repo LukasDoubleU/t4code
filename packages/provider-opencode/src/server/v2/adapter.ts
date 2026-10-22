@@ -3138,6 +3138,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         buildRuntimeInstructions({ harness: "OpenCode", model: turnInput.modelSelection.model }),
         t3OrchestrationSystemPrompt(mcpAvailable),
         turnInput.threadMemory?.instructions,
+        // One turn only: the next turn's instructions drop it again.
+        turnInput.memoryReminder,
       ]
         .filter((part) => part !== undefined && part.length > 0)
         .join("\n\n");

@@ -371,6 +371,12 @@ export const OrchestratorMcpThreadPullRequest = Schema.Struct({
 });
 export type OrchestratorMcpThreadPullRequest = typeof OrchestratorMcpThreadPullRequest.Type;
 
+/** A fresh start's links between a pinned thread and the one it continues in. */
+const OrchestratorMcpThreadContinuation = Schema.Struct({
+  continuedFrom: Schema.optional(ThreadId),
+  continuedIn: Schema.optional(ThreadId),
+});
+
 export const OrchestratorMcpThreadListItem = Schema.Struct({
   threadId: ThreadId,
   title: Schema.String,
@@ -391,6 +397,7 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   snoozedUntil: Schema.NullOr(IsoDateTime),
   parentThreadId: Schema.NullOr(ThreadId),
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
+  ...OrchestratorMcpThreadContinuation.fields,
   itemCount: NonNegativeInt,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -456,6 +463,7 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   worktreePath: Schema.NullOr(Schema.String),
   parentThreadId: Schema.NullOr(ThreadId),
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
+  ...OrchestratorMcpThreadContinuation.fields,
   runCount: NonNegativeInt,
   itemCount: NonNegativeInt,
   pendingRequestCount: NonNegativeInt,

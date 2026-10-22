@@ -452,6 +452,12 @@ export interface ProviderAdapterV2TurnInput {
    * deliver it once.
    */
   readonly forkedMemoryNote?: string;
+  /**
+   * Only on a pinned thread's first turn after its context came close to the
+   * limit: tells the agent to save its memory before compaction. Delivered
+   * once, next to the memory line.
+   */
+  readonly memoryReminder?: string;
 }
 
 export interface ProviderAdapterV2SteerInput {

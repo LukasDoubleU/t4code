@@ -9,6 +9,14 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     { tag: "path", attrs: { d: "M10 12h4" } },
   ],
   check: [{ tag: "path", attrs: { d: "M20 6 9 17l-5-5" } }],
+  "arrow-left": [
+    { tag: "path", attrs: { d: "m12 19-7-7 7-7" } },
+    { tag: "path", attrs: { d: "M19 12H5" } },
+  ],
+  "arrow-right": [
+    { tag: "path", attrs: { d: "M5 12h14" } },
+    { tag: "path", attrs: { d: "m12 5 7 7-7 7" } },
+  ],
   brain: [
     { tag: "path", attrs: { d: "M12 18V5" } },
     { tag: "path", attrs: { d: "M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" } },
@@ -110,6 +118,10 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     { tag: "path", attrs: { d: "M21 3v5h-5" } },
     { tag: "path", attrs: { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" } },
     { tag: "path", attrs: { d: "M8 16H3v5" } },
+  ],
+  "rotate-ccw": [
+    { tag: "path", attrs: { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" } },
+    { tag: "path", attrs: { d: "M3 3v5h5" } },
   ],
   settings: [
     {

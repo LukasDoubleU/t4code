@@ -144,6 +144,22 @@ folder, usually `~/.t3/userdata/memory`. To turn memories off for an environment
 **Settings → General → Pinned threads keep a memory**. A change takes effect on the thread's next
 turn. Claude, Codex, and OpenCode threads use the memory; other providers work as before.
 
+When a pinned thread's conversation has grown too long, choose **Fresh start** in its menu. A new
+thread with the same title, model, and settings takes its place among the pinned threads, along
+with its memory file, and its agent reads the memory first and carries on in the same role. The old
+thread is settled and keeps its history; each one's menu links to the other. Agents that look the
+thread up by name find the new one, and a message an agent sends to the old one is refused with
+the new thread's ID. A thread that is still working or waiting on you can't start fresh yet.
+
+When the context of a pinned thread comes close to full, its next turn reminds the agent to update
+the memory before the conversation is compacted, once each time it gets there. This works where
+the provider reports the size of its context window, as Claude, Codex, and OpenCode do.
+
+At the end of each turn, a memory file that changed is copied to a `backups` folder next to it,
+keeping the last 20 versions of each thread's memory. To undo a bad edit, copy an earlier version
+back over the memory file. When a pinned thread has run 20 turns without changing its memory, the
+brain icon's tooltip and the expert's hover say so.
+
 ### Sort and group threads
 
 On web and desktop, the sort button at the top of the sidebar sets how threads are sorted and

@@ -692,6 +692,16 @@ function threadPullRequests(
   }));
 }
 
+function threadContinuation(thread: {
+  readonly continuedFrom?: ThreadId | undefined;
+  readonly continuedIn?: ThreadId | undefined;
+}) {
+  return {
+    ...(thread.continuedFrom === undefined ? {} : { continuedFrom: thread.continuedFrom }),
+    ...(thread.continuedIn === undefined ? {} : { continuedIn: thread.continuedIn }),
+  };
+}
+
 function listItemFromShell(
   shell: OrchestrationV2ThreadShell,
   nowMs: number,
@@ -713,6 +723,7 @@ function listItemFromShell(
     ...threadSnooze(shell, nowMs),
     parentThreadId: shell.lineage.parentThreadId,
     relationshipToParent: shell.lineage.relationshipToParent,
+    ...threadContinuation(shell),
     itemCount: shell.visibleItemCount,
     createdAt: DateTime.formatIso(shell.createdAt),
     updatedAt: DateTime.formatIso(shell.updatedAt),
@@ -765,6 +776,7 @@ function threadDetail(
     worktreePath: projection.thread.worktreePath,
     parentThreadId: projection.thread.lineage.parentThreadId,
     relationshipToParent: projection.thread.lineage.relationshipToParent,
+    ...threadContinuation(projection.thread),
     runCount: projection.runs.length,
     itemCount,
     pendingRequestCount: projection.runtimeRequests.filter(
@@ -2835,6 +2847,15 @@ const make = Effect.gen(function* () {
     }),
     sendToThread: Effect.fn("OrchestratorMcpService.sendToThread")(function* (scope, input) {
       const { parent, limits, target } = yield* loadScopedThread(scope, input.threadId);
+      // An agent that kept an expert's old id would otherwise wake a settled
+      // thread that no longer keeps the expert's memory. Once the user brings
+      // the old thread back, it takes messages again.
+      if (target.thread.continuedIn !== undefined && threadSettlement(target.thread).settled) {
+        return yield* failure(
+          "thread_not_sendable",
+          `Thread ${input.threadId} was continued in thread ${target.thread.continuedIn} with a fresh start. Send to that thread instead.`,
+        );
+      }
       yield* assertLiveCallerForOtherThread(scope, parent, target);
       yield* resolveRuntimeMode(limits.runtimeMode, target.thread.runtimeMode);
       yield* resolveInteractionMode(limits.interactionMode, target.thread.interactionMode);

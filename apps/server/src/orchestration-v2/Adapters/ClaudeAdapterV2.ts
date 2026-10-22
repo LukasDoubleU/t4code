@@ -9500,6 +9500,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               const reminder = [
                 turnInput.forkedMemoryNote,
                 memory === querySession.memorySeen ? undefined : memory,
+                turnInput.memoryReminder,
               ]
                 .filter((part) => part !== undefined)
                 .join("\n\n");

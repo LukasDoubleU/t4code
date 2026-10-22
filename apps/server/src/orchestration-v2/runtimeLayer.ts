@@ -50,6 +50,7 @@ import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ThreadLaunchService from "./ThreadLaunchService.ts";
 import * as ThreadLifecycleService from "./ThreadLifecycleService.ts";
+import * as ThreadFreshStart from "../memory/ThreadFreshStart.ts";
 import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
@@ -281,6 +282,9 @@ const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
 const layerThreadLifecycleProvided = ThreadLifecycleService.layer.pipe(
   Layer.provide(layerThreadManagementProvided),
 );
+const layerThreadFreshStartProvided = ThreadFreshStart.layer.pipe(
+  Layer.provide(layerThreadManagementProvided),
+);
 const layerSecretRequestsProvided = SecretRequests.layer.pipe(
   Layer.provide(layerThreadManagementProvided),
 );
@@ -367,6 +371,7 @@ export const layerProduction = Layer.mergeAll(
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
   layerThreadLifecycleProvided,
+  layerThreadFreshStartProvided,
   layerScheduledTaskProvided,
   layerSecretRequestsProvided,
   UsageLimitRecoveryWorker.layer.pipe(

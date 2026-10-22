@@ -25,7 +25,7 @@ import {
   type RunId,
   type RuntimeMode,
   type RuntimeRequestId,
-  type ThreadId,
+  ThreadId,
   type ThreadEnvMode,
   type TurnItemId,
   type UploadChatAttachment,
@@ -98,6 +98,11 @@ export interface PinThreadInput extends ThreadCommandInput {
   readonly orderKey?: string;
 }
 export type UnpinThreadInput = ThreadCommandInput;
+
+export interface FreshStartThreadInput extends ThreadCommandInput {
+  /** The thread to continue in; one is allocated when absent. */
+  readonly newThreadId?: ThreadId;
+}
 
 export interface ReorderPinnedThreadInput extends ThreadCommandInput {
   readonly orderKey: string;
@@ -505,6 +510,21 @@ export const unpinThread = Effect.fn("EnvironmentCommands.unpinThread")(function
   input: UnpinThreadInput,
 ) {
   return yield* simpleThreadCommand("thread.unpin", input);
+});
+
+export const freshStartThread = Effect.fn("EnvironmentCommands.freshStartThread")(function* (
+  input: FreshStartThreadInput,
+) {
+  const newThreadId =
+    input.newThreadId ??
+    ThreadId.make(yield* (yield* Crypto.Crypto).randomUUIDv4().pipe(Effect.orDie));
+  const result = yield* dispatch({
+    type: "thread.fresh-start",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    newThreadId,
+  });
+  return { ...result, newThreadId };
 });
 
 export const unsettleThread = Effect.fn("EnvironmentCommands.unsettleThread")(function* (

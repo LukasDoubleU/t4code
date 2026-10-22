@@ -429,6 +429,41 @@ it.effect("an agent here works on a linked environment's threads within its own 
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );
 
+it.effect("a message sent there names the thread and machine here that sent it", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const seen = yield* Ref.make<Seen>(nothingSeen);
+      const linkSession = yield* Ref.make("");
+      const b = yield* serveBox(seen, linkSession);
+      const a = yield* makeLaptop;
+      yield* linkTo(a.links, b, "auto");
+      yield* Ref.set(linkSession, (yield* b.linkedSessions)[0]!.sessionId);
+
+      const sent = yield* a.call("thread:laptop-full", "t3_thread_send", {
+        environmentId: box.environmentId,
+        threadId: boxThread,
+        message: "The review is done.",
+        // Only this side knows its caller, so what the agent claims is replaced.
+        sentFrom: {
+          environmentId: box.environmentId,
+          threadId: usersThread,
+          title: "The box user's own",
+          label: "Box",
+        },
+      });
+      expect(sent.isError).toBe(false);
+      expect((yield* Ref.get(seen)).sends.map((input) => input.sentFrom)).toEqual([
+        {
+          environmentId: laptop.environmentId,
+          threadId: ThreadId.make("thread:laptop-full"),
+          title: "thread:laptop-full",
+          label: "Laptop",
+        },
+      ]);
+    }),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
+
 it.effect("keeps a forwarded wait short and its retries scoped to the caller", () =>
   Effect.scoped(
     Effect.gen(function* () {

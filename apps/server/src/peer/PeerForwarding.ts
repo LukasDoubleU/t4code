@@ -9,6 +9,7 @@ import {
   OrchestratorMcpThreadListResult,
   OrchestratorMcpThreadReadInput,
   OrchestratorMcpThreadReadResult,
+  type OrchestratorMcpThreadSendInput,
   OrchestratorMcpThreadWaitInput,
   OrchestratorMcpThreadWaitResult,
   type OrchestratorMcpUnlistedEnvironment,
@@ -25,6 +26,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import type * as Tool from "effect/ai/Tool";
 
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { assertNotLinked, callerLinkOrigin } from "../mcp/linkOrigin.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import { readCaller, receivedMessage, unavailable } from "../mcp/threadAccess.ts";
@@ -122,6 +124,7 @@ const make = Effect.gen(function* () {
   const links = yield* PeerLinks.PeerLinks;
   const crypto = yield* Crypto.Crypto;
   const threads = yield* ThreadManagement.ThreadManagementService;
+  const environment = yield* ServerEnvironment.ServerEnvironment;
 
   /**
    * The caller's own limits here, which travel with every call it forwards.
@@ -266,6 +269,31 @@ const make = Effect.gen(function* () {
     return yield* Effect.raceFirst(settles, woken);
   });
 
+  /**
+   * A message sent there names the thread here that sent it, which a client there may never
+   * have seen. What the agent passed is replaced: only this side knows its caller.
+   */
+  const withSender = Effect.fn("PeerForwarding.withSender")(function* (
+    scope: Scope,
+    { sentFrom: _claimed, ...input }: OrchestratorMcpThreadSendInput,
+  ) {
+    const sender =
+      scope.thread === undefined
+        ? null
+        : yield* threads.getThreadShell(scope.thread.threadId).pipe(Effect.mapError(unavailable));
+    if (sender === null) return input;
+    const here = yield* environment.getDescriptor;
+    return {
+      ...input,
+      sentFrom: {
+        environmentId: scope.environmentId,
+        threadId: sender.id,
+        title: sender.title,
+        label: here.label,
+      },
+    };
+  });
+
   const call: PeerForwarding["Service"]["call"] = (scope, tool, environmentId, params) =>
     tool.name === "t3_thread_wait"
       ? (waitAsCaller(
@@ -273,7 +301,27 @@ const make = Effect.gen(function* () {
           environmentId,
           params as OrchestratorMcpThreadWaitInput,
         ) as Effect.Effect<Tool.Success<typeof tool>, OrchestratorMcpFailure>)
-      : forward(scope, tool.name, tool.parametersSchema, tool.successSchema, environmentId, params);
+      : tool.name === "t3_thread_send"
+        ? withSender(scope, params as OrchestratorMcpThreadSendInput).pipe(
+            Effect.flatMap((sent) =>
+              forward<Tool.Success<typeof tool>>(
+                scope,
+                tool.name,
+                tool.parametersSchema,
+                tool.successSchema,
+                environmentId,
+                sent,
+              ),
+            ),
+          )
+        : forward(
+            scope,
+            tool.name,
+            tool.parametersSchema,
+            tool.successSchema,
+            environmentId,
+            params,
+          );
 
   /**
    * The next step for an agent whose machine is not linked: without it, an

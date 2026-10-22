@@ -514,3 +514,70 @@ describe("t3_thread_wait wakes on a message for the waiting thread", () => {
     ),
   );
 });
+
+describe("a message from a thread on a linked machine", () => {
+  const sentFrom = {
+    environmentId: EnvironmentId.make("environment:laptop"),
+    threadId: ThreadId.make("thread:laptop-review"),
+    title: "Review the migration",
+    label: "Laptop",
+  };
+  /** The laptop's link, forwarding its agent's `t3_thread_send`. */
+  const linkScope: McpInvocationScope = {
+    environmentId: EnvironmentId.make("environment:mcp-wait-wake"),
+    requestNamespace: "link:laptop",
+    thread: undefined,
+    client: {
+      sessionId: "session:laptop",
+      label: "T3 Code · Laptop",
+      access: "full-access",
+      linked: true,
+    },
+    capabilities: new Set(["orchestration"]),
+    issuedAt: 1,
+  };
+
+  it.live("names its sender, which only a link can", () =>
+    withThreads(({ service, orchestrator, watching }) =>
+      Effect.gen(function* () {
+        const waiting = yield* service
+          .waitForThread(scopeOf(waiter), { threadId: answerer, timeoutMs: 600_000 })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(watching);
+        const sent = yield* service.sendToThread(linkScope, {
+          threadId: waiter,
+          message: answer,
+          mode: "queue",
+          sentFrom,
+        });
+        // The waiting agent can answer: t3_thread_send finds that thread on the linked machine.
+        expect((yield* Fiber.join(waiting)).messageReceived).toMatchObject({
+          messageId: sent.messageId,
+          senderThreadId: sentFrom.threadId,
+          senderTitle: "Review the migration · Laptop",
+        });
+
+        const claimed = yield* service.sendToThread(scopeOf(answerer), {
+          threadId: waiter,
+          message: "Not from the laptop.",
+          mode: "queue",
+          sentFrom,
+        });
+        const projection = yield* orchestrator.getThreadProjection(waiter);
+        const messageOf = (messageId: MessageId) =>
+          projection.messages.find((message) => message.id === messageId);
+        const itemOf = (messageId: MessageId) =>
+          projection.turnItems.find(
+            (item) => item.type === "user_message" && item.messageId === messageId,
+          );
+        expect(messageOf(sent.messageId)).toMatchObject({ createdBy: "agent", sentFrom });
+        expect(messageOf(sent.messageId)?.senderThreadId).toBeUndefined();
+        // Clients read the sender from the turn item.
+        expect(itemOf(sent.messageId)).toMatchObject({ sentFrom });
+        // An agent here sends as its own thread, whatever it claims.
+        expect(messageOf(claimed.messageId)).toMatchObject({ senderThreadId: answerer });
+        expect(messageOf(claimed.messageId)?.sentFrom).toBeUndefined();
+      }),
+    ),
+  );
+});

@@ -283,6 +283,10 @@
       "types": "./src/state/threads.ts",
       "default": "./src/state/threads.ts"
     },
+    "./state/thread-tail": {
+      "types": "./src/state/threadTail.ts",
+      "default": "./src/state/threadTail.ts"
+    },
     "./state/subagent-display": {
       "types": "./src/state/subagentDisplay.ts",
       "default": "./src/state/subagentDisplay.ts"

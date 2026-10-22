@@ -74,6 +74,7 @@ import {
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
+  MessagesSquareIcon,
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
@@ -2113,6 +2114,17 @@ function OpenCommandPaletteDialog(props: {
       },
     });
   }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:experts-feed",
+    searchTerms: ["experts", "feed", "pinned", "replies", "messages", "inbox"],
+    title: "Open experts feed",
+    icon: <MessagesSquareIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/experts" });
+    },
+  });
 
   actionItems.push({
     kind: "action",

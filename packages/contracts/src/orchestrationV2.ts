@@ -3593,6 +3593,34 @@ export const OrchestrationV2ThreadHistoryPage = Schema.Struct({
 });
 export type OrchestrationV2ThreadHistoryPage = typeof OrchestrationV2ThreadHistoryPage.Type;
 
+/** A message near the end of a thread, its text clamped to a preview. */
+export const OrchestrationV2ThreadTailMessage = Schema.Struct({
+  itemId: TurnItemId,
+  messageId: MessageId,
+  runId: Schema.NullOr(RunId),
+  role: Schema.Literals(["user", "assistant"]),
+  text: Schema.String,
+  /** The thread holds more of the text than `text`. */
+  textTruncated: Schema.Boolean,
+  streaming: Schema.Boolean,
+  createdBy: Schema.optional(OrchestrationV2Actor),
+  creationSource: Schema.optional(OrchestrationV2CreationSource),
+  scheduledTaskId: Schema.optional(ScheduledTaskId),
+  senderThreadId: Schema.optional(ThreadId),
+  sentFrom: Schema.optional(OrchestrationV2SentFrom),
+  createdAt: IsoDateTime,
+});
+export type OrchestrationV2ThreadTailMessage = typeof OrchestrationV2ThreadTailMessage.Type;
+
+/**
+ * A thread's last messages, oldest first: what it was told and what it replied, a run's reply
+ * being its last assistant message.
+ */
+export const OrchestrationV2ThreadTail = Schema.Struct({
+  messages: Schema.Array(OrchestrationV2ThreadTailMessage),
+});
+export type OrchestrationV2ThreadTail = typeof OrchestrationV2ThreadTail.Type;
+
 const knownDomainEventTypes: ReadonlySet<string> = new Set(
   OrchestrationV2DomainEvent.members.flatMap((member) => {
     const type = member.fields.type;

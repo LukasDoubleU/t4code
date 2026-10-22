@@ -200,6 +200,7 @@ import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { cn } from "~/lib/utils";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
+import { ExpertsFeedButton } from "./experts/ExpertsFeedButton";
 import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
@@ -1643,6 +1644,8 @@ function SidebarSectionHeader(props: {
   dragging?: boolean;
   isDropTarget?: boolean;
   toggle: { expanded: boolean; onToggle: () => void };
+  /** Beside the header, not inside its toggle. */
+  action?: ReactNode;
 }) {
   const shelf =
     props.marker === "pinned-header"
@@ -1661,16 +1664,27 @@ function SidebarSectionHeader(props: {
       data-testid={`sidebar-${props.marker}`}
       className={cn("mx-0.5 h-8", props.className)}
     >
-      <CollapsibleSectionHeader
-        onClick={props.toggle.onToggle}
-        expanded={props.toggle.expanded}
-        tone={
-          props.isDropTarget ? "accent" : props.dragging ? "emphasized" : snoozed ? "info" : "muted"
-        }
-        data-testid={`sidebar-${shelf}-shelf-toggle`}
-      >
-        {props.label}
-      </CollapsibleSectionHeader>
+      <div className="flex items-center gap-0.5">
+        <div className="min-w-0 flex-1">
+          <CollapsibleSectionHeader
+            onClick={props.toggle.onToggle}
+            expanded={props.toggle.expanded}
+            tone={
+              props.isDropTarget
+                ? "accent"
+                : props.dragging
+                  ? "emphasized"
+                  : snoozed
+                    ? "info"
+                    : "muted"
+            }
+            data-testid={`sidebar-${shelf}-shelf-toggle`}
+          >
+            {props.label}
+          </CollapsibleSectionHeader>
+        </div>
+        {props.action}
+      </div>
     </SortableSidebarMarker>
   );
 }
@@ -5746,6 +5760,7 @@ export default function Sidebar() {
                               marker="pinned-header"
                               label={experts.label}
                               toggle={{ expanded: experts.expanded, onToggle: toggleExperts }}
+                              action={<ExpertsFeedButton />}
                             />,
                           );
                         }
@@ -5904,6 +5919,7 @@ export default function Sidebar() {
                                     expanded: experts.expanded,
                                     onToggle: toggleExperts,
                                   }}
+                                  action={<ExpertsFeedButton />}
                                 />
                               ) : (
                                 <SidebarDragBoundary

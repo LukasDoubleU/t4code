@@ -319,7 +319,8 @@ for custom configuration.
 
 **Limited** means the provider stopped on a usage or rate limit. The conversation
 keeps the provider's explanation. Retry after the limit resets, or switch to
-another provider instance.
+another provider instance. With several Claude or Codex accounts, T3 moves the
+turn to the next account by itself; see [Usage and limits](./usage.md#track-subscription-limits).
 On web and desktop, press **Resume** in an empty composer to continue a limited
 or interrupted turn manually.
 Queued messages stay saved while the limit blocks the thread. They run after

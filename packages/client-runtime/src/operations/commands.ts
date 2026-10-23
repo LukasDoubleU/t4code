@@ -483,6 +483,20 @@ export const setThreadAutoSettle = Effect.fn("EnvironmentCommands.setThreadAutoS
   });
 });
 
+export interface SetThreadAccountFailoverInput extends ThreadCommandInput {
+  readonly enabled: boolean;
+}
+export const setThreadAccountFailover = Effect.fn("EnvironmentCommands.setThreadAccountFailover")(
+  function* (input: SetThreadAccountFailoverInput) {
+    return yield* dispatch({
+      type: "thread.metadata.update",
+      commandId: yield* allocateCommandId(input),
+      threadId: input.threadId,
+      accountFailover: input.enabled,
+    });
+  },
+);
+
 export const reorderPinnedThread = Effect.fn("EnvironmentCommands.reorderPinnedThread")(function* (
   input: ReorderPinnedThreadInput,
 ) {

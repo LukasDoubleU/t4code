@@ -1,5 +1,7 @@
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
+import * as AccountFailover from "./AccountFailover.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
+import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as OrchestrationCommandReceipts from "../persistence/OrchestrationCommandReceipts.ts";
@@ -384,6 +386,15 @@ export const layerProduction = Layer.mergeAll(
     ),
   ),
   layerProviderContinuationWorkerProvided,
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const reactor = yield* AccountFailover.AccountFailoverReactor;
+      yield* reactor.start();
+    }),
+  ).pipe(
+    Layer.provide(AccountFailover.layerReactor),
+    Layer.provide(Layer.merge(layerOrchestratorProvided, layerEventSinkProvided)),
+  ),
   layerAgentSessionImporterProvided,
   EffectOutbox.layerPruneWorker.pipe(Layer.provide(EffectOutbox.layer)),
 ).pipe(

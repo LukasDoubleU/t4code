@@ -270,6 +270,10 @@ export function useThreadActions() {
   const setThreadAutoSettleMutation = useOrchestrationCommand(threadEnvironment.setAutoSettle, {
     reportFailure: false,
   });
+  const setThreadAccountFailoverMutation = useOrchestrationCommand(
+    threadEnvironment.setAccountFailover,
+    { reportFailure: false },
+  );
   const reorderPinnedThreadMutation = useOrchestrationCommand(threadEnvironment.reorderPin, {
     reportFailure: false,
   });
@@ -633,6 +637,13 @@ export function useThreadActions() {
     });
   };
 
+  // The thread menu offers this only on servers that support it.
+  const setThreadAccountFailover = (target: ScopedThreadRef, enabled: boolean) =>
+    setThreadAccountFailoverMutation({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, enabled },
+    });
+
   const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
     if (!readEnvironmentSupportsPinning(target.environmentId)) {
       return AsyncResult.failure(
@@ -908,5 +919,6 @@ export function useThreadActions() {
     reorderActiveThread,
     markThreadUnread,
     setThreadAutoSettle,
+    setThreadAccountFailover,
   };
 }

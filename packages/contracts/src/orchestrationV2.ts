@@ -487,6 +487,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+  accountFailoverDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   /** The pinned thread this one took over with a fresh start, memory included. */
@@ -2064,6 +2065,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+  accountFailoverDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   continuedFrom: Schema.optional(ThreadId),
@@ -2151,6 +2153,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
   lastSnoozeWakeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+  accountFailoverDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -2589,6 +2592,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
   snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+  accountFailoverDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   titleRegeneration: Schema.optional(
     Schema.NullOr(
@@ -2929,6 +2933,8 @@ export const OrchestrationV2Command = Schema.Union([
     /** Reject unless no message or run has landed on this thread. */
     expectedEmpty: Schema.optional(Schema.Boolean),
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
+    /** Whether a turn moves to the next account when the thread's account is used up. */
+    accountFailover: Schema.optional(Schema.Boolean),
     /** Link (object) or unlink (null) a pull request (#8160); absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
     continuedIn: Schema.optional(ThreadId),

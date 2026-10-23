@@ -16,6 +16,9 @@ export type ThreadActionMenuId =
   | "auto-settle"
   | "auto-settle:enabled"
   | "auto-settle:disabled"
+  | "account-failover"
+  | "account-failover:enabled"
+  | "account-failover:disabled"
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
@@ -85,6 +88,8 @@ export interface ThreadActionMenuState {
   readonly continuedFrom?: boolean;
   readonly isSettled: boolean;
   readonly autoSettleEnabled: boolean;
+  /** Whether a turn moves to the next account when the thread's account is used up. */
+  readonly accountFailoverEnabled?: boolean;
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
   /** Where the sidebar's Background section lets this thread move; null hides both items. */
@@ -98,6 +103,7 @@ export interface ThreadActionMenuState {
   readonly supports: {
     readonly settlement: boolean;
     readonly autoSettleOptOut: boolean;
+    readonly accountFailover?: boolean;
     readonly snooze: boolean;
     readonly pinning: boolean;
     readonly titleRegeneration: boolean;
@@ -248,6 +254,27 @@ export function buildThreadActionMenuItems(
                 id: "auto-settle:disabled" as const,
                 label: "Disabled",
                 checked: !state.autoSettleEnabled,
+              },
+            ],
+          },
+        ]
+      : []),
+    ...(state.supports.accountFailover === true
+      ? [
+          {
+            id: "account-failover" as const,
+            label: "At the usage limit",
+            icon: "arrow-right",
+            children: [
+              {
+                id: "account-failover:enabled" as const,
+                label: "Move to the next account",
+                checked: state.accountFailoverEnabled !== false,
+              },
+              {
+                id: "account-failover:disabled" as const,
+                label: "Stay on this account",
+                checked: state.accountFailoverEnabled === false,
               },
             ],
           },

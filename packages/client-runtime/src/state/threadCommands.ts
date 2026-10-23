@@ -43,6 +43,7 @@ import {
   type FreshStartThreadInput,
   type ReorderPinnedThreadInput,
   type ReorderActiveThreadInput,
+  type SetThreadAccountFailoverInput,
   type SetThreadAutoSettleInput,
   type SettleThreadInput,
   type SnoozeThreadInput,
@@ -81,6 +82,7 @@ import {
   freshStartThread,
   reorderPinnedThread,
   reorderActiveThread,
+  setThreadAccountFailover,
   setThreadAutoSettle,
   settleThread,
   snoozeThread,
@@ -129,6 +131,7 @@ export type {
   FreshStartThreadInput,
   ReorderPinnedThreadInput,
   ReorderActiveThreadInput,
+  SetThreadAccountFailoverInput,
   SetThreadAutoSettleInput,
   SettleThreadInput,
   SnoozeThreadInput,
@@ -248,6 +251,12 @@ export function createThreadEnvironmentAtoms<R, E>(
     setAutoSettle: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:set-auto-settle",
       execute: (input: SetThreadAutoSettleInput) => setThreadAutoSettle(input),
+      scheduler,
+      concurrency,
+    }),
+    setAccountFailover: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:set-account-failover",
+      execute: (input: SetThreadAccountFailoverInput) => setThreadAccountFailover(input),
       scheduler,
       concurrency,
     }),
@@ -473,6 +482,10 @@ export function createThreadEnvironmentAtoms<R, E>(
     setAutoSettle: optimistic.wrap(commands.setAutoSettle, (thread, input, now) => ({
       ...thread,
       autoSettleDisabledAt: input.enabled ? null : (thread.autoSettleDisabledAt ?? now),
+    })),
+    setAccountFailover: optimistic.wrap(commands.setAccountFailover, (thread, input, now) => ({
+      ...thread,
+      accountFailoverDisabledAt: input.enabled ? null : (thread.accountFailoverDisabledAt ?? now),
     })),
     pin: optimistic.wrap(commands.pin, (thread, input, now) => ({
       ...thread,

@@ -3374,6 +3374,7 @@ export default function Sidebar() {
     unpinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
+    setThreadAccountFailover,
     reorderPinnedThread,
     reorderActiveThread,
     markThreadUnread,
@@ -5042,6 +5043,7 @@ export default function Sidebar() {
               continuedFrom: thread.source.continuedFrom !== undefined,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
+              accountFailoverEnabled: thread.accountFailoverDisabledAt == null,
               isSnoozed,
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
               background: backgroundItem,
@@ -5050,6 +5052,9 @@ export default function Sidebar() {
               supports: {
                 settlement: supportsSettlement,
                 autoSettleOptOut: supportsAutoSettleOptOut,
+                accountFailover:
+                  serverConfigs.get(thread.environmentId)?.environment.capabilities
+                    .threadAccountFailover === true,
                 snooze: supportsSnooze,
                 pinning: supportsPinning,
                 titleRegeneration: supportsTitleRegeneration,
@@ -5157,6 +5162,24 @@ export default function Sidebar() {
                 stackedThreadToast({
                   type: "error",
                   title: "Failed to update auto-settle",
+                  description: error instanceof Error ? error.message : "An error occurred.",
+                }),
+              );
+            }
+            return;
+          }
+          case "account-failover:enabled":
+          case "account-failover:disabled": {
+            const result = await setThreadAccountFailover(
+              threadRef,
+              clicked.value === "account-failover:enabled",
+            );
+            if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Failed to update the usage-limit setting",
                   description: error instanceof Error ? error.message : "An error occurred.",
                 }),
               );

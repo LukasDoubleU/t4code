@@ -125,6 +125,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadFreshStart: Schema.optionalKey(Schema.Boolean),
   threadActiveReorder: Schema.optionalKey(Schema.Boolean),
   threadAutoSettleOptOut: Schema.optionalKey(Schema.Boolean),
+  /** Server moves a turn to the next account at a usage limit, unless the thread opts out. */
+  threadAccountFailover: Schema.optionalKey(Schema.Boolean),
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),
   threadVisitedTracking: Schema.optionalKey(Schema.Boolean),
   threadPullRequestLinking: Schema.optionalKey(Schema.Boolean),

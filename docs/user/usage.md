@@ -111,12 +111,23 @@ them. Only accounts signed in on the thread's environment count, and the model p
 recommended one. A new thread follows new readings only while its prompt is empty; once you type,
 it keeps its account until you send or clear the prompt. An account you choose by hand stays while
 the new thread is open; the next time you open an empty new thread, it starts on the recommended
-account again with the model you chose. Threads that already exist never switch, and an account
-without limit readings, such as one billing an API key, stays as it is. Turn off **Start new
-threads on the recommended account** next to **Use next** to keep your usual default; like the
-session room, the choice is remembered per device. Agents see the same ranking at the default 25%
-session room:
+account again with the model you chose. An account without limit readings, such as one billing an
+API key, stays as it is. Turn off **Start new threads on the recommended account** next to **Use
+next** to keep your usual default; like the session room, the choice is remembered per device.
+Agents see the same ranking at the default 25% session room:
 `orchestrator_capabilities` gives each account its place, whether it is recommended, and why.
+
+A thread that already exists keeps its account until the account runs out. When a turn stops on
+the account's usage limit, T3 continues it once on the account **Use next** recommends, ranked for
+the thread's model, with the same model and options, and the thread notes the move. Messages that
+were waiting behind that turn follow it. A turn about to start on an account whose reading already
+shows a used-up window starts on the recommended account instead. The thread stays on its new
+account when the old one resets, and nothing moves threads for any other reason. If no other
+account is ready, the turn stops as before and the thread names the account that frees up first.
+This also covers turns that agents and scheduled tasks start, and each environment uses its own
+accounts. Delegated tasks stop as before, so the agent that started one can choose how to go on.
+To keep a thread on its account, open its menu, choose **At the usage limit**, and pick **Stay on
+this account**.
 
 When a Claude or Codex account has no overall weekly quota left, its pooled session contribution
 shows 0% left. The next refill depends on both reset times: an exhausted session must also reset,

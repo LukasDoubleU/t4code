@@ -3,6 +3,8 @@ import {
   OrchestratorMcpFailure,
   type OrchestrationV2AppThread,
   type OrchestrationV2Command,
+  type ThreadAttentionMcpInput,
+  type ThreadAttentionMcpResult,
   type ThreadMetadataMcpAction,
   type ThreadMetadataMcpUpdateInput,
   type ThreadMetadataMcpUpdateResult,
@@ -24,6 +26,11 @@ export class ThreadMetadataMcpService extends Context.Service<
       scope: McpInvocationScope,
       input: ThreadMetadataMcpUpdateInput,
     ) => Effect.Effect<ThreadMetadataMcpUpdateResult, OrchestratorMcpFailure>;
+    /** Marks the caller's own thread as needing the user, or clears the mark. */
+    readonly requestAttention: (
+      scope: McpInvocationScope,
+      input: ThreadAttentionMcpInput,
+    ) => Effect.Effect<ThreadAttentionMcpResult, OrchestratorMcpFailure>;
   }
 >()("t3/mcp/ThreadMetadataMcpService") {}
 
@@ -224,7 +231,64 @@ const make = Effect.gen(function* () {
     });
   });
 
-  return ThreadMetadataMcpService.of({ update });
+  const requestAttention = Effect.fn("ThreadMetadataMcpService.requestAttention")(function* (
+    scope: McpInvocationScope,
+    input: ThreadAttentionMcpInput,
+  ) {
+    if (!scope.capabilities.has("orchestration")) {
+      return yield* failure(
+        "capability_denied",
+        "This MCP credential does not grant orchestration capabilities.",
+      );
+    }
+    const threadId = scope.thread?.threadId;
+    if (threadId === undefined) {
+      return yield* failure(
+        "target_required",
+        "This tool needs an agent running inside a T3 thread: it marks that thread.",
+      );
+    }
+    const requestKey = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const dispatched = yield* threadManagement
+      .dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make(
+          [
+            "command",
+            "mcp",
+            stablePart(scope.requestNamespace),
+            "attention",
+            stablePart(threadId),
+            stablePart(requestKey),
+          ].join(":"),
+        ),
+        threadId,
+        attention:
+          input.reason === undefined ? null : { reason: input.reason.replace(/\s+/gu, " ") },
+      })
+      .pipe(
+        Effect.mapError((error) =>
+          failure(
+            "orchestration_error",
+            `Unable to update thread ${threadId}: ${errorMessage(error)}`,
+          ),
+        ),
+      );
+    const stored = dispatched.storedEvents.find(
+      (candidate) => candidate.event.type === "thread.metadata-updated",
+    );
+    const attention =
+      stored?.event.type === "thread.metadata-updated" ? stored.event.payload.attention : null;
+    return {
+      threadId,
+      attention:
+        attention == null
+          ? null
+          : { reason: attention.reason, requestedAt: DateTime.formatIso(attention.requestedAt) },
+    };
+  });
+
+  return ThreadMetadataMcpService.of({ update, requestAttention });
 });
 
 export const layer: Layer.Layer<

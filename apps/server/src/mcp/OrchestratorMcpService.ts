@@ -678,6 +678,20 @@ function threadSnooze(
   };
 }
 
+function threadAttention(
+  thread: Pick<OrchestrationV2ThreadShell, "attention">,
+): Pick<OrchestratorMcpThreadListItem, "attention"> {
+  return {
+    attention:
+      thread.attention == null
+        ? null
+        : {
+            reason: thread.attention.reason,
+            requestedAt: DateTime.formatIso(thread.attention.requestedAt),
+          },
+  };
+}
+
 /** The same links `list_thread_pull_requests` reports, without the snapshot details. */
 function threadPullRequests(
   links: OrchestrationV2ThreadShell["pullRequests"],
@@ -721,6 +735,7 @@ function listItemFromShell(
     pullRequests: threadPullRequests(shell.pullRequests),
     ...threadSettlement(shell),
     ...threadSnooze(shell, nowMs),
+    ...threadAttention(shell),
     parentThreadId: shell.lineage.parentThreadId,
     relationshipToParent: shell.lineage.relationshipToParent,
     ...threadContinuation(shell),
@@ -785,6 +800,7 @@ function threadDetail(
     archived: projection.thread.archivedAt !== null,
     ...threadSettlement(projection.thread),
     ...threadSnooze(shell, nowMs),
+    ...threadAttention(projection.thread),
     createdAt: DateTime.formatIso(projection.thread.createdAt),
     updatedAt: DateTime.formatIso(projection.thread.updatedAt),
   };

@@ -372,6 +372,12 @@ export const OrchestratorMcpThreadPullRequest = Schema.Struct({
 });
 export type OrchestratorMcpThreadPullRequest = typeof OrchestratorMcpThreadPullRequest.Type;
 
+/** The thread's agent asked for the user (`t3_request_attention`). */
+const OrchestratorMcpThreadAttention = Schema.Struct({
+  reason: Schema.String,
+  requestedAt: IsoDateTime,
+});
+
 /** A fresh start's links between a pinned thread and the one it continues in. */
 const OrchestratorMcpThreadContinuation = Schema.Struct({
   continuedFrom: Schema.optional(ThreadId),
@@ -396,6 +402,8 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   settledAt: Schema.NullOr(IsoDateTime),
   snoozed: Schema.Boolean,
   snoozedUntil: Schema.NullOr(IsoDateTime),
+  /** Set while the thread's agent asks for the user. Missing on older servers. */
+  attention: Schema.optional(Schema.NullOr(OrchestratorMcpThreadAttention)),
   parentThreadId: Schema.NullOr(ThreadId),
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
   ...OrchestratorMcpThreadContinuation.fields,
@@ -473,6 +481,7 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   settledAt: Schema.NullOr(IsoDateTime),
   snoozed: Schema.Boolean,
   snoozedUntil: Schema.NullOr(IsoDateTime),
+  attention: Schema.optional(Schema.NullOr(OrchestratorMcpThreadAttention)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });

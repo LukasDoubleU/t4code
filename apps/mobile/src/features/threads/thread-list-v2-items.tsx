@@ -13,9 +13,10 @@ import { CustomSnoozeSheet } from "./CustomSnoozeSheet";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { threadArrangementOpenAtom } from "../../state/thread-order";
 import type { ThreadMoveDestination } from "./threadOrder";
-import type {
-  EnvironmentProject,
-  EnvironmentThreadShell,
+import {
+  threadLatestRunIsBackground,
+  type EnvironmentProject,
+  type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
 import { AuthOrchestrationOperateScope, type EnvironmentMachineKind } from "@t3tools/contracts";
@@ -104,6 +105,19 @@ const STATUS_LABEL_BY_STATUS: Partial<Record<ThreadListV2Status, StatusLabel>> =
     className: "text-warning-foreground",
     iconTintClassName: "accent-warning-foreground",
   },
+};
+const ATTENTION_STATUS_LABEL: StatusLabel = {
+  label: "Needs you",
+  icon: "bell.badge",
+  className: "text-warning-foreground",
+  iconTintClassName: "accent-warning-foreground",
+};
+// A turn the user did not start works quietly.
+const BACKGROUND_WORKING_STATUS_LABEL: StatusLabel = {
+  label: "Working",
+  icon: "circle.dashed",
+  className: "text-foreground-muted",
+  iconTintClassName: "accent-foreground-muted",
 };
 const DONE_STATUS_LABEL: StatusLabel = {
   label: "Done",
@@ -582,12 +596,19 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
 
   const status = resolveThreadListV2Status(thread);
   const isUnread = status === "ready" && threadHasUnseenCompletion(thread);
-  const workingLabel = STATUS_LABEL_BY_STATUS[status];
+  // The agent's call for the user outranks all but its own question or approval.
+  const attention = status === "approval" || status === "input" ? null : (thread.attention ?? null);
+  const workingLabel =
+    status === "working" && threadLatestRunIsBackground(thread)
+      ? BACKGROUND_WORKING_STATUS_LABEL
+      : STATUS_LABEL_BY_STATUS[status];
   const statusLabel =
-    (status === "working" && workingLabel !== undefined && thread.goal?.status === "active"
-      ? { ...workingLabel, label: "Goal" }
-      : workingLabel) ?? (isUnread ? DONE_STATUS_LABEL : undefined);
-  const recede = shouldRecedeThreadRow({ status, selected });
+    attention !== null
+      ? ATTENTION_STATUS_LABEL
+      : ((status === "working" && workingLabel !== undefined && thread.goal?.status === "active"
+          ? { ...workingLabel, label: "Goal" }
+          : workingLabel) ?? (isUnread ? DONE_STATUS_LABEL : undefined));
+  const recede = attention === null && shouldRecedeThreadRow({ status, selected });
   const timeLabel = props.timeLabel;
 
   const handleDelete = useCallback(() => onDeleteThread(thread), [onDeleteThread, thread]);
@@ -1000,7 +1021,19 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         </View>
       ) : null}
       <View className="mt-1 flex-row items-center gap-2">
-        {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
+        {attention !== null ? (
+          <Text
+            className={cn(
+              "flex-1 text-xs",
+              selected
+                ? selectedThreadRowColors.mutedForegroundClassName
+                : "text-warning-foreground",
+            )}
+            numberOfLines={1}
+          >
+            {attention.reason}
+          </Text>
+        ) : (status === "failed" || status === "limited") && thread.runtime?.lastError ? (
           <Text
             className={cn(
               "flex-1 text-xs",

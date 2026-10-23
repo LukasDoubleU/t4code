@@ -69,7 +69,7 @@ import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
-import { useThreadActions } from "./useThreadActions";
+import { useDismissThreadAttention, useThreadActions } from "./useThreadActions";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -112,6 +112,7 @@ export function useThreadActionMenu(input: {
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
+  const dismissAttention = useDismissThreadAttention();
   const handleNewThread = useNewThreadHandler();
   const openThreadMemory = useOpenThreadMemory();
   const freshStartThread = useFreshStartThread();
@@ -197,6 +198,7 @@ export function useThreadActionMenu(input: {
         branch: thread.branch ?? null,
         projectFilter: null,
         isPinned,
+        needsYou: thread.attention != null,
         hasMemory: memoryPath !== null,
         continuedIn: thread.source.continuedIn !== undefined,
         continuedFrom: thread.source.continuedFrom !== undefined,
@@ -347,6 +349,9 @@ export function useThreadActionMenu(input: {
           return;
         case "mark-unread":
           markThreadUnread(threadRef);
+          return;
+        case "dismiss-attention":
+          dismissAttention(threadRef);
           return;
         case "copy-path": {
           const workspacePath = thread.worktreePath ?? projectCwd;

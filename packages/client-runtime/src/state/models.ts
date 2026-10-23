@@ -1,20 +1,22 @@
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestsOf } from "@t3tools/shared/threadPullRequests";
-import type {
-  ThreadLinkedPullRequest,
-  EnvironmentId,
-  MessageId,
-  OrchestrationProjectShell,
-  OrchestrationV2ProviderGoal,
-  OrchestrationV2RunStatus,
-  OrchestrationV2ProviderFailureClass,
-  OrchestrationV2ThreadProjection,
-  OrchestrationV2ThreadShell,
-  PlanId,
-  ProjectId,
-  ProviderInstanceId,
-  RunId,
-  ThreadId,
+import {
+  isBackgroundRunOrigin,
+  type OrchestrationV2RunOrigin,
+  type ThreadLinkedPullRequest,
+  type EnvironmentId,
+  type MessageId,
+  type OrchestrationProjectShell,
+  type OrchestrationV2ProviderGoal,
+  type OrchestrationV2RunStatus,
+  type OrchestrationV2ProviderFailureClass,
+  type OrchestrationV2ThreadProjection,
+  type OrchestrationV2ThreadShell,
+  type PlanId,
+  type ProjectId,
+  type ProviderInstanceId,
+  type RunId,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
@@ -41,6 +43,8 @@ export interface ThreadRunSummary {
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly assistantMessageId: MessageId | null;
+  /** Who started the run; absent from older servers and for the user's own runs before them. */
+  readonly origin?: OrchestrationV2RunOrigin;
   /**
    * The run is still open, but its provider turn already ended, so nothing is
    * generating while the server settles it.
@@ -105,6 +109,8 @@ export interface EnvironmentThreadShell {
   readonly delegatedFrom: OrchestrationV2ThreadShell["delegatedFrom"] | null;
   readonly activeProviderThreadId: OrchestrationV2ThreadShell["activeProviderThreadId"];
   readonly latestRun: ThreadRunSummary | null;
+  /** When the user's own latest run ended, sent while a background run is the latest. */
+  readonly latestUserRunCompletedAt?: string | null;
   readonly runtime: ThreadRuntimeSummary | null;
   readonly blockedOnThreadWait?: boolean;
   readonly latestUserMessageAt: string | null;
@@ -144,8 +150,30 @@ export interface EnvironmentThreadShell {
    */
   readonly lastVisitedAt?: string | null;
   readonly titleRegeneration?: { readonly requestId: string; readonly startedAt: string } | null;
+  /** The thread's agent asked for the user, with its one-line reason. */
+  readonly attention?: { readonly reason: string; readonly requestedAt: string } | null;
   readonly deletedAt: string | null;
   readonly source: OrchestrationV2ThreadShell;
+}
+
+/**
+ * When the result the user has to see ended: their own latest turn's. A turn the user did not
+ * start never counts as unseen, and keeps the user's result from before it unseen.
+ */
+export function threadUnseenCompletionAt(thread: {
+  readonly latestRun: Pick<ThreadRunSummary, "completedAt" | "origin"> | null;
+  readonly latestUserRunCompletedAt?: string | null | undefined;
+}): string | null {
+  return isBackgroundRunOrigin(thread.latestRun?.origin)
+    ? (thread.latestUserRunCompletedAt ?? null)
+    : (thread.latestRun?.completedAt ?? null);
+}
+
+/** The latest run was started by another agent, a schedule or a wake, not by the user. */
+export function threadLatestRunIsBackground(thread: {
+  readonly latestRun: Pick<ThreadRunSummary, "origin"> | null;
+}): boolean {
+  return isBackgroundRunOrigin(thread.latestRun?.origin);
 }
 
 function iso(value: DateTime.Utc): string {
@@ -224,6 +252,7 @@ export function presentThreadShell(
                 : null
               : nullableIso(thread.latestRunCompletedAt),
           assistantMessageId: null,
+          ...(thread.latestRunOrigin === undefined ? {} : { origin: thread.latestRunOrigin }),
         } satisfies ThreadRunSummary);
   const runtime = shellRuntime(thread);
   // Waiting runs have ended their provider turn and are only draining effects.
@@ -254,6 +283,9 @@ export function presentThreadShell(
     delegatedFrom: thread.delegatedFrom ?? null,
     activeProviderThreadId: thread.activeProviderThreadId,
     latestRun,
+    ...(thread.latestUserRunCompletedAt === undefined
+      ? {}
+      : { latestUserRunCompletedAt: nullableIso(thread.latestUserRunCompletedAt) }),
     runtime,
     blockedOnThreadWait: thread.blockedOnThreadWait ?? false,
     latestUserMessageAt: nullableIso(thread.latestUserMessageAt),
@@ -298,6 +330,10 @@ export function presentThreadShell(
             requestId: thread.titleRegeneration.requestId,
             startedAt: iso(thread.titleRegeneration.startedAt),
           },
+    attention:
+      thread.attention == null
+        ? null
+        : { reason: thread.attention.reason, requestedAt: iso(thread.attention.requestedAt) },
     deletedAt: nullableIso(thread.deletedAt),
     source: thread,
   };

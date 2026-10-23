@@ -2,6 +2,7 @@ import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
 export type ThreadActionMenuId =
+  | "dismiss-attention"
   | "new-thread-on-branch"
   | "filter-by-project"
   | "project-settings"
@@ -80,6 +81,8 @@ export interface ThreadActionMenuState {
     readonly isActive: boolean;
   } | null;
   readonly isPinned: boolean;
+  /** The thread's agent asked for the user. */
+  readonly needsYou?: boolean;
   /** A pinned thread whose memory is active. */
   readonly hasMemory?: boolean;
   /** A fresh start continued this thread in another one. */
@@ -137,6 +140,9 @@ export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
+    ...(state.needsYou === true
+      ? [{ id: "dismiss-attention" as const, label: "Dismiss Needs you", icon: "check" }]
+      : []),
     ...(state.branch
       ? [
           {

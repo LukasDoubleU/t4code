@@ -126,6 +126,8 @@ export interface VisitThreadInput extends ThreadCommandInput {
 
 export type MarkThreadUnreadInput = ThreadCommandInput;
 
+export type DismissThreadAttentionInput = ThreadCommandInput;
+
 export interface SetMessageReactionInput extends ThreadCommandInput {
   readonly itemId: TurnItemId;
   readonly emoji: OrchestrationV2MessageReactionEmoji;
@@ -594,6 +596,17 @@ export const markThreadUnread = Effect.fn("EnvironmentCommands.markThreadUnread"
     threadId: input.threadId,
   });
 });
+
+export const dismissThreadAttention = Effect.fn("EnvironmentCommands.dismissThreadAttention")(
+  function* (input: DismissThreadAttentionInput) {
+    return yield* dispatch({
+      type: "thread.metadata.update",
+      commandId: yield* allocateCommandId(input),
+      threadId: input.threadId,
+      attention: null,
+    });
+  },
+);
 
 export const setMessageReaction = Effect.fn("EnvironmentCommands.setMessageReaction")(function* (
   input: SetMessageReactionInput,

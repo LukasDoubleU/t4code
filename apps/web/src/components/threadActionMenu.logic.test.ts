@@ -146,6 +146,11 @@ describe("buildThreadActionMenuItems", () => {
     expect(allIds(baseState)).not.toContain("copy-branch");
   });
 
+  it("offers Dismiss first while the thread's agent asks for the user", () => {
+    expect(ids({ ...baseState, needsYou: true })[0]).toBe("dismiss-attention");
+    expect(ids(baseState)).not.toContain("dismiss-attention");
+  });
+
   it("flips lifecycle labels with thread state", () => {
     expect(ids({ ...baseState, isPinned: true, isSettled: true, isSnoozed: true })).toEqual(
       expect.arrayContaining(["unpin", "unsettle", "unsnooze"]),

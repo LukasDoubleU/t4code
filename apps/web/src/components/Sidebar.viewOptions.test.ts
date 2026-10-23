@@ -201,6 +201,37 @@ describe("resolveSidebarStatusGroup", () => {
     );
   });
 
+  it("calls a turn the user did not start done without a Done, and keeps their result", () => {
+    const visitedBefore = { lastVisitedAt: "2026-06-02T09:01:00.000Z" };
+    for (const origin of ["agent", "schedule", "wake"] as const) {
+      const background = { ...finished, latestRun: { ...finished.latestRun, origin } };
+      expect(statusGroupOf(thread(`quiet-${origin}`, { ...background, ...visitedBefore }))).toBe(
+        "idle",
+      );
+      // The user's own answer from before it is still unseen.
+      expect(
+        statusGroupOf(
+          thread(`kept-${origin}`, {
+            ...background,
+            ...visitedBefore,
+            latestUserRunCompletedAt: "2026-06-02T09:03:00.000Z",
+          }),
+        ),
+      ).toBe("completed");
+    }
+  });
+
+  it("brings a thread whose agent asks for the user forward while it works or after", () => {
+    const attention = { reason: "Pick a release date", requestedAt: "2026-06-02T09:04:00.000Z" };
+    expect(statusGroupOf(thread("asks-done", { ...finished, attention, lastVisitedAt: NOW }))).toBe(
+      "needs_you",
+    );
+    expect(statusGroupOf(thread("asks-working", { attention, runtime: runtime("running") }))).toBe(
+      "needs_you",
+    );
+    expect(statusGroupOf(thread("dismissed", { ...finished, attention: null }))).toBe("idle");
+  });
+
   it("brings a woken snooze to the user until they open it", () => {
     const woke = {
       snoozedAt: "2026-06-02T04:00:00.000Z",

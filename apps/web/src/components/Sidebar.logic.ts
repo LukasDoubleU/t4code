@@ -1,5 +1,9 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import {
+  resolveThreadWorkingStartedAt,
+  threadLatestRunIsBackground,
+  threadUnseenCompletionAt,
+} from "@t3tools/client-runtime/state/models";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import {
   resolveThreadTopicOf,
@@ -705,6 +709,7 @@ export interface ThreadStatusPill {
     | "Failed"
     | "Pending Approval"
     | "Awaiting Input"
+    | "Needs you"
     | "Waiting"
     | "Plan Ready";
   colorClass: string;
@@ -722,6 +727,8 @@ type ThreadStatusInput = Pick<
   | "latestRun"
   | "runtime"
 > & {
+  attention?: SidebarThreadSummary["attention"];
+  latestUserRunCompletedAt?: SidebarThreadSummary["latestUserRunCompletedAt"];
   lastVisitedAt?: string | null | undefined;
   pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
   blockedOnThreadWait?: boolean | undefined;
@@ -831,8 +838,9 @@ export function resolveThreadLastVisitedAt(
 }
 
 export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
-  if (!thread.latestRun?.completedAt) return false;
-  const completedAt = Date.parse(thread.latestRun.completedAt);
+  const unseenAt = threadUnseenCompletionAt(thread);
+  if (!unseenAt) return false;
+  const completedAt = Date.parse(unseenAt);
   if (Number.isNaN(completedAt)) return false;
   if (!thread.lastVisitedAt) return false;
 
@@ -1020,7 +1028,12 @@ export function resolveSidebarFolderDot(
   threads: ReadonlyArray<ThreadStatusInput & SidebarThreadStatusInput>,
 ): "attention" | "failed" | "unread" | "working" | null {
   const statuses = new Set(threads.map(resolveSidebarThreadStatus));
-  if (statuses.has("input") || statuses.has("approval") || statuses.has("limited")) {
+  if (
+    statuses.has("input") ||
+    statuses.has("approval") ||
+    statuses.has("limited") ||
+    threads.some((thread) => thread.attention != null)
+  ) {
     return "attention";
   }
   if (statuses.has("failed")) return "failed";
@@ -1210,16 +1223,33 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
+  if (thread.attention != null) {
+    return {
+      label: "Needs you",
+      colorClass: "text-amber-600 dark:text-amber-300/90",
+      dotClass: "bg-amber-500 dark:bg-amber-300/90",
+      pulse: false,
+    };
+  }
+
   if (
     (thread.runtime?.status === "running" && thread.blockedOnThreadWait !== true) ||
     thread.runtime?.status === "waiting"
   ) {
-    return {
-      label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
-      pulse: true,
-    };
+    // A turn the user did not start works quietly.
+    return threadLatestRunIsBackground(thread)
+      ? {
+          label: "Working",
+          colorClass: "text-muted-foreground",
+          dotClass: "bg-muted-foreground",
+          pulse: false,
+        }
+      : {
+          label: "Working",
+          colorClass: "text-sky-600 dark:text-sky-300/80",
+          dotClass: "bg-sky-500 dark:bg-sky-300/80",
+          pulse: true,
+        };
   }
 
   if (

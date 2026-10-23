@@ -66,9 +66,10 @@ it, such as background work it was waiting for. A result of yours you have not o
 When an expert's agent needs you, for a decision or something only you can do, it marks its
 thread **Needs you** with a one-line reason. The row turns amber and comes forward like a
 question, the reason shows on the row and in its hover card, and you are notified on desktop and
-on your phone. The agent keeps working meanwhile. The mark clears when you write in the thread or
-react to a reply, or when the agent clears it. To clear it without answering, click **Needs you**
-on the row or choose **Dismiss Needs you** from the thread's menu. Any thread's agent can ask
+on your phone. In Experts the row shows only the amber hand; hover it for the reason. The agent
+keeps working meanwhile. The mark clears when you write in the thread or react to a reply, or
+when the agent clears it. To clear it without answering, click **Needs you** (or the hand) on the
+row or choose **Dismiss Needs you** from the thread's menu. Any thread's agent can ask
 this way, not only an expert's.
 
 A thread an expert's agent starts for one subject is one of its topics, and so is a thread one of

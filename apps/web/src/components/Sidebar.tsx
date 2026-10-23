@@ -2347,7 +2347,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     onDismissAttention(threadRef);
   };
   // The row's own way out of Needs you, next to the thread menu's Dismiss.
-  const attentionButton = (iconClassName: string) =>
+  const attentionButton = (iconClassName: string, iconOnly = false) =>
     attention === null ? null : (
       <Tooltip>
         <TooltipTrigger
@@ -2360,11 +2360,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               className="inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default disabled:no-underline"
             >
               <HandIcon aria-hidden className={cn("shrink-0", iconClassName)} />
-              <span role="status">Needs you</span>
+              <span role="status" className={iconOnly ? "sr-only" : undefined}>
+                Needs you
+              </span>
             </button>
           }
         />
         <TooltipPopup side="top">
+          {iconOnly ? <span className="block font-medium">Needs you</span> : null}
           {attention.reason}
           {canOperateThread ? (
             <span className="block text-muted-foreground">Click to dismiss</span>
@@ -2587,7 +2590,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       <span
         aria-hidden
         className={cn(
-          "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
+          "flex-1 text-sm transition-opacity motion-reduce:transition-none",
+          // A one-line expert row keeps enough of its title to tell which expert
+          // it is; the icons between the title and the status give way first.
+          variant === "expert" || variant === "topic" ? "min-w-[10ch]" : "min-w-0",
           shouldRecede ? "font-normal" : "font-medium",
           variant !== "slim"
             ? cn(
@@ -2673,7 +2679,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               type="button"
               aria-label="Unpin thread"
               onClick={handleUnpinClick}
-              className="group/unpin inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className={cn(
+                "group/unpin inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                // Every expert is pinned, so the pin says nothing there; it stays
+                // reachable as the unpin control on hover and keyboard focus.
+                variant === "expert" &&
+                  "hidden group-any-hover/sidebar-row:inline-flex group-focus-visible/sidebar-row:inline-flex group-has-[:focus-visible]/sidebar-row:inline-flex",
+              )}
             />
           }
         >
@@ -2688,7 +2700,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         </TooltipTrigger>
         <TooltipPopup>Unpin thread</TooltipPopup>
       </Tooltip>
-    ) : (
+    ) : variant === "expert" ? null : (
       <PinIcon
         aria-label="Pinned"
         role="img"
@@ -2720,7 +2732,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
       </Tooltip>
     ) : isAttentionStatus ? (
-      attentionButton("size-4")
+      attentionButton("size-4", variant !== "card")
     ) : (
       <SidebarStatusText
         topStatus={topStatus}
@@ -2800,17 +2812,20 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 Regenerating title
               </span>
             ) : null}
-            {topicsToggle}
-            {pinIndicator}
-            {showPin ? <ThreadMemoryIndicator threadRef={threadRef} /> : null}
-            {isRemote ? (
-              <EnvironmentMachineIcon
-                aria-hidden
-                kind={props.environmentMachine}
-                className="size-3.5 shrink-0 text-sidebar-muted-foreground/70"
-              />
-            ) : null}
-            {terminalStatusIcon}
+            {/* Clips before the title drops below its minimum, so the status stays in view. */}
+            <span className="flex min-w-0 items-center gap-1.5 overflow-hidden empty:hidden">
+              {topicsToggle}
+              {pinIndicator}
+              {showPin ? <ThreadMemoryIndicator threadRef={threadRef} /> : null}
+              {isRemote ? (
+                <EnvironmentMachineIcon
+                  aria-hidden
+                  kind={props.environmentMachine}
+                  className="size-3.5 shrink-0 text-sidebar-muted-foreground/70"
+                />
+              ) : null}
+              {terminalStatusIcon}
+            </span>
             {sortable?.isDragging ? (
               dragDestination
             ) : (

@@ -105,6 +105,7 @@ import {
 } from "./NotificationMailbox.ts";
 import { EventSinkV2 } from "./EventSink.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
+import { accountFailoverMessageId } from "./accountFailoverContinuation.ts";
 import type { OrchestrationEffectRequestV2, PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
@@ -318,6 +319,16 @@ export interface OrchestratorV2Shape {
     readonly commandId: CommandId;
     readonly threadId: ThreadId;
     readonly limitRecovery: OrchestrationV2LimitRecoveryUpdate;
+  }) => Effect.Effect<void, OrchestratorV2Error>;
+  /**
+   * Adds a line from T3 to a run, such as why the thread moved to another account. The same
+   * `key` on the same run replaces that line.
+   */
+  readonly recordRunNotice: (input: {
+    readonly threadId: ThreadId;
+    readonly runId: RunId;
+    readonly key: string;
+    readonly message: string;
   }) => Effect.Effect<void, OrchestratorV2Error>;
   readonly searchThreadStream: (
     input: OrchestrationV2SearchThreadInput,
@@ -684,15 +695,46 @@ function followsCurrentConversation(
   );
 }
 
-function queuedRunModelSelection(
-  projection: Pick<OrchestrationV2ThreadProjection, "thread" | "messages">,
+/**
+ * A message that was waiting when its account hit its usage limit follows the thread once the
+ * server moved the thread to the next account, instead of taking it back. A thread the user
+ * moved keeps each queued message's own selection.
+ */
+function queuedForFailedOverAccount(
+  projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs" | "turnItems">,
   run: OrchestrationV2Run,
-): ModelSelection {
+): boolean {
+  const instanceId = run.modelSelection.instanceId;
+  if (projection.thread.modelSelection.instanceId === instanceId) return false;
+  const limited = usageLimitBlockedRun(
+    projection.runs.filter((candidate) => candidate.providerInstanceId === instanceId),
+    projection.turnItems,
+    null,
+  );
+  if (
+    limited?.completedAt == null ||
+    DateTime.toEpochMillis(run.requestedAt) > DateTime.toEpochMillis(limited.completedAt)
+  ) {
+    return false;
+  }
+  const continuation = accountFailoverMessageId(limited.id);
+  return projection.runs.some((candidate) => candidate.userMessageId === continuation);
+}
+
+function followsThread(
+  projection: Pick<OrchestrationV2ThreadProjection, "thread" | "messages" | "runs" | "turnItems">,
+  run: OrchestrationV2Run,
+): boolean {
   const message = projection.messages.find((candidate) => candidate.id === run.userMessageId);
   // App-owned monitor updates follow the agent currently handling the thread.
-  return followsCurrentConversation(message)
-    ? projection.thread.modelSelection
-    : run.modelSelection;
+  return followsCurrentConversation(message) || queuedForFailedOverAccount(projection, run);
+}
+
+function queuedRunModelSelection(
+  projection: Pick<OrchestrationV2ThreadProjection, "thread" | "messages" | "runs" | "turnItems">,
+  run: OrchestrationV2Run,
+): ModelSelection {
+  return followsThread(projection, run) ? projection.thread.modelSelection : run.modelSelection;
 }
 
 function usageLimitHoldsQueue(
@@ -1541,7 +1583,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const activeProviderThread = projection.providerThreads.find(
         (candidate) => candidate.id === projection.thread.activeProviderThreadId,
       );
-      const followsCurrent = followsCurrentConversation(queuedMessage);
+      const followsCurrent = followsThread(projection, storedQueuedRun);
       const targetProviderThread = followsCurrent
         ? activeProviderThread?.providerInstanceId === queuedRun.providerInstanceId
           ? activeProviderThread
@@ -3240,6 +3282,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 ? { titleRegeneration: null }
                 : {}),
             ...(command.continuedIn === undefined ? {} : { continuedIn: command.continuedIn }),
+            ...(command.accountFailover === undefined
+              ? {}
+              : {
+                  accountFailoverDisabledAt: command.accountFailover
+                    ? null
+                    : (thread.accountFailoverDisabledAt ?? now),
+                }),
             ...(command.memoryUnchangedTurns === undefined
               ? {}
               : { memoryUnchangedTurns: command.memoryUnchangedTurns }),
@@ -12581,6 +12630,52 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           yield* dispatchWithReceiptEffect({ type: "thread.metadata.update", ...input });
         }),
       ),
+    recordRunNotice: (input) =>
+      threadDispatch.withLock(
+        input.threadId,
+        Effect.gen(function* () {
+          const { runs } = yield* projectionStore.getThreadRecords(input.threadId, ["runs"]);
+          const run = runs.find((candidate) => candidate.id === input.runId);
+          if (run === undefined) return;
+          const now = yield* DateTime.now;
+          yield* writeSystemEvents([
+            {
+              type: "turn-item.updated",
+              threadId: input.threadId,
+              runId: run.id,
+              ...(run.rootNodeId === null ? {} : { nodeId: run.rootNodeId }),
+              providerInstanceId: run.providerInstanceId,
+              occurredAt: now,
+              payload: {
+                id: idAllocator.derive.runSignalTurnItem({
+                  runId: run.id,
+                  signal: `notice:${input.key}`,
+                }),
+                threadId: input.threadId,
+                runId: run.id,
+                nodeId: run.rootNodeId,
+                providerThreadId: run.providerThreadId,
+                providerTurnId: null,
+                nativeItemRef: null,
+                parentItemId: null,
+                // The event sink places the line after the run's existing items.
+                ordinal: 0,
+                status: "completed",
+                title: null,
+                startedAt: now,
+                completedAt: now,
+                updatedAt: now,
+                type: "system_notice",
+                message: input.message,
+              },
+            },
+          ]);
+        }).pipe(
+          Effect.mapError(
+            (cause) => new OrchestratorProjectionError({ threadId: input.threadId, cause }),
+          ),
+        ),
+      ),
     searchThreadStream: (input) =>
       projectionStore
         .searchThreadStream(input)
@@ -12731,6 +12826,8 @@ const layerUnavailable: Layer.Layer<OrchestratorV2> = Layer.succeed(
     restartContinuationPending: () => Effect.succeed(false),
     awaitRestartContinuation: () => Effect.void,
     autoArmLimitRecovery: (input) =>
+      Effect.fail(new OrchestratorProjectionError({ threadId: input.threadId })),
+    recordRunNotice: (input) =>
       Effect.fail(new OrchestratorProjectionError({ threadId: input.threadId })),
     dispatch: (command) =>
       Effect.fail(

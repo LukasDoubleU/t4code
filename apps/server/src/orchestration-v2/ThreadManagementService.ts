@@ -50,6 +50,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import * as AccountFailover from "./AccountFailover.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -593,6 +594,7 @@ const make = Effect.gen(function* () {
   const legacyImporter = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
+  const accountFailover = yield* AccountFailover.AccountFailoverPolicy;
 
   const assertProviderInstanceEnabled: ThreadManagementServiceShape["assertProviderInstanceEnabled"] =
     (input) =>
@@ -750,8 +752,21 @@ const make = Effect.gen(function* () {
 
   const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
     ensureCommandTranscripts(command).pipe(
-      Effect.andThen(assertDispatchTargetEnabled(command)),
-      Effect.andThen(orchestrator.dispatch(command)),
+      Effect.andThen(
+        accountFailover === null || command.type !== "message.dispatch"
+          ? Effect.succeed<AccountFailover.MovedCommand>({ command, notice: null })
+          : AccountFailover.moveOffUsedUpAccount(accountFailover, orchestrator, command),
+      ),
+      Effect.flatMap((moved) =>
+        assertDispatchTargetEnabled(moved.command).pipe(
+          Effect.andThen(orchestrator.dispatch(moved.command)),
+          Effect.tap((result) =>
+            moved.notice === null
+              ? Effect.void
+              : AccountFailover.recordMoveNotice(orchestrator, moved, result),
+          ),
+        ),
+      ),
     );
 
   const getProjectThread: ThreadManagementServiceShape["getProjectThread"] = (input) =>

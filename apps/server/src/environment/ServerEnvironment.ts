@@ -249,6 +249,7 @@ export const make = Effect.gen(function* () {
       threadFreshStart: true,
       threadActiveReorder: true,
       threadAutoSettleOptOut: true,
+      threadAccountFailover: true,
       threadTitleRegeneration: true,
       commandOutputStreaming: true,
       threadVisitedTracking: true,

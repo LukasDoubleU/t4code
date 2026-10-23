@@ -39,6 +39,7 @@ import { threadEnvironment } from "../state/threads";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { readEnvironmentScope } from "../state/session";
 import {
+  readEnvironmentSupportsAccountFailover,
   readEnvironmentSupportsAutoSettleOptOut,
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsSettlement,
@@ -104,6 +105,7 @@ export function useThreadActionMenu(input: {
     pinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
+    setThreadAccountFailover,
     archiveThread,
     deleteThread,
     markThreadUnread,
@@ -151,6 +153,7 @@ export function useThreadActionMenu(input: {
       const supports = {
         settlement: readEnvironmentSupportsSettlement(threadRef.environmentId),
         autoSettleOptOut: readEnvironmentSupportsAutoSettleOptOut(threadRef.environmentId),
+        accountFailover: readEnvironmentSupportsAccountFailover(threadRef.environmentId),
         snooze: readEnvironmentSupportsSnooze(threadRef.environmentId),
         pinning: readEnvironmentSupportsPinning(threadRef.environmentId),
         titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
@@ -205,6 +208,7 @@ export function useThreadActionMenu(input: {
         continuedFrom: thread.source.continuedFrom !== undefined,
         isSettled,
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
+        accountFailoverEnabled: thread.accountFailoverDisabledAt == null,
         isSnoozed,
         canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
         background: listed
@@ -327,6 +331,12 @@ export function useThreadActionMenu(input: {
         case "auto-settle:disabled":
           await reportFailure("Failed to update auto-settle", () =>
             setThreadAutoSettle(threadRef, action === "auto-settle:enabled"),
+          );
+          return;
+        case "account-failover:enabled":
+        case "account-failover:disabled":
+          await reportFailure("Failed to update the usage-limit setting", () =>
+            setThreadAccountFailover(threadRef, action === "account-failover:enabled"),
           );
           return;
         case "rename":

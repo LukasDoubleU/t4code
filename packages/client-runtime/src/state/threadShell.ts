@@ -6,7 +6,11 @@ import type {
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
-import { isProviderNativeSubagentThread, OrchestrationV2ThreadShell } from "@t3tools/contracts";
+import {
+  isProviderNativeSubagentThread,
+  isUserPinnedThread,
+  OrchestrationV2ThreadShell,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Atom } from "effect/reactivity";
 
@@ -21,6 +25,7 @@ import {
   threadKey,
   threadRefsEqual,
 } from "./entities.ts";
+import { resolveThreadTopicOf } from "./threadTopics.ts";
 
 const EMPTY_THREADS: ReadonlyArray<OrchestrationV2ThreadShell> = Object.freeze([]);
 const EMPTY_SCOPED_THREAD_REFS: ReadonlyArray<ScopedThreadRef> = Object.freeze([]);
@@ -340,6 +345,32 @@ export function createEnvironmentThreadShellAtoms(input: {
     }).pipe(Atom.withLabel(`environment-quiet-thread-shell:${key}`));
   });
 
+  // The key of the expert a thread is a topic of, for its header. Reads only the environments
+  // on its way, and as a string keeps its value while other shells change.
+  const topicOfAtomFamily = Atom.family((key: string) => {
+    const ref = parseThreadKey(key);
+    return Atom.make((get): string | null => {
+      const lookup = (target: ScopedThreadRef) =>
+        get(environmentThreadIndexAtom(target.environmentId)).get(target.threadId);
+      const thread = lookup(ref);
+      if (thread === undefined) return null;
+      const expert = resolveThreadTopicOf({
+        ref,
+        thread,
+        lookup,
+        isExpert: (target) => {
+          const candidate = lookup(target);
+          return (
+            candidate !== undefined &&
+            candidate.archivedAt === null &&
+            isUserPinnedThread(candidate)
+          );
+        },
+      });
+      return expert === null ? null : threadKey(expert);
+    }).pipe(Atom.withLabel(`environment-thread-topic-of:${key}`));
+  });
+
   // Child approvals and questions are hidden with their sidebar rows. Read their
   // shell summaries, without subscribing to every child transcript. A task
   // delegated to a linked environment is a child too, with its own subagents.
@@ -529,5 +560,6 @@ export function createEnvironmentThreadShellAtoms(input: {
     threadShellAtom: (ref: ScopedThreadRef) => threadShellAtomFamily(threadKey(ref)),
     quietThreadShellAtom: (ref: ScopedThreadRef) => quietThreadShellAtomFamily(threadKey(ref)),
     childThreadInputsAtom: (ref: ScopedThreadRef) => childThreadInputsAtomFamily(threadKey(ref)),
+    topicOfAtom: (ref: ScopedThreadRef) => topicOfAtomFamily(threadKey(ref)),
   };
 }

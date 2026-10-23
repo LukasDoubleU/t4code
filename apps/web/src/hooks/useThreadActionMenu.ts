@@ -24,8 +24,7 @@ import { sidebarBackgroundMenuItem, useSidebarBackground } from "../components/S
 import {
   resolveSidebarThreadSection,
   resolveSidebarTopicOf,
-  sidebarContinuations,
-  sidebarLauncherKey,
+  sidebarTopicLinks,
 } from "../components/Sidebar.logic";
 import { resolveSnoozePresets } from "../components/Sidebar.snooze";
 import { resolveSidebarStatusGroup } from "../components/Sidebar.viewOptions";
@@ -170,8 +169,7 @@ export function useThreadActionMenu(input: {
         thread.archivedAt === null &&
         !isShownUnderParent(threadRef, thread.lineage, delegatedUnderParent);
       const isTopic = (() => {
-        const launcherKey = sidebarLauncherKey(thread);
-        if (launcherKey === null) return false;
+        if (thread.source.launchedBy === undefined) return false;
         const shells = readThreadShells();
         const expertKeys = new Set(
           shells
@@ -191,11 +189,7 @@ export function useThreadActionMenu(input: {
             .map((shell) => scopedThreadKey(scopeThreadRef(shell.environmentId, shell.id))),
         );
         return (
-          resolveSidebarTopicOf({
-            launcherKey,
-            expertKeys,
-            continuedIn: sidebarContinuations(shells),
-          }) !== null
+          resolveSidebarTopicOf({ thread, expertKeys, links: sidebarTopicLinks(shells) }) !== null
         );
       })();
       const items = buildThreadActionMenuItems({

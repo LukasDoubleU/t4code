@@ -51,8 +51,7 @@ import {
   resolveSidebarRowVariant,
   resolveSidebarTopicExpert,
   resolveSidebarTopicOf,
-  sidebarContinuations,
-  sidebarLauncherKey,
+  sidebarTopicLinks,
   resolveSidebarFolderDot,
   planSidebarThreadDrop,
   sidebarMarkerId,
@@ -68,6 +67,7 @@ import {
   resolveSidebarDropVerb,
 } from "./Sidebar.logic";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
+import type { ThreadTopicLinks } from "@t3tools/client-runtime/state/thread-topics";
 import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
 
 import {
@@ -165,49 +165,45 @@ describe("resolveSidebarRowVariant", () => {
 });
 
 describe("resolveSidebarTopicOf", () => {
-  const expertKeys = new Set(["expert", "remote-expert"]);
-  const topicOf = (launcherKey: string | null, continuedIn = new Map<string, string>()) =>
-    resolveSidebarTopicOf({ launcherKey, expertKeys, continuedIn });
-
-  it("makes a thread an expert launched its topic, on any machine", () => {
-    expect(topicOf("expert")).toBe("expert");
-    expect(topicOf("remote-expert")).toBe("remote-expert");
+  const environmentId = EnvironmentId.make("environment-local");
+  const key = (id: string) => scopedThreadKey(scopeThreadRef(environmentId, ThreadId.make(id)));
+  const shell = (id: string, source: Partial<ThreadTopicLinks> = {}) => ({
+    environmentId,
+    id: ThreadId.make(id),
+    source: {
+      lineage: {
+        parentThreadId: null,
+        relationshipToParent: null,
+        rootThreadId: ThreadId.make(id),
+      },
+      ...source,
+    },
   });
+  const launchedBy = (id: string) => ({ environmentId, threadId: ThreadId.make(id), title: id });
 
-  it("leaves a thread whose launcher is unknown or not an expert alone", () => {
-    expect(topicOf("unpinned-coordinator")).toBeNull();
-    expect(topicOf(null)).toBeNull();
-  });
-
-  it("follows an expert that started fresh to the thread it continues in", () => {
-    const environmentId = EnvironmentId.make("environment-local");
-    const key = (id: string) => scopedThreadKey(scopeThreadRef(environmentId, ThreadId.make(id)));
-    const startedFresh = (id: string, continuedIn: string) => ({
-      environmentId,
-      id: ThreadId.make(id),
-      source: { continuedIn: ThreadId.make(continuedIn) },
+  it("nests a thread an expert's subagent launched under the expert", () => {
+    // The subagent has no row, so its lineage comes from the whole thread list.
+    const helper = shell("helper", {
+      lineage: {
+        parentThreadId: ThreadId.make("expert"),
+        relationshipToParent: "subagent",
+        rootThreadId: ThreadId.make("expert"),
+      },
     });
+    const topic = shell("topic", { launchedBy: launchedBy("helper") });
     expect(
       resolveSidebarTopicOf({
-        launcherKey: sidebarLauncherKey({
-          source: { launchedBy: { environmentId, threadId: ThreadId.make("old"), title: "Old" } },
-        }),
+        thread: topic,
         expertKeys: new Set([key("expert")]),
-        continuedIn: sidebarContinuations([
-          startedFresh("old", "middle"),
-          startedFresh("middle", "expert"),
-        ]),
+        links: sidebarTopicLinks([shell("expert"), helper, topic]),
       }),
     ).toBe(key("expert"));
-    // A loop in the continuations ends instead of spinning.
     expect(
-      topicOf(
-        "a",
-        new Map([
-          ["a", "b"],
-          ["b", "a"],
-        ]),
-      ),
+      resolveSidebarTopicOf({
+        thread: topic,
+        expertKeys: new Set([key("expert")]),
+        links: sidebarTopicLinks([shell("expert"), topic]),
+      }),
     ).toBeNull();
   });
 });
@@ -233,14 +229,7 @@ describe("resolveSidebarTopicExpert", () => {
   });
 
   it("brings a topic that needs the user forward, still its expert's", () => {
-    const asking = {
-      launcherKey: "expert",
-      expertKeys: new Set(["expert"]),
-      continuedIn: new Map<string, string>(),
-    };
     expect(nestsUnder({ section: "active", needsUser: true })).toBeNull();
-    // Its menus keep hiding Background moves, which would not move it.
-    expect(resolveSidebarTopicOf(asking)).toBe("expert");
   });
 
   it("leaves settled and snoozed topics on their shelves", () => {

@@ -56,10 +56,10 @@ Each expert takes one line: its project, title, status or last activity, a machi
 thread on another machine, and the memory icon. Hover the row to see its machine, branch, pull
 request, account, and memory.
 
-A thread an expert's agent starts for one subject is one of its topics. On web and desktop, the
-expert's row counts its open topics; click the count to show them nested under it, instead of in
-Background. A topic that needs you comes forward as usual, settled topics leave, and a topic's chat
-opens with a link back to its expert.
+A thread an expert's agent starts for one subject is one of its topics, and so is a thread one of
+its subagents or topics starts. On web and desktop, the expert's row counts its open topics; click
+the count to show them nested under it, instead of in Background. A topic that needs you comes
+forward as usual, settled topics leave, and a topic's chat opens with a link back to its expert.
 
 On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
 a notification with **Undo** for five seconds. Undo restores the thread's previous

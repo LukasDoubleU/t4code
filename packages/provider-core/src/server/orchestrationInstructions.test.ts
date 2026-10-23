@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 
 import {
   T3_CODE_ORCHESTRATION_INSTRUCTIONS,
+  T3_CODE_ORCHESTRATION_SECTIONS,
   t3AcpPromptWithInstructions,
   t3OrchestrationPromptForFirstRun,
   t3OrchestrationSystemPrompt,
@@ -18,6 +19,17 @@ describe("T3 orchestration provider instructions", () => {
       T3_CODE_ORCHESTRATION_INSTRUCTIONS,
       "Do not use `t3_thread_send` on `childThreadId`",
     );
+  });
+
+  it("starts a side conversation the user continues as a topic, not a delegated task", () => {
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "a subagent I can talk to");
+    assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "it nests under you as your topic");
+  });
+
+  it("keeps every section whole within Codex's per-entry limit", () => {
+    for (const section of T3_CODE_ORCHESTRATION_SECTIONS) {
+      assert.isBelow(new TextEncoder().encode(section).length, 4000);
+    }
   });
 
   it("documents structured schedules instead of JSON strings", () => {

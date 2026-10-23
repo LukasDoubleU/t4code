@@ -53,6 +53,11 @@ export function assertClaudeBackgroundTaskWakeOutput(
     return `${message?.createdBy}:${message?.creationSource}`;
   });
   assert.deepEqual(creators, ["user:web", "agent:provider", "user:web"]);
+  // The wake finishes the user's turn, so its answer is theirs too.
+  assert.deepEqual(
+    projection.runs.map((run) => run.origin),
+    ["user", "user", "user"],
+  );
   const wakeMessage = projection.messages.find((message) => message.id === wakeRun?.userMessageId);
   assert.equal(wakeMessage?.text, WAKE_SUMMARY);
 

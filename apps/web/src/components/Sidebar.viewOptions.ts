@@ -82,7 +82,7 @@ type SidebarStatusGroupInput = Parameters<typeof resolveSidebarThreadStatus>[0] 
   Pick<SidebarThreadSummary, "lastVisitedAt" | "settledOverride">;
 
 /**
- * The status a thread's row shows, as a group: Approval, Input and Woke need the user;
+ * The status a thread's row shows, as a group: Approval, Input, Needs you and Woke need the user;
  * Limited counts as failed; Waiting as working; Done as completed; a row without a
  * status label is idle.
  */
@@ -91,7 +91,7 @@ export function resolveSidebarStatusGroup(
   context: { readonly now: string; readonly localLastVisitedAt: string | undefined },
 ): SidebarStatusGroup {
   const status = resolveSidebarThreadStatus(thread);
-  if (status === "approval" || status === "input") return "needs_you";
+  if (status === "approval" || status === "input" || thread.attention != null) return "needs_you";
   if (status === "failed" || status === "limited") return "failed";
   if (status === "working" || status === "waiting") return "working";
   const lastVisitedAt = resolveThreadLastVisitedAt(

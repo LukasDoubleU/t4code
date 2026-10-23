@@ -232,6 +232,17 @@ export function useAcknowledgeThreadWoke() {
   };
 }
 
+/** Dismisses what a thread's agent asked the user for, as answering it would. */
+export function useDismissThreadAttention() {
+  const dismissAttention = useAtomCommand(threadEnvironment.dismissAttention, "Dismiss");
+  return (target: ScopedThreadRef) => {
+    void dismissAttention({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId },
+    });
+  };
+}
+
 function threadOperationFailure(target: ScopedThreadRef) {
   return readEnvironmentScope(target.environmentId, AuthOrchestrationOperateScope)
     ? null

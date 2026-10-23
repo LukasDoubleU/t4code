@@ -22,6 +22,7 @@ import {
   CommandId,
   isOrchestrationV2WorkActive,
   isProviderNativeSubagentThread,
+  type OrchestrationV2RunOrigin,
   MessageId,
   type NodeId,
   type ModelSelection,
@@ -53,6 +54,8 @@ import {
   type OrchestrationV2TurnItem,
   latestProviderTurnForAttempt,
   orchestrationV2RunWorkStartedAt,
+  orchestrationV2MessageRunOrigin,
+  isBackgroundRunOrigin,
   ProviderInstanceId,
   ProviderInteractionMode,
   resolveProviderInstanceEnabled,
@@ -442,6 +445,43 @@ function wakeWorkStartedAt(
   return previous === undefined ? {} : { workStartedAt: orchestrationV2RunWorkStartedAt(previous) };
 }
 
+/**
+ * Who started the run a message starts. A continuation the server sends keeps the origin of the
+ * run it continues, and so does a provider wake for work an earlier turn left running: the turn
+ * that started the work gets its answer.
+ */
+function dispatchedRunOrigin(
+  runs: ReadonlyArray<OrchestrationV2Run>,
+  command: Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>,
+): OrchestrationV2RunOrigin {
+  const continuedRunId =
+    command.creationSource === "server"
+      ? (command.restartContinuationOfRunId ??
+        command.usageLimitContinuationOfRunId ??
+        command.manualContinuationOfRunId)
+      : undefined;
+  if (continuedRunId !== undefined) {
+    return runs.find((run) => run.id === continuedRunId)?.origin ?? "user";
+  }
+  const origin = orchestrationV2MessageRunOrigin(command);
+  const kind = command.notification?.source.kind;
+  if (
+    origin !== "wake" ||
+    (kind !== "background_task" && kind !== "command" && kind !== "subagent")
+  ) {
+    return origin;
+  }
+  const previous = latestExecutedRun(runs);
+  return previous === null ? "wake" : (previous.origin ?? "user");
+}
+
+/** The user wrote it: a scheduled task or a server resume on the user's behalf does not count. */
+function isUserWrittenMessage(
+  message: Parameters<typeof orchestrationV2MessageRunOrigin>[0],
+): boolean {
+  return orchestrationV2MessageRunOrigin(message) === "user" && message.creationSource !== "server";
+}
+
 function isGoalCommand(message: {
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
@@ -558,8 +598,11 @@ function withoutPreparationResult(
   return rest;
 }
 
-/** The server's turn count alone, which must not move the thread in update-time order. */
-function isMemoryTurnCount(
+/**
+ * The server's turn count or the attention mark alone, which must not move the thread in
+ * update-time order.
+ */
+function keepsThreadUpdateTime(
   command: Extract<OrchestrationV2Command, { readonly type: "thread.metadata.update" }>,
 ): boolean {
   const {
@@ -567,9 +610,13 @@ function isMemoryTurnCount(
     commandId: _commandId,
     threadId: _threadId,
     memoryUnchangedTurns,
+    attention,
     ...rest
   } = command;
-  return memoryUnchangedTurns !== undefined && Object.values(rest).every((v) => v === undefined);
+  return (
+    (memoryUnchangedTurns !== undefined || attention !== undefined) &&
+    Object.values(rest).every((v) => v === undefined)
+  );
 }
 
 function isBlockingRun(run: OrchestrationV2Run): boolean {
@@ -3082,7 +3129,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     let markUnreadVisitedAt: DateTime.Utc | null = null;
     if (command.type === "thread.mark-unread") {
       const projection = yield* loadProjectionForCommand(command, ["runs"]);
-      const latestRunCompletedAt = projection.runs.at(-1)?.completedAt ?? null;
+      // Background runs never show as unseen, so the user's own latest result is the one to
+      // bring back.
+      const latestRunCompletedAt =
+        (isBackgroundRunOrigin(projection.runs.at(-1)?.origin)
+          ? projection.runs.findLast(
+              (run) => run.status === "completed" && !isBackgroundRunOrigin(run.origin),
+            )?.completedAt
+          : undefined) ??
+        projection.runs.at(-1)?.completedAt ??
+        null;
       if (latestRunCompletedAt === null) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
@@ -3292,7 +3348,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...(command.memoryUnchangedTurns === undefined
               ? {}
               : { memoryUnchangedTurns: command.memoryUnchangedTurns }),
-            updatedAt: isMemoryTurnCount(command) ? thread.updatedAt : now,
+            ...(command.attention === undefined
+              ? {}
+              : {
+                  attention:
+                    command.attention === null
+                      ? null
+                      : { reason: command.attention.reason, requestedAt: now },
+                }),
+            updatedAt: keepsThreadUpdateTime(command) ? thread.updatedAt : now,
           };
         }
         case "thread.pull-request.link":
@@ -4269,6 +4333,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const session = sessionOption.value;
     const now = yield* DateTime.now;
     const emitEvent = emit(input.events, input.command);
+    const steeredByUser = isUserWrittenMessage(input);
     const selectionChanged = !modelSelectionsEqual(targetRun.modelSelection, input.modelSelection);
     const providerInstanceChanged =
       targetRun.providerInstanceId !== input.modelSelection.instanceId;
@@ -4427,6 +4492,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         providerThreadId: providerThread.id,
         providerInstanceId: targetRun.providerInstanceId,
       });
+      // The user joined the turn, so its answer is theirs.
+      if (steeredByUser && isBackgroundRunOrigin(targetRun.origin)) {
+        yield* emitEvent({
+          type: "run.updated",
+          threadId: input.command.threadId,
+          runId: targetRun.id,
+          nodeId: rootNodeId,
+          providerInstanceId: targetRun.providerInstanceId,
+          occurredAt: now,
+          payload: { ...targetRun, origin: "user" },
+        });
+      }
       yield* Ref.update(input.effects, (existing) => [
         ...existing,
         {
@@ -4686,6 +4763,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       userMessageId: input.messageId,
       status: "starting",
       contextHandoffId: restartHandoff?.id ?? targetRun.contextHandoffId,
+      ...(steeredByUser ? { origin: "user" as const } : {}),
     };
     const nextAttempt: OrchestrationV2RunAttempt = {
       id: nextAttemptId,
@@ -5471,6 +5549,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ? {}
           : { restartContinuationOfRunId: command.restartContinuationOfRunId }),
         ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
+        origin: dispatchedRunOrigin(projection.runs, command),
       };
       const attempt: OrchestrationV2RunAttempt = {
         id: attemptId,
@@ -5812,6 +5891,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           : {}),
         ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
         ...wakeWorkStartedAt(projection.runs, command),
+        origin: dispatchedRunOrigin(projection.runs, command),
       };
       const attempt: OrchestrationV2RunAttempt = {
         id: attemptId,
@@ -6501,6 +6581,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         : { restartContinuationOfRunId: command.restartContinuationOfRunId }),
       ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
       ...wakeWorkStartedAt(projection.runs, command),
+      origin: dispatchedRunOrigin(projection.runs, command),
     };
     const attempt: OrchestrationV2RunAttempt = {
       id: attemptId,
@@ -8853,6 +8934,28 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
   });
 
+  // The user answered the thread, which settles what its agent asked them for.
+  const clearAttention = Effect.fn("Orchestrator.clearAttention")(function* (
+    command: Extract<
+      OrchestrationV2Command,
+      { readonly type: "message.dispatch" | "message.reaction.set" }
+    >,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+  ) {
+    const { thread } = yield* getProjectionWithPendingEvents(command.threadId, events);
+    if (thread.attention == null) return;
+    yield* emit(
+      events,
+      command,
+    )({
+      type: "thread.metadata-updated",
+      threadId: command.threadId,
+      providerInstanceId: thread.providerInstanceId,
+      occurredAt: yield* DateTime.now,
+      payload: { ...thread, attention: null },
+    });
+  });
+
   // A reaction changes the reply only. The agent learns it with the next input it gets, so a
   // reaction starts no turn, and the reply keeps its updatedAt, which clients show as its time.
   const dispatchMessageReaction = Effect.fn("Orchestrator.dispatchMessageReaction")(function* (
@@ -8888,6 +8991,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
     }
     const now = yield* DateTime.now;
+    if (command.reacted && thread.attention != null) yield* clearAttention(command, events);
     const updated = withReaction(reply, {
       emoji: command.emoji,
       reacted: command.reacted,
@@ -11982,6 +12086,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }
         yield* dispatchMessage(command, events, effects);
         yield* recordSubagentFollowup(command, events).pipe(mapDispatchError(command));
+        if (thread.attention != null && isUserWrittenMessage(command)) {
+          yield* clearAttention(command, events);
+        }
         break;
       }
       case "message.reaction.set":

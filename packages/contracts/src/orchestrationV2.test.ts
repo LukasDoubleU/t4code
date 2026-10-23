@@ -44,7 +44,9 @@ import {
   OrchestrationV2ThreadShell,
   OrchestrationV2TurnItem,
   OrchestrationV2TurnItemJson,
+  isBackgroundRunOrigin,
   isOrchestrationV2MessageFromAnotherAgent,
+  orchestrationV2MessageRunOrigin,
 } from "./orchestrationV2.ts";
 
 const now = DateTime.makeUnsafe("2026-04-20T00:00:00.000Z");
@@ -1614,5 +1616,66 @@ describe("isOrchestrationV2MessageFromAnotherAgent", () => {
     ] as const) {
       expect(isOrchestrationV2MessageFromAnotherAgent(message)).toBe(false);
     }
+  });
+});
+
+describe("orchestrationV2MessageRunOrigin", () => {
+  const server = { createdBy: "agent", creationSource: "server" } as const;
+  const wake = (kind: "command" | "monitor" | "system") =>
+    ({
+      ...server,
+      notification: {
+        source: { kind },
+        outcome: "updated",
+        summary: TrimmedNonEmptyString.make("Background activity updated"),
+      },
+    }) as const;
+
+  it.each([
+    ["the user's message", { createdBy: "user", creationSource: "web" }, "user"],
+    [
+      "another agent's message",
+      { createdBy: "agent", creationSource: "mcp", senderThreadId: ThreadId.make("sender") },
+      "agent",
+    ],
+    [
+      "a delegated report",
+      {
+        ...server,
+        delegatedCompletion: { parentRunId: RunId.make("run-1"), generation: 1, taskIds: [] },
+      },
+      "agent",
+    ],
+    [
+      "a scheduled task the user created",
+      { createdBy: "user", creationSource: "web", scheduledTaskId: ScheduledTaskId.make("task-1") },
+      "schedule",
+    ],
+    [
+      "a scheduled task an agent created",
+      {
+        createdBy: "agent",
+        creationSource: "mcp",
+        scheduledTaskId: ScheduledTaskId.make("task-2"),
+      },
+      "schedule",
+    ],
+    ["a finished background command", wake("command"), "wake"],
+    ["a pull request watch", wake("monitor"), "wake"],
+    ["idle compaction", server, "wake"],
+  ] as const)("classifies %s", (_case, message, origin) => {
+    expect(orchestrationV2MessageRunOrigin(message)).toBe(origin);
+  });
+
+  it("counts only the user's runs, and runs without an origin, as not background", () => {
+    const origins = [undefined, null, "user", "agent", "schedule", "wake"] as const;
+    expect(origins.map((origin) => isBackgroundRunOrigin(origin))).toEqual([
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+    ]);
   });
 });

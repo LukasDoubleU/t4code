@@ -18,7 +18,7 @@ It is based on upstream `v0.1.1` and follows upstream releases. Releases have Wi
 
 **Long-lived threads**
 
-- **Experts.** Pinned threads form a collapsible Experts section that gathers them from every connected machine, one line per expert with the details on hover. The threads an expert's agent starts nest under it as its topics. [Experts](./docs/user/thread-sidebar.md#experts-pin-and-reorder-threads)
+- **Experts.** Pinned threads form a collapsible Experts section that gathers them from every connected machine, one line per expert with the details on hover. The threads an expert's agent starts nest under it as its topics. Work an expert does on its own stays quiet, and an expert that needs you shows **Needs you** with its reason. [Experts](./docs/user/thread-sidebar.md#experts-pin-and-reorder-threads)
 - **Experts feed.** One list with every expert's latest replies, labeled with expert, machine and status, and a **Reply** that sends into that expert's own thread. [Experts feed](./docs/user/thread-sidebar.md#follow-every-expert-in-one-feed)
 - **Memory for pinned threads.** A pinned thread keeps a memory file that its agent reads after every compaction and keeps current. A brain icon on the expert's row shows it; **Open memory** opens the file. [Keep a memory](./docs/user/thread-sidebar.md#keep-a-memory-for-a-pinned-thread)
 - **Background section.** Threads that agents start on their own wait there and come forward only while they need you: a question, an approval or a failed run. The **Status** sort puts the same things first. [Keep agents' threads in the background](./docs/user/thread-sidebar.md#keep-agents-threads-in-the-background)

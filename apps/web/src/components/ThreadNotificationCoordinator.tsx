@@ -10,6 +10,7 @@ import * as Option from "effect/Option";
 import {
   CircleAlertIcon,
   CircleCheckIcon,
+  HandIcon,
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
 } from "lucide-react";
@@ -157,15 +158,21 @@ function EnvironmentNotifications({
       const title =
         kind === "completion"
           ? "Thread completed"
-          : status === "approval"
-            ? "Approval needed"
-            : status === "limited"
-              ? "Usage limit reached"
-              : status === "failed"
-                ? "Thread failed"
-                : "Input needed";
+          : kind === "attention"
+            ? "Needs you"
+            : status === "approval"
+              ? "Approval needed"
+              : status === "limited"
+                ? "Usage limit reached"
+                : status === "failed"
+                  ? "Thread failed"
+                  : "Input needed";
+      const body =
+        kind === "attention" && thread.attention != null
+          ? `${thread.title}: ${thread.attention.reason}`
+          : thread.title;
       if (hasNotificationSound(mode)) {
-        void playNotificationSound(kind, () =>
+        void playNotificationSound(kind === "attention" ? "input" : kind, () =>
           hasNotificationSound(getClientSettings().notificationMode),
         );
       }
@@ -178,12 +185,14 @@ function EnvironmentNotifications({
         const toastId = toastManager.add({
           type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
           title,
-          description: thread.title,
+          description: body,
           data: {
             hideCopyButton: true,
             leadingIcon:
               kind === "completion" ? (
                 <CircleCheckIcon aria-hidden className="size-4 text-success-foreground" />
+              ) : kind === "attention" ? (
+                <HandIcon aria-hidden className="size-4 text-warning-foreground" />
               ) : status === "approval" ? (
                 <ShieldQuestionIcon aria-hidden className="size-4 text-warning-foreground" />
               ) : status === "failed" ? (
@@ -214,7 +223,7 @@ function EnvironmentNotifications({
         continue;
       try {
         const notification = new Notification(title, {
-          body: thread.title,
+          body,
           tag: threadNotificationTag(environmentId, thread.id),
           silent: true,
         });

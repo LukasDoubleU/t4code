@@ -58,6 +58,7 @@ import {
 } from "@t3tools/client-runtime/state/thread-search";
 import {
   resolveThreadProviderStack,
+  threadLatestRunIsBackground,
   threadRuntimeCanArchive,
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/models";
@@ -77,6 +78,7 @@ import {
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
   AlarmClockIcon,
+  HandIcon,
   AlarmClockOffIcon,
   ArrowRightLeftIcon,
   BringToFrontIcon,
@@ -153,7 +155,11 @@ import {
   getThreadKeysToDeselectAfterDelete,
   useThreadSelectionStore,
 } from "../threadSelectionStore";
-import { useAcknowledgeThreadWoke, useThreadActions } from "../hooks/useThreadActions";
+import {
+  useAcknowledgeThreadWoke,
+  useDismissThreadAttention,
+  useThreadActions,
+} from "../hooks/useThreadActions";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
@@ -1299,6 +1305,12 @@ function SidebarThreadTooltip({
           ) : null
         }
       >
+        {thread.attention ? (
+          <div className="flex min-w-0 items-start gap-2 text-warning-foreground">
+            <HandIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
+            <div className="min-w-0 break-words">Needs you: {thread.attention.reason}</div>
+          </div>
+        ) : null}
         {runningStatus && runningStartedAt !== undefined ? (
           <div className={cn("flex min-w-0 items-center gap-2", runningStatus.topStatus.className)}>
             {runningStatus.status === "working" ? (
@@ -2060,12 +2072,13 @@ type SidebarThreadRowProps = {
   onUnsnooze: (threadRef: ScopedThreadRef) => void;
   onUnpin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
+  onDismissAttention: (threadRef: ScopedThreadRef) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
 };
 
 type SidebarTopStatus = {
   label: string;
-  icon: "working" | "waiting" | "approval" | "input" | "failed" | "woke" | "done";
+  icon: "working" | "waiting" | "approval" | "input" | "attention" | "failed" | "woke" | "done";
   className: string;
 };
 
@@ -2099,6 +2112,8 @@ function SidebarStatusText(props: {
         <MessageCircleQuestionIcon aria-hidden className="size-4 shrink-0" />
       ) : topStatus.icon === "approval" ? (
         <ShieldQuestionIcon aria-hidden className="size-4 shrink-0" />
+      ) : topStatus.icon === "attention" ? (
+        <HandIcon aria-hidden className="size-4 shrink-0" />
       ) : topStatus.icon === "failed" ? (
         <CircleAlertIcon aria-hidden className="size-4 shrink-0" />
       ) : topStatus.icon === "done" ? (
@@ -2125,6 +2140,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     onCommitRename,
     onContextMenu,
     onAcknowledgeWoke,
+    onDismissAttention,
     onFileDropThreads,
     onRenameTitleChange,
     onSettle,
@@ -2201,19 +2217,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     wokeAtDate !== null &&
     (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
     thread.settledOverride !== "settled";
-  const shouldRecede = shouldRecedeSidebarThread({
-    status,
-    isUnread,
-    isWoke,
-    isActive: props.isActive,
-    isSelected,
-  });
-  const topStatus: SidebarTopStatus | null =
+  const attention = thread.attention ?? null;
+  const shouldRecede =
+    attention === null &&
+    shouldRecedeSidebarThread({
+      status,
+      isUnread,
+      isWoke,
+      isActive: props.isActive,
+      isSelected,
+    });
+  const runStatus: SidebarTopStatus | null =
     status === "working"
       ? {
           label: thread.goal?.status === "active" ? "Goal" : "Working",
           icon: "working" as const,
-          className: "text-info",
+          // A turn the user did not start works quietly.
+          className: threadLatestRunIsBackground(thread) ? "text-muted-foreground" : "text-info",
         }
       : status === "waiting"
         ? {
@@ -2258,7 +2278,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         className: "text-success",
                       }
                     : null;
+  // The agent's call for the user outranks all but its own question or approval.
+  const topStatus: SidebarTopStatus | null =
+    attention !== null && status !== "approval" && status !== "input"
+      ? { label: "Needs you", icon: "attention", className: "text-warning-foreground" }
+      : runStatus;
   const isWokeStatus = topStatus?.icon === "woke";
+  const isAttentionStatus = topStatus?.icon === "attention";
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
     effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
@@ -2300,7 +2326,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       terminalProcessCount={terminalProcessCount}
       pullRequest={variant === "expert" || variant === "topic" ? prStatus : null}
       memoryThreadRef={variant === "expert" && props.isPinned ? threadRef : null}
-      runningStatus={variant !== "card" && topStatus !== null ? { topStatus, status } : null}
+      runningStatus={
+        variant !== "card" && runStatus !== null ? { topStatus: runStatus, status } : null
+      }
     />
   );
 
@@ -2313,6 +2341,37 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     if (props.wokeAt === null) return;
     onAcknowledgeWoke(threadRef, props.wokeAt);
   };
+  const handleDismissAttentionClick = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onDismissAttention(threadRef);
+  };
+  // The row's own way out of Needs you, next to the thread menu's Dismiss.
+  const attentionButton = (iconClassName: string) =>
+    attention === null ? null : (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label={`Dismiss Needs you: ${attention.reason}`}
+              disabled={!canOperateThread}
+              onClick={handleDismissAttentionClick}
+              className="inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default disabled:no-underline"
+            >
+              <HandIcon aria-hidden className={cn("shrink-0", iconClassName)} />
+              <span role="status">Needs you</span>
+            </button>
+          }
+        />
+        <TooltipPopup side="top">
+          {attention.reason}
+          {canOperateThread ? (
+            <span className="block text-muted-foreground">Click to dismiss</span>
+          ) : null}
+        </TooltipPopup>
+      </Tooltip>
+    );
   const handleContextMenu = (event: ReactMouseEvent) => {
     event.preventDefault();
     onContextMenu(threadRef, { x: event.clientX, y: event.clientY });
@@ -2535,7 +2594,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 "truncate",
                 shouldRecede
                   ? "text-secondary-label"
-                  : isUnread || isWoke || status === "input"
+                  : isUnread || isWoke || attention !== null || status === "input"
                     ? "text-foreground"
                     : status === "failed"
                       ? "text-foreground/95"
@@ -2545,7 +2604,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
                 shouldRecede
                   ? "text-secondary-label/70"
-                  : props.isActive || isWoke || status === "input"
+                  : props.isActive || isWoke || attention !== null || status === "input"
                     ? "text-foreground"
                     : isUnread
                       ? "text-muted-foreground"
@@ -2660,6 +2719,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         />
         <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
       </Tooltip>
+    ) : isAttentionStatus ? (
+      attentionButton("size-4")
     ) : (
       <SidebarStatusText
         topStatus={topStatus}
@@ -2842,7 +2903,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 <span
                   className={cn(
                     "inline-flex justify-end tabular-nums text-secondary-label transition-opacity",
-                    !isWoke && "group-any-hover/sidebar-row:opacity-0",
+                    !isWoke && !isAttentionStatus && "group-any-hover/sidebar-row:opacity-0",
                   )}
                 >
                   {variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
@@ -2866,6 +2927,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       />
                       <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
                     </Tooltip>
+                  ) : isAttentionStatus ? (
+                    <span className="text-xs">{attentionButton("size-3")}</span>
                   ) : inFolder && topStatus ? (
                     <span className="text-xs">
                       <SidebarStatusText
@@ -2896,7 +2959,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       onPointerDown={handleActionPointerDown}
                       className={cn(
                         "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                        isWoke && "group-any-hover/sidebar-row:static",
+                        (isWoke || isAttentionStatus) && "group-any-hover/sidebar-row:static",
                       )}
                     >
                       <AlarmClockOffIcon className="mb-px size-3" />
@@ -2913,7 +2976,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           onPointerDown={handleActionPointerDown}
                           className={cn(
                             "pointer-events-none absolute inset-y-0 right-0 -mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                            isWoke && "group-any-hover/sidebar-row:static",
+                            (isWoke || isAttentionStatus) && "group-any-hover/sidebar-row:static",
                           )}
                         />
                       }
@@ -2930,7 +2993,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     onPointerDown={handleActionPointerDown}
                     className={cn(
                       "pointer-events-none absolute inset-y-0 right-0 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
-                      isWoke && "group-any-hover/sidebar-row:static",
+                      (isWoke || isAttentionStatus) && "group-any-hover/sidebar-row:static",
                     )}
                   >
                     <CheckIcon className="size-3" />
@@ -3012,7 +3075,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 >
                   <span
                     className={cn(
-                      isWokeStatus
+                      isWokeStatus || isAttentionStatus
                         ? "pointer-events-auto"
                         : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-any-hover/sidebar-row:absolute group-any-hover/sidebar-row:right-0 group-any-hover/sidebar-row:opacity-0",
                       "flex items-center self-center justify-self-end tabular-nums text-secondary-label transition-opacity",
@@ -3092,7 +3155,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               ) : null}
             </div>
             <div className="flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-              {thread.branch ? (
+              {attention !== null ? (
+                <span className="min-w-0 flex-1 truncate text-warning-foreground">
+                  {attention.reason}
+                </span>
+              ) : thread.branch ? (
                 <>
                   <ThreadWorktreeIndicator thread={thread} />
                   <span className="flex min-w-0 flex-1 text-muted-foreground/40">
@@ -3440,6 +3507,7 @@ export default function Sidebar() {
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
   const acknowledgeWoke = useAcknowledgeThreadWoke();
+  const dismissAttention = useDismissThreadAttention();
   const routeTarget = useThreadRouteTarget();
   const routeDraftThread = useComposerDraftStore((store) =>
     routeTarget?.kind === "draft" ? store.getDraftSession(routeTarget.draftId) : null,
@@ -5032,6 +5100,7 @@ export default function Sidebar() {
                   }
                 : null,
               isPinned,
+              needsYou: thread.attention != null,
               hasMemory: memoryPath !== null,
               continuedIn: thread.source.continuedIn !== undefined,
               continuedFrom: thread.source.continuedFrom !== undefined,
@@ -5203,6 +5272,9 @@ export default function Sidebar() {
           }
           case "mark-unread":
             markThreadUnread(threadRef);
+            return;
+          case "dismiss-attention":
+            dismissAttention(threadRef);
             return;
           case "copy-path":
             if (!threadWorkspacePath) {
@@ -5753,6 +5825,7 @@ export default function Sidebar() {
                             onUnsnooze={attemptUnsnooze}
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
+                            onDismissAttention={dismissAttention}
                             onFileDropThreads={handleThreadFileDrop}
                           />
                         );

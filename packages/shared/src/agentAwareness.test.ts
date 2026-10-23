@@ -24,7 +24,8 @@ describe("projectThreadAwarenessV2", () => {
       Pick<
         OrchestrationV2ThreadShell,
         | "activityRunStatus"
-        | "latestRunFromAnotherAgent"
+        | "attention"
+        | "latestRunOrigin"
         | "status"
         | "pendingBackgroundTasks"
         | "pendingRuntimeRequest"
@@ -78,15 +79,59 @@ describe("projectThreadAwarenessV2", () => {
     },
   );
 
-  it("ends work another agent asked for without a completion, but keeps its failure", () => {
-    const fromAnotherAgent = (status: "completed" | "failed") =>
+  it.each(["agent", "schedule", "wake"] as const)(
+    "ends a %s turn without a completion, but keeps its failure",
+    (latestRunOrigin) => {
+      const background = (status: "completed" | "failed") =>
+        projectThreadAwarenessV2({
+          environmentId: "env-1" as EnvironmentId,
+          project,
+          thread: v2Thread({ status, latestRunOrigin }),
+        });
+      expect(background("completed")).toBeNull();
+      expect(background("failed")).toMatchObject({ phase: "failed" });
+    },
+  );
+
+  it("alerts on the user's own completion", () => {
+    expect(
       projectThreadAwarenessV2({
         environmentId: "env-1" as EnvironmentId,
         project,
-        thread: v2Thread({ status, latestRunFromAnotherAgent: true }),
+        thread: v2Thread({ status: "completed", latestRunOrigin: "user" }),
+      }),
+    ).toMatchObject({ phase: "completed" });
+  });
+
+  it("presents an agent's call for the user as input with its reason", () => {
+    const attention = { reason: "Pick a release date", requestedAt: updatedAt };
+    for (const status of ["running", "completed"] as const) {
+      expect(
+        projectThreadAwarenessV2({
+          environmentId: "env-1" as EnvironmentId,
+          project,
+          thread: v2Thread({ status, latestRunOrigin: "agent", attention }),
+        }),
+      ).toMatchObject({
+        phase: "waiting_for_input",
+        headline: "Needs you",
+        detail: "Pick a release date",
       });
-    expect(fromAnotherAgent("completed")).toBeNull();
-    expect(fromAnotherAgent("failed")).toMatchObject({ phase: "failed" });
+    }
+    expect(
+      projectThreadAwarenessV2({
+        environmentId: "env-1" as EnvironmentId,
+        project,
+        thread: v2Thread({
+          attention,
+          pendingRuntimeRequest: {
+            id: RuntimeRequestId.make("request-approval"),
+            kind: "command",
+            createdAt: updatedAt,
+          },
+        }),
+      }),
+    ).toMatchObject({ phase: "waiting_for_approval" });
   });
 
   it("keeps an older activity run visible over a newer cancelled run", () => {

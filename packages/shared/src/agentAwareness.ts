@@ -1,8 +1,9 @@
-import type {
-  EnvironmentId,
-  OrchestrationV2ThreadShell,
-  Project,
-  ThreadId,
+import {
+  isBackgroundRunOrigin,
+  type EnvironmentId,
+  type OrchestrationV2ThreadShell,
+  type Project,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
@@ -43,8 +44,9 @@ export interface ProjectThreadAwarenessV2Input {
   readonly thread: Pick<
     OrchestrationV2ThreadShell,
     | "activityRunStatus"
+    | "attention"
     | "id"
-    | "latestRunFromAnotherAgent"
+    | "latestRunOrigin"
     | "lineage"
     | "modelSelection"
     | "pendingBackgroundTasks"
@@ -62,6 +64,26 @@ export function projectThreadAwarenessV2(
   const { environmentId, project, thread } = input;
   if (thread.lineage.relationshipToParent === "subagent") return null;
   const phase = resolveThreadAwarenessPhaseV2(thread);
+  // The relay alerts on input phases, so an agent's call for the user arrives as a question
+  // does. A pending question or approval of its own says more.
+  if (
+    thread.attention != null &&
+    phase !== "waiting_for_input" &&
+    phase !== "waiting_for_approval"
+  ) {
+    return {
+      environmentId,
+      threadId: thread.id,
+      projectTitle: project.title,
+      threadTitle: thread.title,
+      phase: "waiting_for_input",
+      headline: "Needs you",
+      detail: thread.attention.reason,
+      modelTitle: thread.modelSelection.model,
+      updatedAt: DateTime.formatIso(thread.attention.requestedAt),
+      deepLink: buildAgentAwarenessDeepLink({ environmentId, threadId: thread.id }),
+    };
+  }
   if (phase === null) {
     return null;
   }
@@ -73,9 +95,9 @@ export function projectThreadAwarenessV2(
   ) {
     return null;
   }
-  // The relay alerts on every new completion. Work another agent asked for leaves the
+  // The relay alerts on every new completion. A turn the user did not start leaves the
   // activity instead, so it ends without one; failures and questions still alert.
-  if (phase === "completed" && thread.latestRunFromAnotherAgent === true) return null;
+  if (phase === "completed" && isBackgroundRunOrigin(thread.latestRunOrigin)) return null;
   const detail =
     phase === "completed"
       ? "Review the completed task."

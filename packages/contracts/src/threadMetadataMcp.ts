@@ -120,3 +120,30 @@ export const ThreadMetadataMcpUpdateResult = Schema.Struct({
   updatedAt: IsoDateTime,
 });
 export type ThreadMetadataMcpUpdateResult = typeof ThreadMetadataMcpUpdateResult.Type;
+
+export const ThreadAttentionMcpInput = Schema.Struct({
+  reason: Schema.optional(
+    TrimmedNonEmptyString.check(Schema.isMaxLength(200)).annotate({
+      description:
+        "One line saying what you need from the user: a decision, or an action only they can take.",
+    }),
+  ),
+  clear: Schema.optional(
+    Schema.Boolean.annotate({
+      description: "Pass true instead of reason to clear this thread's mark once it is resolved.",
+    }),
+  ),
+}).check(
+  Schema.makeFilter((input) =>
+    (input.reason !== undefined) !== (input.clear === true)
+      ? true
+      : "Pass either reason, or clear=true.",
+  ),
+);
+export type ThreadAttentionMcpInput = typeof ThreadAttentionMcpInput.Type;
+
+export const ThreadAttentionMcpResult = Schema.Struct({
+  threadId: ThreadId,
+  attention: Schema.NullOr(Schema.Struct({ reason: Schema.String, requestedAt: IsoDateTime })),
+});
+export type ThreadAttentionMcpResult = typeof ThreadAttentionMcpResult.Type;

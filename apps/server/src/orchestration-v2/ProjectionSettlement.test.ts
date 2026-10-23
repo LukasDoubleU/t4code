@@ -4,15 +4,14 @@ import {
   MessageId,
   NodeId,
   type OrchestrationV2AppThread,
-  type OrchestrationV2ConversationMessage,
   type OrchestrationV2Run,
+  type OrchestrationV2RunOrigin,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderThreadId,
   RunId,
   RuntimeRequestId,
-  ScheduledTaskId,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -358,85 +357,85 @@ it.effect.each([
 it.effect.each([
   ["sql", layerSql],
   ["memory", ProjectionStore.layerMemory],
-] as const)("%s: the shell says whether another agent started the latest run", ([, testLayer]) =>
-  Effect.gen(function* () {
-    const store = yield* ProjectionStore.ProjectionStoreV2;
-    const started = Effect.fn(function* (
-      name: string,
-      origin: Pick<
-        OrchestrationV2ConversationMessage,
-        | "createdBy"
-        | "creationSource"
-        | "senderThreadId"
-        | "scheduledTaskId"
-        | "delegatedCompletion"
-      >,
-    ) {
-      const threadId = yield* createThread(name);
-      const runId = yield* createRun(threadId);
-      yield* store.apply({
-        id: EventId.make(`event:origin:${name}`),
-        type: "message.updated",
-        threadId,
-        occurredAt: old,
-        payload: {
-          ...origin,
-          id: MessageId.make(`message:${runId}`),
+] as const)(
+  "%s: the shell says who started the latest run and keeps the user's result behind it",
+  ([, testLayer]) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const userAt = DateTime.add(old, { minutes: 1 });
+      const backgroundAt = DateTime.add(old, { minutes: 2 });
+      const run = Effect.fn(function* (
+        threadId: ThreadId,
+        ordinal: number,
+        origin: OrchestrationV2RunOrigin | undefined,
+        completedAt: DateTime.Utc,
+      ) {
+        const runId = RunId.make(`run:${threadId}:${ordinal}`);
+        yield* store.apply({
+          id: EventId.make(`event:${runId}`),
+          type: "run.created",
           threadId,
-          runId,
-          nodeId: null,
-          role: "user",
-          text: name,
-          attachments: [],
-          streaming: false,
-          createdAt: old,
-          updatedAt: old,
-        },
-      });
-      return threadId;
-    });
-    const sender = ThreadId.make("thread:origin:sender");
-    const expected = new Map([
-      [yield* started("user", { createdBy: "user", creationSource: "web" }), false],
-      [
-        yield* started("sent", {
-          createdBy: "agent",
-          creationSource: "mcp",
-          senderThreadId: sender,
-        }),
-        true,
-      ],
-      [
-        yield* started("report", {
-          createdBy: "agent",
-          creationSource: "server",
-          delegatedCompletion: {
-            parentRunId: RunId.make("run:parent"),
-            generation: 1,
-            taskIds: [],
+          occurredAt: completedAt,
+          payload: {
+            id: runId,
+            threadId,
+            ordinal,
+            providerInstanceId,
+            modelSelection,
+            providerThreadId: null,
+            userMessageId: MessageId.make(`message:${runId}`),
+            rootNodeId: null,
+            activeAttemptId: null,
+            status: "completed",
+            requestedAt: old,
+            startedAt: old,
+            completedAt,
+            checkpointId: null,
+            contextHandoffId: null,
+            ...(origin === undefined ? {} : { origin }),
           },
-        }),
-        true,
-      ],
-      [
-        yield* started("scheduled", {
-          createdBy: "agent",
-          creationSource: "mcp",
-          scheduledTaskId: ScheduledTaskId.make("scheduled:origin"),
-        }),
-        false,
-      ],
-    ]);
+        });
+      });
+      const legacy = yield* createThread("origin-legacy");
+      yield* run(legacy, 1, undefined, userAt);
+      const own = yield* createThread("origin-own");
+      yield* run(own, 1, "agent", userAt);
+      yield* run(own, 2, "user", backgroundAt);
+      const behind = yield* createThread("origin-behind");
+      yield* run(behind, 1, "user", userAt);
+      yield* run(behind, 2, "schedule", backgroundAt);
+      const alone = yield* createThread("origin-alone");
+      yield* run(alone, 1, "wake", backgroundAt);
+      const marked = yield* createThread("origin-marked", {
+        attention: { reason: "Pick a release date", requestedAt: userAt },
+      });
 
-    const shell = yield* store.getShellSnapshot();
-    for (const [threadId, fromAnotherAgent] of expected) {
-      assert.equal(
-        shell.threads.find((thread) => thread.id === threadId)?.latestRunFromAnotherAgent,
-        fromAnotherAgent,
-        threadId,
-      );
-    }
-  }).pipe(Effect.provide(testLayer)),
+      const shell = yield* store.getShellSnapshot();
+      const row = (threadId: ThreadId) => {
+        const thread = shell.threads.find((candidate) => candidate.id === threadId);
+        return {
+          origin: thread?.latestRunOrigin,
+          userRunCompletedAt:
+            thread?.latestUserRunCompletedAt == null
+              ? null
+              : DateTime.formatIso(thread.latestUserRunCompletedAt),
+          attention: thread?.attention?.reason ?? null,
+        };
+      };
+      assert.deepEqual(row(legacy), {
+        origin: undefined,
+        userRunCompletedAt: null,
+        attention: null,
+      });
+      assert.deepEqual(row(own), { origin: "user", userRunCompletedAt: null, attention: null });
+      assert.deepEqual(row(behind), {
+        origin: "schedule",
+        userRunCompletedAt: DateTime.formatIso(userAt),
+        attention: null,
+      });
+      assert.deepEqual(row(alone), { origin: "wake", userRunCompletedAt: null, attention: null });
+      assert.equal(row(marked).attention, "Pick a release date");
+    }).pipe(Effect.provide(testLayer)),
 );
 
 const pullRequestLink = (number: number) => ({

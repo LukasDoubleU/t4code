@@ -226,6 +226,27 @@ describe("resolveThreadListV2Status", () => {
     },
   );
 
+  it("keeps a turn the user did not start from showing Done, but not the user's own result", () => {
+    const completed = (latestUserRunCompletedAt: string | null) =>
+      presentThreadShell(
+        environmentId,
+        makeRawThreadShell({
+          latestRunId: RunId.make("run-schedule"),
+          status: "completed",
+          latestRunCompletedAt: DateTime.makeUnsafe(NOW),
+          latestRunOrigin: "schedule",
+          latestUserRunCompletedAt:
+            latestUserRunCompletedAt === null
+              ? null
+              : DateTime.makeUnsafe(latestUserRunCompletedAt),
+          lastVisitedAt: DateTime.makeUnsafe("2026-06-01T23:00:00.000Z"),
+        }),
+      );
+    expect(threadHasUnseenCompletion(completed(null))).toBe(false);
+    expect(threadHasUnseenCompletion(completed("2026-06-01T23:30:00.000Z"))).toBe(true);
+    expect(threadHasUnseenCompletion(completed("2026-06-01T22:30:00.000Z"))).toBe(false);
+  });
+
   it("resolves ready for quiescent threads", () => {
     expect(resolveThreadListV2Status(makeThread({ id: ThreadId.make("t"), title: "t" }))).toBe(
       "ready",

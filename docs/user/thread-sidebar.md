@@ -56,6 +56,21 @@ Each expert takes one line: its project, title, status or last activity, a machi
 thread on another machine, and the memory icon. Hover the row to see its machine, branch, pull
 request, account, and memory.
 
+Experts often work without you: another agent messages them, a scheduled task runs, or the agent
+wakes on its own, for example for a pull request it watches. A turn you did not start runs
+quietly. Its **Working** is muted, and once it ends the row shows only its time, with no **Done**
+and no notification. A turn you started still ends in **Done**, and so does a wake that finishes
+it, such as background work it was waiting for. A result of yours you have not opened stays
+**Done** behind later quiet turns.
+
+When an expert's agent needs you, for a decision or something only you can do, it marks its
+thread **Needs you** with a one-line reason. The row turns amber and comes forward like a
+question, the reason shows on the row and in its hover card, and you are notified on desktop and
+on your phone. The agent keeps working meanwhile. The mark clears when you write in the thread or
+react to a reply, or when the agent clears it. To clear it without answering, click **Needs you**
+on the row or choose **Dismiss Needs you** from the thread's menu. Any thread's agent can ask
+this way, not only an expert's.
+
 A thread an expert's agent starts for one subject is one of its topics, and so is a thread one of
 its subagents or topics starts. On web and desktop, the expert's row counts its open topics; click
 the count to show them nested under it, instead of in Background. A topic that needs you comes
@@ -188,9 +203,11 @@ message** puts recent conversations first, matching the age shown on the row; th
 messages use their update time. **Status** puts threads in this order, newest message first within
 each:
 
-1. **Needs you**: a question or approval is waiting, or a snooze just ended.
+1. **Needs you**: a question or approval is waiting, its agent asked for you, or a snooze just
+   ended.
 2. **Failed**: the latest run failed, including runs stopped by a usage limit.
-3. **Completed**: finished work you have not opened yet. Opening the thread makes it idle.
+3. **Completed**: finished work you started and have not opened yet. Opening the thread makes it
+   idle.
 4. **Working**: the agent is running or waiting on background work.
 5. **Idle**: everything else.
 
@@ -214,8 +231,8 @@ in a collapsed **Background** section near the bottom of the sidebar until you w
 Threads you start yourself stay in the main list, even when you
 [start them in the background](#start-in-the-background). Expanded, the section lists its
 threads in the current sort, as one list whatever the grouping. A thread there
-comes back to the main list while it needs you: a question or approval is waiting, a snooze
-ended, or its run failed, the first two groups of the **Status** sort. Once you have dealt with
+comes back to the main list while it needs you: a question or approval is waiting, its agent
+asked for you, a snooze ended, or its run failed, the first two groups of the **Status** sort. Once you have dealt with
 it, it returns to Background. Settling still moves a finished thread to **Settled**, and
 subagents stay with their parent thread.
 

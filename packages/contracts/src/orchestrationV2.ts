@@ -88,6 +88,29 @@ export const OrchestrationV2CreationSource = Schema.Literals([
 ]);
 export type OrchestrationV2CreationSource = typeof OrchestrationV2CreationSource.Type;
 
+/**
+ * Who started a run. Only the user's own turns end in "Done" and notify when they complete. The
+ * others run in the background: another agent asked (`agent`), one of the user's scheduled tasks
+ * ran (`schedule`), or T3 or the provider woke the agent by itself, for example when work it left
+ * running finished (`wake`). Runs from before origins were recorded have none and count as the
+ * user's.
+ */
+export const OrchestrationV2RunOrigin = Schema.Literals(["user", "agent", "schedule", "wake"]);
+export type OrchestrationV2RunOrigin = typeof OrchestrationV2RunOrigin.Type;
+
+export function isBackgroundRunOrigin(
+  origin: OrchestrationV2RunOrigin | null | undefined,
+): boolean {
+  return origin != null && origin !== "user";
+}
+
+/** An agent's non-blocking call for the user, with its one-line reason. */
+export const OrchestrationV2AttentionRequest = Schema.Struct({
+  reason: TrimmedNonEmptyString,
+  requestedAt: Schema.DateTimeUtc,
+});
+export type OrchestrationV2AttentionRequest = typeof OrchestrationV2AttentionRequest.Type;
+
 export const OrchestrationV2ThreadHistoryOrigin = Schema.Literals(["native", "v1_import"]);
 export type OrchestrationV2ThreadHistoryOrigin = typeof OrchestrationV2ThreadHistoryOrigin.Type;
 
@@ -496,6 +519,11 @@ export const OrchestrationV2AppThread = Schema.Struct({
   continuedIn: Schema.optional(ThreadId),
   /** Turns a pinned thread has ended since its memory file last changed. */
   memoryUnchangedTurns: Schema.optional(NonNegativeInt),
+  /**
+   * The thread's agent asked for the user (`t3_request_attention`). The user's next message or
+   * reaction, Dismiss, or the agent itself clears it.
+   */
+  attention: Schema.optional(Schema.NullOr(OrchestrationV2AttentionRequest)),
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtc).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -646,6 +674,7 @@ export const OrchestrationV2Run = Schema.Struct({
   ),
   delegatedCompletion: Schema.optional(OrchestrationV2DelegatedCompletionCohort),
   workspacePreparation: Schema.optional(OrchestrationV2ThreadLaunchWorkspaceStrategy),
+  origin: Schema.optional(OrchestrationV2RunOrigin),
 });
 export type OrchestrationV2Run = typeof OrchestrationV2Run.Type;
 
@@ -1244,23 +1273,21 @@ export const OrchestrationV2ConversationMessage = Schema.Struct({
 });
 export type OrchestrationV2ConversationMessage = typeof OrchestrationV2ConversationMessage.Type;
 
+type RunStartingMessage = Pick<
+  OrchestrationV2ConversationMessage,
+  | "createdBy"
+  | "creationSource"
+  | "scheduledTaskId"
+  | "senderThreadId"
+  | "delegatedCompletion"
+  | "notification"
+>;
+
 /**
  * Another agent sent the message: through T3's MCP tools (`t3_thread_send`, `t3_thread_launch`,
- * `delegate_task`), or as a delegated task's report or question. A turn it starts does not
- * involve the user, so its completion does not notify them. Scheduled tasks are the user's own
- * automations and never count. `ProjectionStore` mirrors this in SQL for shell rows.
+ * `delegate_task`), or as a delegated task's report or question.
  */
-export function isOrchestrationV2MessageFromAnotherAgent(
-  message: Pick<
-    OrchestrationV2ConversationMessage,
-    | "createdBy"
-    | "creationSource"
-    | "scheduledTaskId"
-    | "senderThreadId"
-    | "delegatedCompletion"
-    | "notification"
-  >,
-): boolean {
+export function isOrchestrationV2MessageFromAnotherAgent(message: RunStartingMessage): boolean {
   if (message.createdBy === "user" || message.scheduledTaskId !== undefined) return false;
   return (
     message.creationSource === "mcp" ||
@@ -1268,6 +1295,19 @@ export function isOrchestrationV2MessageFromAnotherAgent(
     message.delegatedCompletion !== undefined ||
     message.notification?.source.kind === "delegated_task"
   );
+}
+
+/**
+ * The origin of a run this message starts. A scheduled task's message carries the creator of the
+ * task, so the schedule is checked first. Anything else T3 or a provider sends on its own, such
+ * as a finished background command, a pull request watch or idle compaction, is a wake.
+ */
+export function orchestrationV2MessageRunOrigin(
+  message: RunStartingMessage,
+): OrchestrationV2RunOrigin {
+  if (message.scheduledTaskId !== undefined) return "schedule";
+  if (message.createdBy === "user") return "user";
+  return isOrchestrationV2MessageFromAnotherAgent(message) ? "agent" : "wake";
 }
 
 export const OrchestrationV2PlanStep = Schema.Struct({
@@ -2024,8 +2064,13 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
-  /** The latest run's message came from another agent (`isOrchestrationV2MessageFromAnotherAgent`). */
-  latestRunFromAnotherAgent: Schema.optional(Schema.Boolean),
+  /** Who started the latest run. Absent from older servers and for runs without one: the user. */
+  latestRunOrigin: Schema.optional(OrchestrationV2RunOrigin),
+  /**
+   * When the user's own latest run ended, sent while a background run is the latest, so a result
+   * the user has not seen yet stays Done behind it.
+   */
+  latestUserRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   activeRunId: Schema.NullOr(RunId),
   activityRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   activityRunStatus: Schema.optional(
@@ -2071,6 +2116,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   continuedFrom: Schema.optional(ThreadId),
   continuedIn: Schema.optional(ThreadId),
   memoryUnchangedTurns: Schema.optional(NonNegativeInt),
+  attention: Schema.optional(Schema.NullOr(OrchestrationV2AttentionRequest)),
   lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   titleRegeneration: Schema.optional(
     Schema.NullOr(
@@ -2139,6 +2185,11 @@ export const OrchestrationV2StoredEvent = Schema.Struct({
 });
 export type OrchestrationV2StoredEvent = typeof OrchestrationV2StoredEvent.Type;
 
+const OrchestrationV2AttentionRequestJson = OrchestrationV2AttentionRequest.mapFields((fields) => ({
+  ...fields,
+  requestedAt: Schema.DateTimeUtcFromString,
+}));
+
 export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((fields) => ({
   ...fields,
   createdAt: Schema.DateTimeUtcFromString,
@@ -2154,6 +2205,7 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   accountFailoverDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+  attention: Schema.optional(Schema.NullOr(OrchestrationV2AttentionRequestJson)),
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -2578,6 +2630,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   latestRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+  latestUserRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   activityRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   pendingRuntimeRequest: Schema.NullOr(OrchestrationV2PendingRuntimeRequestSummaryJson),
   latestVisibleMessage: Schema.NullOr(OrchestrationV2LatestVisibleMessageSummaryJson),
@@ -2593,6 +2646,7 @@ export const OrchestrationV2ThreadShellJson = OrchestrationV2ThreadShell.mapFiel
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   accountFailoverDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
+  attention: Schema.optional(Schema.NullOr(OrchestrationV2AttentionRequestJson)),
   lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   titleRegeneration: Schema.optional(
     Schema.NullOr(
@@ -2940,6 +2994,9 @@ export const OrchestrationV2Command = Schema.Union([
     continuedIn: Schema.optional(ThreadId),
     /** Alone, it leaves the thread's update time alone: the server counts turns with it. */
     memoryUnchangedTurns: Schema.optional(NonNegativeInt),
+    /** Mark the thread as needing the user (`reason`), or clear the mark (null). Alone, it keeps
+        the thread's update time. */
+    attention: Schema.optional(Schema.NullOr(Schema.Struct({ reason: TrimmedNonEmptyString }))),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request.link"),

@@ -33,6 +33,8 @@ import {
   OrchestratorMcpThreadSendResult,
   OrchestratorMcpThreadWaitInput,
   OrchestratorMcpThreadWaitResult,
+  ThreadAttentionMcpInput,
+  ThreadAttentionMcpResult,
   ThreadMetadataMcpUpdateInput,
   ThreadMetadataMcpUpdateResult,
 } from "@t3tools/contracts";
@@ -212,7 +214,7 @@ export const CreateThreadsTool = Tool.make("create_threads", {
 
 const ThreadListTool = Tool.make("t3_thread_list", {
   description:
-    "List T3 threads in a project, newest first. Omit projectId for the calling thread's project. A thread the user names, often a pinned expert, is found with pinned=true and no projectId: one call lists the pinned threads of every project here and in every linked environment, each with projectTitle, environmentId and, when linked, environmentLabel; unlistedEnvironments names the linked environments that could not answer. Pass environmentId to list a linked environment's threads; projectId is then required unless pinned=true. Filter by durable run status, title, or settled state (settled=true lists threads the user or auto-settlement moved out of the active list), or snoozed state, and paginate with the returned cursor. A snoozed thread wakes early only when it asks for something or fails after snoozing; completed runs and background wakes keep it snoozed. pullRequests lists every pull request linked to each thread; linkedPullRequest is a legacy single link and can be null while pullRequests still has entries. To link a thread in this environment for the user, write `[title](t3-thread://v1/<threadId>)` with the threadId exactly as returned, not URL-encoded; T3 Code shows the thread's current title. Name a thread in a linked environment by title instead: its link would open here.",
+    "List T3 threads in a project, newest first. Omit projectId for the calling thread's project. A thread the user names, often a pinned expert, is found with pinned=true and no projectId: one call lists the pinned threads of every project here and in every linked environment, each with projectTitle, environmentId and, when linked, environmentLabel; unlistedEnvironments names the linked environments that could not answer. Pass environmentId to list a linked environment's threads; projectId is then required unless pinned=true. Filter by durable run status, title, or settled state (settled=true lists threads the user or auto-settlement moved out of the active list), or snoozed state, and paginate with the returned cursor. A snoozed thread wakes early only when it asks for something or fails after snoozing; completed runs and background wakes keep it snoozed. attention is set while a thread's agent asks for the user (t3_request_attention). pullRequests lists every pull request linked to each thread; linkedPullRequest is a legacy single link and can be null while pullRequests still has entries. To link a thread in this environment for the user, write `[title](t3-thread://v1/<threadId>)` with the threadId exactly as returned, not URL-encoded; T3 Code shows the thread's current title. Name a thread in a linked environment by title instead: its link would open here.",
   parameters: OrchestratorMcpThreadListInput,
   success: OrchestratorMcpThreadListResult,
   failure: OrchestratorMcpFailure,
@@ -226,7 +228,7 @@ const ThreadListTool = Tool.make("t3_thread_list", {
 
 const ThreadReadTool = Tool.make("t3_thread_read", {
   description:
-    "Read durable state and a paginated timeline from any T3 thread in this environment, or in a linked one with environmentId; a threadId that is not here is looked up in the linked environments. The default messages view returns user messages, assistant messages, and proposed plans; activity returns all summarized timeline items. An assistant message the user reacted to, for example with 👍, lists the reactions; a reaction on a passage of it quotes the passage. Reading an untruncated terminal assistant result from this parent thread's direct app-owned child acknowledges that child's automatic completion delivery. Continue with afterPosition=nextPosition. Recover long item text with itemId and textOffset=nextTextOffset until nextTextOffset is null; offsets count UTF-16 code units. The thread also reports its snooze state, continuedIn when a fresh start moved it on to another thread (and continuedFrom on that thread), and, in pullRequests, every linked pull request; linkedPullRequest is a legacy single link and can be null while pullRequests still has entries. To link a thread in this environment for the user, write `[title](t3-thread://v1/<threadId>)` with the threadId exactly as returned, not URL-encoded; T3 Code shows the thread's current title. Name a thread in a linked environment by title instead: its link would open here.",
+    "Read durable state and a paginated timeline from any T3 thread in this environment, or in a linked one with environmentId; a threadId that is not here is looked up in the linked environments. The default messages view returns user messages, assistant messages, and proposed plans; activity returns all summarized timeline items. An assistant message the user reacted to, for example with 👍, lists the reactions; a reaction on a passage of it quotes the passage. Reading an untruncated terminal assistant result from this parent thread's direct app-owned child acknowledges that child's automatic completion delivery. Continue with afterPosition=nextPosition. Recover long item text with itemId and textOffset=nextTextOffset until nextTextOffset is null; offsets count UTF-16 code units. The thread also reports its snooze state, attention while its agent asks for the user (t3_request_attention), continuedIn when a fresh start moved it on to another thread (and continuedFrom on that thread), and, in pullRequests, every linked pull request; linkedPullRequest is a legacy single link and can be null while pullRequests still has entries. To link a thread in this environment for the user, write `[title](t3-thread://v1/<threadId>)` with the threadId exactly as returned, not URL-encoded; T3 Code shows the thread's current title. Name a thread in a linked environment by title instead: its link would open here.",
   parameters: OrchestratorMcpThreadReadInput,
   success: OrchestratorMcpThreadReadResult,
   failure: OrchestratorMcpFailure,
@@ -254,6 +256,19 @@ export const ThreadUpdateTool = Tool.make("t3_thread_update", {
   .annotate(Tool.Title, "Update T3 thread metadata")
   .annotate(Tool.Destructive, true)
   .annotate(Tool.Idempotent, false);
+
+const RequestAttentionTool = Tool.make("t3_request_attention", {
+  description:
+    "Needs an agent running inside a T3 thread. Mark THIS thread as needing the user, with a one-line reason: a decision, or an action only they can take. It does not block your turn; keep working or end it. The thread shows Needs you with the reason and comes forward in the sidebar, and the user is notified as for a question. Use it in a turn the user did not start, such as another agent's message, a scheduled task or a wake, when you cannot go on without them; never to report progress or a finished result. The user's next message or reaction, or their Dismiss, clears the mark; pass clear=true to clear it yourself once the need has passed. t3_thread_list and t3_thread_read show the mark as attention.",
+  parameters: ThreadAttentionMcpInput,
+  success: ThreadAttentionMcpResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: threadMetadataDependencies,
+})
+  .annotate(Tool.Title, "Ask for the user's attention")
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true);
 
 const ThreadSendTool = Tool.make("t3_thread_send", {
   description:
@@ -335,6 +350,7 @@ export const OrchestratorToolkit = Toolkit.make(
   ThreadListTool,
   ThreadReadTool,
   ThreadUpdateTool,
+  RequestAttentionTool,
   ThreadSendTool,
   ThreadWaitTool,
   ThreadInterruptTool,

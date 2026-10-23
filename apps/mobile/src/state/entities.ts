@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { deriveReportedModelSelection } from "@t3tools/client-runtime/state/thread-execution";
+import { parseThreadKey } from "@t3tools/client-runtime/state/entities";
 
 import { appAtomRegistry } from "./atom-registry";
 import type {
@@ -27,6 +28,9 @@ const EMPTY_PROJECT_ATOM = Atom.make<EnvironmentProject | null>(null).pipe(
 );
 const EMPTY_THREAD_SHELL_ATOM = Atom.make<EnvironmentThreadShell | null>(null).pipe(
   Atom.withLabel("mobile-thread-shell:empty"),
+);
+const EMPTY_TOPIC_OF_ATOM = Atom.make<string | null>(null).pipe(
+  Atom.withLabel("mobile-thread-topic-of:empty"),
 );
 const EMPTY_SERVER_CONFIG_ATOM = Atom.make<ServerConfig | null>(null).pipe(
   Atom.withLabel("mobile-server-config:empty"),
@@ -104,6 +108,14 @@ export function useQuietThreadShell(ref: ScopedThreadRef | null): EnvironmentThr
   return useAtomValue(
     ref === null ? EMPTY_THREAD_SHELL_ATOM : environmentThreadShells.quietThreadShellAtom(ref),
   );
+}
+
+/** The expert this thread is a topic of, if it is one. */
+export function useThreadTopicOf(ref: ScopedThreadRef | null): ScopedThreadRef | null {
+  const key = useAtomValue(
+    ref === null ? EMPTY_TOPIC_OF_ATOM : environmentThreadShells.topicOfAtom(ref),
+  );
+  return key === null ? null : parseThreadKey(key);
 }
 
 export function useChildThreadInputs(ref: ScopedThreadRef) {

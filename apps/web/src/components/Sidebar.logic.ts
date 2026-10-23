@@ -1,6 +1,10 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
+import {
+  resolveThreadTopicOf,
+  type ThreadTopicLinks,
+} from "@t3tools/client-runtime/state/thread-topics";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import * as React from "react";
@@ -154,53 +158,41 @@ export function resolveSidebarRowVariant(
   return section === "pinned" ? "expert" : "slim";
 }
 
-/** The key of the thread whose agent launched this one, if one did. */
-export function sidebarLauncherKey(thread: {
-  readonly source: Pick<SidebarThreadSummary["source"], "launchedBy">;
-}): string | null {
-  const launchedBy = thread.source.launchedBy;
-  return launchedBy === undefined
-    ? null
-    : scopedThreadKey(scopeThreadRef(launchedBy.environmentId, launchedBy.threadId));
-}
-
-/** Each thread that started fresh, by key, to the key of the thread it continues in. */
-export function sidebarContinuations(
-  threads: Iterable<
-    Pick<SidebarThreadSummary, "environmentId" | "id"> & {
-      readonly source: Pick<SidebarThreadSummary["source"], "continuedIn">;
-    }
-  >,
-): ReadonlyMap<string, string> {
-  const continuedIn = new Map<string, string>();
-  for (const thread of threads) {
-    if (thread.source.continuedIn === undefined) continue;
-    continuedIn.set(
-      scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-      scopedThreadKey(scopeThreadRef(thread.environmentId, thread.source.continuedIn)),
-    );
-  }
-  return continuedIn;
-}
+type SidebarTopicThread = Pick<SidebarThreadSummary, "environmentId" | "id"> & {
+  readonly source: ThreadTopicLinks;
+};
 
 /**
- * The expert whose topic a thread is: the listed expert whose agent launched it, or the thread
- * an expert that started fresh continues in. Null for a thread no listed expert launched.
+ * Every thread's links by key, for walking a topic to its expert. Pass the whole thread list:
+ * subagents and delegated tasks have no rows but can stand between a topic and its expert.
  */
-export function resolveSidebarTopicOf(input: {
-  readonly launcherKey: string | null;
-  readonly expertKeys: ReadonlySet<string>;
-  readonly continuedIn: ReadonlyMap<string, string>;
-}): string | null {
-  const { expertKeys, continuedIn } = input;
-  const seen = new Set<string>();
-  let key = input.launcherKey;
-  while (key !== null && !seen.has(key)) {
-    if (expertKeys.has(key)) return key;
-    seen.add(key);
-    key = continuedIn.get(key) ?? null;
+export function sidebarTopicLinks(
+  threads: Iterable<SidebarTopicThread>,
+): ReadonlyMap<string, ThreadTopicLinks> {
+  const links = new Map<string, ThreadTopicLinks>();
+  for (const thread of threads) {
+    links.set(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)), thread.source);
   }
-  return null;
+  return links;
+}
+
+/** The key of the listed expert whose topic a thread is; see `resolveThreadTopicOf`. */
+export function resolveSidebarTopicOf(input: {
+  readonly thread: Pick<SidebarThreadSummary, "environmentId" | "id"> & {
+    readonly source: Pick<ThreadTopicLinks, "launchedBy">;
+  };
+  readonly expertKeys: ReadonlySet<string>;
+  readonly links: ReadonlyMap<string, ThreadTopicLinks>;
+}): string | null {
+  const { thread, expertKeys, links } = input;
+  if (thread.source.launchedBy === undefined) return null;
+  const expert = resolveThreadTopicOf({
+    ref: scopeThreadRef(thread.environmentId, thread.id),
+    thread: thread.source,
+    lookup: (ref) => links.get(scopedThreadKey(ref)),
+    isExpert: (ref) => expertKeys.has(scopedThreadKey(ref)),
+  });
+  return expert === null ? null : scopedThreadKey(expert);
 }
 
 /**

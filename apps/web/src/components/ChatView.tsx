@@ -399,6 +399,7 @@ import {
   useThreadStatus,
   useThreadHistory,
   useQuietThreadShell,
+  useThreadTopicOf,
   useThreadShell,
   useChildThreadInputs,
   useThreadRefs,
@@ -1612,10 +1613,14 @@ export default function ChatView(props: ChatViewProps) {
   // an agent here or there launched it.
   const delegatedFrom = activeThread?.delegatedFrom ?? null;
   const launchedBy = delegatedFrom === null ? (activeThread?.source.launchedBy ?? null) : null;
+  // A topic names its expert, which may sit behind the helper that launched it.
+  const topicOf = useThreadTopicOf(launchedBy === null ? null : routeThreadRef);
   const launcher = delegatedFrom ?? launchedBy;
-  const delegatedFromEnvironment = useEnvironment(launcher?.environmentId ?? null);
   const delegatedFromRef =
-    launcher === null ? null : scopeThreadRef(launcher.environmentId, launcher.threadId);
+    launcher === null
+      ? null
+      : (topicOf ?? scopeThreadRef(launcher.environmentId, launcher.threadId));
+  const delegatedFromEnvironment = useEnvironment(delegatedFromRef?.environmentId ?? null);
   // The title it had at delegation or launch, until this client sees the parent itself.
   const delegatedFromThread = useQuietThreadShell(delegatedFromRef);
   const parentThreadLink = (() => {
@@ -1634,11 +1639,8 @@ export default function ChatView(props: ChatViewProps) {
     const parentRef = delegatedFromRef;
     return {
       title: delegatedFromThread?.title ?? launcher.title,
-      // A pinned launcher is an expert, and this thread one of its topics.
-      ...(launchedBy === null
-        ? {}
-        : { label: delegatedFromThread?.pinnedAt != null ? "Topic of" : "Started by" }),
-      ...(launchedBy !== null && launchedBy.environmentId === activeThread?.environmentId
+      ...(launchedBy === null ? {} : { label: topicOf !== null ? "Topic of" : "Started by" }),
+      ...(launchedBy !== null && parentRef.environmentId === activeThread?.environmentId
         ? {}
         : {
             environmentLabel:

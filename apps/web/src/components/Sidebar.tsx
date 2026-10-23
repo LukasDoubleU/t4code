@@ -257,8 +257,7 @@ import {
   resolveSidebarRowVariant,
   resolveSidebarTopicExpert,
   resolveSidebarTopicOf,
-  sidebarContinuations,
-  sidebarLauncherKey,
+  sidebarTopicLinks,
 } from "./Sidebar.logic";
 import {
   groupSidebarThreads,
@@ -925,8 +924,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   }
   // An expert's topics leave their sections for its row.
   const expertKeys = new Set(pinned.map(threadShellKey));
-  const continuedIn =
-    expertKeys.size === 0 ? new Map<string, string>() : sidebarContinuations(visible);
+  const topicLinks = sidebarTopicLinks(expertKeys.size === 0 ? [] : threads);
   const topicsByExpert = new Map<string, EnvironmentThreadShell[]>();
   // Every topic, nested or come forward: Background moves do not apply to them.
   const topicKeys = new Set<string>();
@@ -934,11 +932,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     expertKeys.size === 0
       ? list
       : list.filter((thread) => {
-          const topicOf = resolveSidebarTopicOf({
-            launcherKey: sidebarLauncherKey(thread),
-            expertKeys,
-            continuedIn,
-          });
+          const topicOf = resolveSidebarTopicOf({ thread, expertKeys, links: topicLinks });
           if (topicOf === null) return true;
           topicKeys.add(threadShellKey(thread));
           const expertKey = resolveSidebarTopicExpert({

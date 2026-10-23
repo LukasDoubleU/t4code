@@ -42,7 +42,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { LoadingScreen } from "../../components/LoadingScreen";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { useThreadShell } from "../../state/entities";
+import { useThreadShell, useThreadTopicOf } from "../../state/entities";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { connectionTone } from "../connection/connectionTone";
 import {
@@ -426,9 +426,17 @@ function ThreadRouteContent(
   const usesNativeHeaderGlass = NATIVE_LIQUID_GLASS_SUPPORTED;
   const delegatedFrom = selectedThread?.delegatedFrom ?? null;
   const launchedBy = delegatedFrom === null ? (selectedThread?.source.launchedBy ?? null) : null;
+  // A topic names its expert, which may sit behind the helper that launched it.
+  const topicOf = useThreadTopicOf(
+    launchedBy === null || selectedThread === null
+      ? null
+      : scopeThreadRef(selectedThread.environmentId, selectedThread.id),
+  );
   const launcher = delegatedFrom ?? launchedBy;
   const delegatedFromRef =
-    launcher === null ? null : scopeThreadRef(launcher.environmentId, launcher.threadId);
+    launcher === null
+      ? null
+      : (topicOf ?? scopeThreadRef(launcher.environmentId, launcher.threadId));
   // The title it had at delegation or launch, until this client sees the parent itself.
   const delegatedFromThread = useThreadShell(delegatedFromRef);
   const headerSubtitle = [
@@ -439,7 +447,7 @@ function ThreadRouteContent(
     delegatedFrom !== null
       ? `Subagent of ${delegatedFromThread?.title ?? delegatedFrom.title}`
       : launchedBy !== null
-        ? `${delegatedFromThread?.pinnedAt != null ? "Topic of" : "Started by"} ${
+        ? `${topicOf !== null ? "Topic of" : "Started by"} ${
             delegatedFromThread?.title ?? launchedBy.title
           }`
         : selectedThread?.linkOrigin

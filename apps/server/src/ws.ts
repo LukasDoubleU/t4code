@@ -1979,6 +1979,7 @@ export const layerWsRpc = (
                     runtimeMode: input.runtimeMode,
                     interactionMode: input.interactionMode,
                     workspaceStrategy: input.workspaceStrategy,
+                    ...(input.topicOf === undefined ? {} : { topicOf: input.topicOf }),
                     ...(input.initialMessage === undefined
                       ? {}
                       : {

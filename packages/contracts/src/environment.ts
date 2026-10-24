@@ -128,6 +128,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   /** Server moves a turn to the next account at a usage limit, unless the thread opts out. */
   threadAccountFailover: Schema.optionalKey(Schema.Boolean),
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),
+  /** Server keeps a thread's own icon (`thread.metadata.update` with `icon`). */
+  threadIcons: Schema.optionalKey(Schema.Boolean),
+  /** Server files a launch with `topicOf` as that thread's topic. */
+  threadTopics: Schema.optionalKey(Schema.Boolean),
   threadVisitedTracking: Schema.optionalKey(Schema.Boolean),
   threadPullRequestLinking: Schema.optionalKey(Schema.Boolean),
   serverResolvedCommandContext: Schema.optionalKey(Schema.Boolean),

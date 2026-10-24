@@ -8,6 +8,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { ProjectIconOverride } from "./project.ts";
 import { ThreadLinkedPullRequest } from "./threadPullRequest.ts";
 import { ThreadTitleRegeneration } from "./threadTitle.ts";
 
@@ -63,9 +64,11 @@ export const ThreadMetadataMcpAction = Schema.Literals([
   "regenerate_title",
   "link_pull_request",
   "unlink_pull_request",
+  "set_icon",
+  "clear_icon",
 ]).annotate({
   description:
-    "Metadata mutation: rename, regenerate_title, link_pull_request, or unlink_pull_request.",
+    "Metadata mutation: rename, regenerate_title, link_pull_request, unlink_pull_request, set_icon, or clear_icon.",
 });
 export type ThreadMetadataMcpAction = typeof ThreadMetadataMcpAction.Type;
 
@@ -87,24 +90,33 @@ export const ThreadMetadataMcpUpdateInput = Schema.Struct({
   pullRequest: Schema.optional(ThreadMetadataMcpPullRequest).annotate({
     description: "Pull request to link. Required only when action is link_pull_request.",
   }),
+  icon: Schema.optional(ProjectIconOverride).annotate({
+    description:
+      'The thread\'s own icon, shown instead of its project\'s. Required only when action is set_icon: {"kind":"emoji","emoji":"<one emoji>"}, {"kind":"lucide","name":"<lucide icon name in kebab-case>","color":"<color>"}, or {"kind":"monogram","text":"<one or two letters>","color":"<color>"}.',
+  }),
   clientRequestId: Schema.optional(ThreadMetadataClientRequestId),
 }).check(
   Schema.makeFilter((input) => {
-    switch (input.action) {
-      case "rename":
-        return input.title !== undefined && input.pullRequest === undefined
-          ? true
-          : "rename requires title and does not accept pullRequest.";
-      case "link_pull_request":
-        return input.pullRequest !== undefined && input.title === undefined
-          ? true
-          : "link_pull_request requires pullRequest and does not accept title.";
-      case "regenerate_title":
-      case "unlink_pull_request":
-        return input.title === undefined && input.pullRequest === undefined
-          ? true
-          : `${input.action} does not accept title or pullRequest.`;
+    const extras = [
+      input.title === undefined ? null : "title",
+      input.pullRequest === undefined ? null : "pullRequest",
+      input.icon === undefined ? null : "icon",
+    ].filter((field) => field !== null);
+    const required = {
+      rename: "title",
+      link_pull_request: "pullRequest",
+      set_icon: "icon",
+      regenerate_title: null,
+      unlink_pull_request: null,
+      clear_icon: null,
+    }[input.action];
+    if (required !== null && !extras.includes(required)) {
+      return `${input.action} requires ${required}.`;
     }
+    const rejected = extras.filter((field) => field !== required);
+    return rejected.length === 0
+      ? true
+      : `${input.action} does not accept ${rejected.join(" or ")}.`;
   }),
 );
 export type ThreadMetadataMcpUpdateInput = typeof ThreadMetadataMcpUpdateInput.Type;
@@ -117,6 +129,8 @@ export const ThreadMetadataMcpUpdateResult = Schema.Struct({
   title: Schema.String,
   titleRegeneration: Schema.NullOr(ThreadTitleRegeneration),
   linkedPullRequest: Schema.NullOr(ThreadLinkedPullRequest),
+  /** The thread's own icon; null when it shows its project's. */
+  icon: Schema.optional(Schema.NullOr(ProjectIconOverride)),
   updatedAt: IsoDateTime,
 });
 export type ThreadMetadataMcpUpdateResult = typeof ThreadMetadataMcpUpdateResult.Type;

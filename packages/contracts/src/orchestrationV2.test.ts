@@ -19,6 +19,7 @@ import {
   OrchestrationV2Subagent,
   OrchestrationV2SubagentJson,
   OrchestrationV2ThreadHistoryPage,
+  OrchestrationV2ThreadShellJson,
   OrchestrationV2TurnItem,
   OrchestrationV2TurnItemJson,
   isBackgroundRunOrigin,
@@ -686,5 +687,22 @@ describe("orchestrationV2MessageRunOrigin", () => {
       true,
       true,
     ]);
+  });
+});
+
+describe("a thread's own icon", () => {
+  const decodeIcon = Schema.decodeUnknownSync(
+    Schema.Struct({ icon: OrchestrationV2ThreadShellJson.fields.icon }),
+  );
+
+  it("decodes the project icon kinds, and a kind from a newer server as the project's icon", () => {
+    expect(decodeIcon({})).toEqual({});
+    expect(decodeIcon({ icon: null })).toEqual({ icon: null });
+    expect(decodeIcon({ icon: { kind: "lucide", name: "flask-conical", color: "teal" } })).toEqual({
+      icon: { kind: "lucide", name: "flask-conical", color: "teal" },
+    });
+    expect(decodeIcon({ icon: { kind: "photo", url: "https://example.com/a.png" } })).toEqual({
+      icon: null,
+    });
   });
 });

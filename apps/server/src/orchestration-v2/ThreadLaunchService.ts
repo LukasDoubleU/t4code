@@ -55,6 +55,7 @@ import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import { DispatchModeLimit } from "./DispatchModeLimit.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 
 export type ThreadLaunchWorkspaceStrategy =
   | { readonly type: "root"; readonly branch?: string | undefined }
@@ -108,6 +109,8 @@ export interface ThreadLaunchInput {
   readonly delegatedFrom?: OrchestrationV2DelegatedFrom;
   /** The thread whose agent launched this one, here or there. */
   readonly launchedBy?: OrchestrationV2LaunchedBy;
+  /** A thread here the user files this one under as a topic, recorded as `launchedBy`. */
+  readonly topicOf?: ThreadId;
 }
 
 type PreparationInput = Pick<
@@ -134,6 +137,7 @@ export class ThreadLaunchError extends Schema.TaggedError<ThreadLaunchError>()(
   {
     operation: Schema.Literals([
       "resolve-project",
+      "resolve-topic",
       "read-receipt",
       "generate-metadata",
       "provision-worktree",
@@ -221,6 +225,7 @@ const make = Effect.gen(function* () {
   const ids = yield* IdAllocator.IdAllocatorV2;
   const threads = yield* ThreadManagement.ThreadManagementService;
   const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
+  const environmentIdentity = yield* ServerEnvironment.ServerEnvironmentIdentity;
   const preparationScope = yield* Scope.make("sequential");
   const scheduledLaunches = yield* Ref.make<ReadonlySet<CommandId>>(new Set());
   yield* Effect.addFinalizer(() => Scope.close(preparationScope, Exit.void));
@@ -819,6 +824,24 @@ const make = Effect.gen(function* () {
     );
   });
 
+  // The user files a topic in its expert's own environment, which the launcher's ref names.
+  const topicLauncher = Effect.fn("ThreadLaunchService.topicLauncher")(function* (
+    input: ThreadLaunchInput,
+    topicOf: ThreadId,
+  ) {
+    const shell = yield* threads
+      .getThreadShell(topicOf)
+      .pipe(Effect.mapError(mapError(input, "resolve-topic")));
+    if (shell === null || shell.deletedAt !== null) {
+      return yield* mapError(input, "resolve-topic")(`Thread ${topicOf} was not found.`);
+    }
+    return {
+      environmentId: yield* environmentIdentity.getEnvironmentId,
+      threadId: shell.id,
+      title: shell.title,
+    } satisfies OrchestrationV2LaunchedBy;
+  });
+
   const launch: ThreadLaunchService["Service"]["launch"] = Effect.fn("ThreadLaunchService.launch")(
     function* (request) {
       // Scratch has no Git repository. Normalize before folder allocation so
@@ -848,6 +871,9 @@ const make = Effect.gen(function* () {
         )("Reusing an existing thread requires a thread id.");
       }
 
+      const launchedBy =
+        input.launchedBy ??
+        (input.topicOf === undefined ? undefined : yield* topicLauncher(input, input.topicOf));
       const launchReceipt = yield* readReceipt(input, input.commandId);
       yield* threads.assertProviderInstanceEnabled({
         projectId: input.projectId,
@@ -938,7 +964,7 @@ const make = Effect.gen(function* () {
                 ...(input.delegatedFrom === undefined
                   ? {}
                   : { delegatedFrom: input.delegatedFrom }),
-                ...(input.launchedBy === undefined ? {} : { launchedBy: input.launchedBy }),
+                ...(launchedBy === undefined ? {} : { launchedBy }),
                 createdBy: input.createdBy,
                 creationSource: input.creationSource,
               });

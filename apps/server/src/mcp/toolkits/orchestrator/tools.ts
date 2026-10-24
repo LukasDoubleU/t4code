@@ -243,7 +243,7 @@ const ThreadReadTool = Tool.make("t3_thread_read", {
 
 const ThreadUpdateTool = Tool.make("t3_thread_update", {
   description:
-    "Update metadata for a thread. Omit threadId to update this thread. Use action='rename' with title, action='regenerate_title' with no extra field, action='link_pull_request' with pullRequest, or action='unlink_pull_request'. Workspace and branch changes are intentionally not supported. clientRequestId makes retries idempotent.",
+    "Update metadata for a thread. Omit threadId to update this thread. Use action='rename' with title, action='regenerate_title' with no extra field, action='link_pull_request' with pullRequest, action='unlink_pull_request', action='set_icon' with icon to give the thread its own icon in place of its project's (for example to tell the threads you manage apart), or action='clear_icon' to show the project's icon again. Workspace and branch changes are intentionally not supported. clientRequestId makes retries idempotent.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     ...ThreadMetadataMcpUpdateInput.fields,

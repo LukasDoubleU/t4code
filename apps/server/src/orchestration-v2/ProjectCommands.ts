@@ -102,6 +102,11 @@ export interface ProjectCommandState {
 }
 
 const monogramSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** Monograms hold at most two characters, which the schema cannot count. */
+export function isMonogramTooLong(icon: ProjectIconOverride | null | undefined): boolean {
+  return icon?.kind === "monogram" && Array.from(monogramSegmenter.segment(icon.text)).length > 2;
+}
 const isScriptRunCommand = Schema.is(SCRIPT_RUN_COMMAND_PATTERN);
 
 /**
@@ -173,10 +178,7 @@ export function planProjectCommand(input: {
     case "project.meta.update": {
       const project = activeProject;
       if (project === undefined) return missingProject();
-      if (
-        command.projectIcon?.kind === "monogram" &&
-        Array.from(monogramSegmenter.segment(command.projectIcon.text)).length > 2
-      ) {
+      if (isMonogramTooLong(command.projectIcon)) {
         return invariant("Project monograms must contain at most two characters.");
       }
       if (command.scripts !== undefined) {

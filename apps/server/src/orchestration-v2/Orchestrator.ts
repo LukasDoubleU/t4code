@@ -84,6 +84,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import * as ProjectStore from "./ProjectStore.ts";
+import { isMonogramTooLong } from "./ProjectCommands.ts";
 import {
   isCheckpointRestoreIsolated,
   SHARED_WORKSPACE_RESTORE_MESSAGE,
@@ -615,8 +616,8 @@ function withoutPreparationResult(
 }
 
 /**
- * The server's turn count or the attention mark alone, which must not move the thread in
- * update-time order.
+ * The server's turn count, the attention mark or the icon alone, which must not move the thread
+ * in update-time order.
  */
 function keepsThreadUpdateTime(
   command: Extract<OrchestrationV2Command, { readonly type: "thread.metadata.update" }>,
@@ -627,10 +628,11 @@ function keepsThreadUpdateTime(
     threadId: _threadId,
     memoryUnchangedTurns,
     attention,
+    icon,
     ...rest
   } = command;
   return (
-    (memoryUnchangedTurns !== undefined || attention !== undefined) &&
+    (memoryUnchangedTurns !== undefined || attention !== undefined || icon !== undefined) &&
     Object.values(rest).every((v) => v === undefined)
   );
 }
@@ -2877,6 +2879,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: `Thread ${command.threadId} branch changed before the metadata update could be applied.`,
       });
     }
+    if (command.type === "thread.metadata.update" && isMonogramTooLong(command.icon)) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Thread monograms must contain at most two characters.",
+      });
+    }
     if (command.type === "thread.metadata.update" && command.expectedEmpty === true) {
       const records = yield* projectionStore
         .getThreadRecords(command.threadId, ["runs"])
@@ -3401,6 +3410,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                       ? null
                       : { reason: command.attention.reason, requestedAt: now },
                 }),
+            ...(command.icon === undefined ? {} : { icon: command.icon }),
             updatedAt: keepsThreadUpdateTime(command) ? thread.updatedAt : now,
           };
         }

@@ -69,6 +69,7 @@ import {
 } from "./providerPolicy.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import { OrchestrationProjectShell } from "./orchestrationProject.ts";
+import { ProjectIconOverride, ReceivedProjectIcon } from "./project.ts";
 import {
   TurnTokenUsage,
   ToolActivitySurface,
@@ -525,6 +526,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
    * reaction, Dismiss, or the agent itself clears it.
    */
   attention: Schema.optional(Schema.NullOr(OrchestrationV2AttentionRequest)),
+  /** The thread's own icon, shown instead of its project's. */
+  icon: Schema.optional(Schema.NullOr(ReceivedProjectIcon)),
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtc).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -2122,6 +2125,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   continuedIn: Schema.optional(ThreadId),
   memoryUnchangedTurns: Schema.optional(NonNegativeInt),
   attention: Schema.optional(Schema.NullOr(OrchestrationV2AttentionRequest)),
+  icon: Schema.optional(Schema.NullOr(ReceivedProjectIcon)),
   lastVisitedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   titleRegeneration: Schema.optional(
     Schema.NullOr(
@@ -3009,6 +3013,8 @@ export const OrchestrationV2Command = Schema.Union([
     /** Mark the thread as needing the user (`reason`), or clear the mark (null). Alone, it keeps
         the thread's update time. */
     attention: Schema.optional(Schema.NullOr(Schema.Struct({ reason: TrimmedNonEmptyString }))),
+    /** Give the thread its own icon, or null to show its project's again. Keeps the update time. */
+    icon: Schema.optional(Schema.NullOr(ProjectIconOverride)),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.pull-request.link"),
@@ -3583,6 +3589,8 @@ export const OrchestrationV2ThreadLaunchInput = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
+  /** A thread here the user files this one under as a topic; the server records it as `launchedBy`. */
+  topicOf: Schema.optional(ThreadId),
   initialMessage: Schema.optional(
     Schema.Struct({
       messageId: Schema.optional(MessageId),

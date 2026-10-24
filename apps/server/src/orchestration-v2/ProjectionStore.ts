@@ -1704,6 +1704,7 @@ export function threadShellFromProjection(
       ? {}
       : { memoryUnchangedTurns: projection.thread.memoryUnchangedTurns }),
     attention: projection.thread.attention ?? null,
+    icon: projection.thread.icon ?? null,
     lastVisitedAt: projection.thread.lastVisitedAt,
     titleRegeneration: projection.thread.titleRegeneration ?? null,
     limitRecovery: projection.thread.limitRecovery ?? null,
@@ -1973,6 +1974,7 @@ function shellFromState(input: {
       ? {}
       : { memoryUnchangedTurns: input.state.thread.memoryUnchangedTurns }),
     attention: input.state.thread.attention ?? null,
+    icon: input.state.thread.icon ?? null,
     lastVisitedAt: input.state.thread.lastVisitedAt,
     titleRegeneration: input.state.thread.titleRegeneration ?? null,
     limitRecovery: input.state.thread.limitRecovery ?? null,

@@ -88,6 +88,9 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   inlineMessageContext: Schema.optionalKey(Schema.Boolean),
   /** Server stores the user's reactions on assistant replies (`message.reaction.set`). */
   messageReactions: Schema.optionalKey(Schema.Boolean),
+  /** Server gives agents a reply reference (`[Assistant reply](t3-citation:...)`) as its time and
+      first line. Older servers forward the link as literal text. */
+  replyReferences: Schema.optionalKey(Schema.Boolean),
   requiredWorktreeBootstrap: Schema.optionalKey(Schema.Boolean),
   threadSettlement: Schema.optionalKey(Schema.Boolean),
   threadAutoSettlement: Schema.optionalKey(Schema.Boolean),

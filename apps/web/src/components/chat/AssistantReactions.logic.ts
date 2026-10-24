@@ -1,12 +1,16 @@
 import type {
+  AssistantReplyReference,
+  MessageId,
   OrchestrationV2MessageReactionEmoji,
   OrchestrationV2ProjectedTurnItem,
   OrchestrationV2Run,
   OrchestrationV2TurnItem,
+  ScopedThreadRef,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
+import { assistantReplyExcerpt } from "@t3tools/shared/assistantCitations";
 import * as DateTime from "effect/DateTime";
 
 import { formatDayAwareTimestamp } from "../../timestampFormat";
@@ -105,4 +109,29 @@ export function goAheadText(input: {
   if (input.latest) return "👍 Go ahead.";
   const time = formatDayAwareTimestamp(input.repliedAt, input.timestampFormat, input.nowMs);
   return `👍 Go ahead with your reply from ${time}.`;
+}
+
+/** What Reply puts in the composer: the reply named by the time its footer shows and its first line. */
+export function replyReference(
+  threadRef: ScopedThreadRef,
+  message: { readonly id: MessageId; readonly text: string; readonly updatedAt: string },
+): AssistantReplyReference {
+  return {
+    version: 1,
+    environmentId: threadRef.environmentId,
+    threadId: threadRef.threadId,
+    messageId: message.id,
+    repliedAt: message.updatedAt,
+    excerpt: assistantReplyExcerpt(message.text),
+  };
+}
+
+/** How the composer chip and the sent message name the reply a message answers. */
+export function replyReferenceLabel(
+  reference: AssistantReplyReference,
+  timestampFormat: TimestampFormat,
+  nowMs?: number,
+): string {
+  const time = formatDayAwareTimestamp(reference.repliedAt, timestampFormat, nowMs);
+  return reference.excerpt ? `Replying to ${time} · ${reference.excerpt}` : `Replying to ${time}`;
 }

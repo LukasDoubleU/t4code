@@ -24,6 +24,7 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { NodeType, ResolvedPos } from "@tiptap/pm/model";
 import type {
   AssistantCitation,
+  AssistantReplyReference,
   ComposerContextClipboardFragment,
   ServerProviderSkill,
 } from "@t3tools/contracts";
@@ -106,6 +107,7 @@ import { WorkspaceEntryTooltip } from "./chat/WorkspaceEntryIcon";
 import { FileTagChipContent } from "./chat/FileTagChip";
 import { SkillChipIcon } from "./chat/SkillInlineText";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
+import { AssistantReplyChip } from "./chat/AssistantReplyReference";
 import { getTimelinePageScrollKey } from "./chat/pageScrollController";
 import { ContextChipPopover } from "./contextChipParts";
 import { Button } from "./ui/button";
@@ -499,6 +501,48 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
   );
 }
 
+const ComposerReplyExtension = Node.create({
+  name: "composer-reply",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      reference: { default: null },
+      source: { default: "" },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-composer-reply]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["span", { "data-composer-reply": "", ...HTMLAttributes }];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(ComposerReplyNodeView);
+  },
+});
+
+function ComposerReplyNodeView({ node, editor }: NodeViewProps) {
+  const actions = use(ComposerContextActionsContext);
+  return (
+    <NodeViewWrapper
+      as="span"
+      className={cn(CHIP_NODE_SELECTION_CLASS_NAME, "min-w-0 max-w-full")}
+      contentEditable={false}
+      spellCheck={false}
+    >
+      <AssistantReplyChip
+        reference={node.attrs.reference as AssistantReplyReference}
+        onRemove={() => {
+          if (editor.isEditable) actions.removeReplyReference(node.attrs.source as string);
+        }}
+      />
+    </NodeViewWrapper>
+  );
+}
+
 const ComposerContextReferenceExtension = Node.create({
   name: "composer-context-reference",
   group: "inline",
@@ -869,6 +913,7 @@ function createComposerExtensions(richText: boolean) {
     ComposerMentionExtension,
     ComposerSkillExtension,
     ComposerCitationExtension,
+    ComposerReplyExtension,
     ComposerContextReferenceExtension,
     ComposerMarkersExtension,
     ...(richText

@@ -74,6 +74,8 @@ export interface ComposerContextActions {
   openFile: (fileId: string) => void;
   openMention: (path: string) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
+  /** Takes the reply reference `source` out of the prompt. */
+  removeReplyReference: (source: string) => void;
 }
 
 export const ComposerContextActionsContext = createContext<ComposerContextActions>({
@@ -83,6 +85,7 @@ export const ComposerContextActionsContext = createContext<ComposerContextAction
   openFile: () => {},
   openMention: () => {},
   openPullRequest: () => {},
+  removeReplyReference: () => {},
 });
 
 export type ComposerDraftContextRecords = ReadonlyMap<string, ComposerDraftContextRecord>;

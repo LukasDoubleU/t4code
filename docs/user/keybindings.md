@@ -157,7 +157,7 @@ in an assistant response, like the **Cite** button. It has no default shortcut e
 **Go ahead** button. It has no default shortcut either.
 
 `chat.jumpToMyLastMessage` (`mod+alt+up` by default) scrolls to your latest message in the
-thread, and `chat.catchUp` opens its **Catch me up** brief, which has no default shortcut. See
+thread like the **My last message** button above the composer, and `chat.catchUp` opens its **Catch me up** brief, which has no default shortcut. See
 [Catch up on a thread](./thread-sidebar.md#catch-up-on-a-thread).
 
 `thread.undo` (`mod+z` by default) reverses the actions shown in the notice at the

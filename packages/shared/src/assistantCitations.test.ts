@@ -8,15 +8,21 @@ import {
   MessageId,
   ThreadId,
   type AssistantCitation,
+  type AssistantReplyReference,
 } from "@t3tools/contracts";
 import {
   assistantCitationsToPlainText,
+  assistantReplyExcerpt,
   collectAssistantCitations,
+  collectAssistantReplyReferences,
   expandAssistantCitationsForProvider,
   formatAssistantCitationHref,
+  formatAssistantReplyHref,
   parseAssistantCitationHref,
+  parseAssistantReplyHref,
   renderAssistantCitationsAsText,
   serializeAssistantCitation,
+  serializeAssistantReplyReference,
   withAssistantCitationComment,
 } from "./assistantCitations.ts";
 
@@ -211,7 +217,7 @@ describe("assistant citation references", () => {
 
   it("adds the cited reply's time when the caller found it", () => {
     const repliedAt = DateTime.makeUnsafe("2026-10-22T14:03:59.999Z");
-    const seen: AssistantCitation[] = [];
+    const seen: Array<Pick<AssistantCitation, "threadId" | "messageId">> = [];
     const expanded = expandAssistantCitationsForProvider(
       serializeAssistantCitation(legacyCitation),
       (cited) => {
@@ -334,6 +340,99 @@ describe("assistant citation references", () => {
         "",
         "",
       ].join("\n"),
+    );
+  });
+});
+
+const reply: AssistantReplyReference = {
+  version: 1,
+  environmentId: EnvironmentId.make("a"),
+  threadId: ThreadId.make("b"),
+  messageId: MessageId.make("c"),
+  repliedAt: "2026-10-22T14:07:30.000Z",
+  excerpt: "Here is the plan (3 steps) & a caveat",
+};
+
+describe("assistant reply references", () => {
+  it("round-trips through its link, which no citation parser mistakes for a quote", () => {
+    const href = formatAssistantReplyHref(reply);
+
+    expect(parseAssistantReplyHref(href)).toStrictEqual(reply);
+    expect(parseAssistantCitationHref(href)).toBeNull();
+    expect(parseAssistantReplyHref(formatAssistantCitationHref(legacyCitation))).toBeNull();
+    expect(parseAssistantReplyHref(href.replace(/repliedAt=[^&]+/, "repliedAt=noon"))).toBeNull();
+    expect(collectAssistantCitations(serializeAssistantReplyReference(reply))).toStrictEqual([]);
+    expect(
+      collectAssistantReplyReferences(serializeAssistantCitation(legacyCitation)),
+    ).toStrictEqual([]);
+  });
+
+  it("takes the first non-blank line, collapses its whitespace and trims it to 60 characters", () => {
+    expect(assistantReplyExcerpt("\n  \n  ## Plan   for\tthe  migration  \nSecond line.")).toBe(
+      "## Plan for the migration",
+    );
+    expect(
+      assistantReplyExcerpt(
+        "The cache key ignores the locale, which is a long line that goes on past sixty characters.",
+      ),
+    ).toBe("The cache key ignores the locale, which is a long line that…");
+    expect(assistantReplyExcerpt(`${"a".repeat(59)} b`)).toBe(`${"a".repeat(59)}…`);
+    expect(assistantReplyExcerpt(" \n\t")).toBe("");
+  });
+
+  it("tells the agent which reply the message answers, not the reply again", () => {
+    const prompt = `${serializeAssistantReplyReference(reply)} Yes, but skip step 3.`;
+
+    expect(expandAssistantCitationsForProvider(prompt)).toBe(
+      [
+        'Reply to your message from 2026-10-22 14:07 UTC ("Here is the plan (3 steps) & a caveat"):',
+        "",
+        "Yes, but skip step 3.",
+      ].join("\n"),
+    );
+    expect(
+      expandAssistantCitationsForProvider(prompt, () =>
+        DateTime.makeUnsafe("2026-10-22T14:03:59.999Z"),
+      ),
+    ).toMatch(/^Reply to your message from 2026-10-22 14:03 UTC \(/);
+    expect(
+      expandAssistantCitationsForProvider(
+        serializeAssistantReplyReference({ ...reply, excerpt: "" }),
+      ),
+    ).toBe("Reply to your message from 2026-10-22 14:07 UTC:");
+  });
+
+  it("expands with a passage citation of the same reply in one message, both at the reply's time", () => {
+    const repliedAt = DateTime.makeUnsafe("2026-10-22T14:03:00.000Z");
+    const prompt = [
+      serializeAssistantReplyReference(reply),
+      " Mostly agreed.\n\n",
+      serializeAssistantCitation({ ...legacyCitation, comment: "Not this one." }),
+      "\nThe rest is fine.",
+    ].join("");
+
+    expect(expandAssistantCitationsForProvider(prompt, () => repliedAt)).toBe(
+      [
+        'Reply to your message from 2026-10-22 14:03 UTC ("Here is the plan (3 steps) & a caveat"):',
+        "",
+        "Mostly agreed.",
+        "",
+        "Quoted from an earlier assistant reply (2026-10-22 14:03 UTC):",
+        "> A quote & a newline.",
+        "",
+        "User comment: Not this one.",
+        "",
+        "The rest is fine.",
+      ].join("\n"),
+    );
+  });
+
+  it("leaves the reference out of plain-text previews and names it when rendered as text", () => {
+    const prompt = `${serializeAssistantReplyReference(reply)} Go with B.`;
+
+    expect(assistantCitationsToPlainText(prompt)).toBe(" Go with B.");
+    expect(renderAssistantCitationsAsText(prompt)).toBe(
+      "Replying to “Here is the plan \\(3 steps\\) &amp; a caveat”\n\n Go with B.",
     );
   });
 });

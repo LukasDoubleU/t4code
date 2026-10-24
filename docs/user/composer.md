@@ -140,7 +140,7 @@ navigate to their sources.
 
 ## React to a response
 
-On web and desktop, hover over the final response of a turn to find two buttons beside
+On web and desktop, hover over the final response of a turn to find three buttons beside
 **Copy**:
 
 - The thumbs-up button adds 👍 without sending anything, so no turn starts. The 👍 stays
@@ -149,6 +149,11 @@ On web and desktop, hover over the final response of a turn to find two buttons 
   is not the thread's latest one, the message names it by its time, for example "👍 Go ahead
   with your reply from 15:20." Like any message, it starts a turn now or waits in the queue
   while the agent is working.
+- **Reply** answers that response even after newer turns, such as messages from other agents.
+  Your draft starts with a "Replying to 15:20 · …" chip; its × removes it. The sent message
+  shows the reference above your text and scrolls to the response when clicked. The agent reads
+  `Reply to your message from 2026-10-22 15:20 UTC ("<first line>"):` before your text, not the
+  response again, and citations in the same message still arrive as quotes.
 
 To react to one part of a response, such as one option out of several, select that text.
 Beside **Cite**, the selection offers 👍, 👎 and **Go ahead**:

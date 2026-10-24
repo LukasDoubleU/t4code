@@ -63,10 +63,11 @@ When you open a thread with activity you have not seen, a **Since your last visi
 the first item after your previous visit. It stays put while you read.
 
 **Jump to my last message** scrolls back to the last message you wrote, loading older turns if
-needed. On web and desktop it is in the thread header and the command palette, and `mod+alt+up`
-runs it. On mobile, it is in the header's **Catch up** menu.
+needed. On web and desktop, a **My last message** button floats above the composer, beside
+**Scroll to end**, whenever that message is out of view; the command palette has it too, and
+`mod+alt+up` runs it. On mobile, it is in the header's **Catch up** menu.
 
-**Catch me up**, next to it, writes a short brief from the thread's items since your last message
+**Catch me up**, in the thread header, writes a short brief from the thread's items since your last message
 or your last visit, whichever is earlier: what needs you, up to three things that happened, and
 what comes next. An open question or approval, or an agent's call for you, always shows under
 **Needs you**. The brief uses the text generation model from **Settings → General**. It is not a

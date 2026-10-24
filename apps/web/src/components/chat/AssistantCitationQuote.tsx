@@ -1,5 +1,8 @@
 import type { AssistantCitation } from "@t3tools/contracts";
-import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
+import {
+  serializeAssistantCitation,
+  type AssistantReference,
+} from "@t3tools/shared/assistantCitations";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
 
@@ -12,8 +15,8 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { findRevealRef } from "./markdownFindContext";
 
-/** Props for a link that reveals the cited text in its assistant reply. */
-export function useAssistantCitationSourceLink(citation: AssistantCitation) {
+/** Props for a link that reveals the cited text, or the whole reply, in its assistant reply. */
+export function useAssistantCitationSourceLink(citation: AssistantReference) {
   const navigate = useNavigate();
   return {
     to: "/$environmentId/$threadId" as const,

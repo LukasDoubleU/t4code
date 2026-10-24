@@ -22,7 +22,11 @@ import {
 } from "./markdownLinks.ts";
 import { upgradeLegacyContextMessage } from "./composerContextLegacy.ts";
 import { parseComposerContextHref } from "./composerContextReferences.ts";
-import { assistantCitationLabel, parseAssistantCitationHref } from "./assistantCitations.ts";
+import {
+  assistantCitationLabel,
+  parseAssistantCitationHref,
+  parseAssistantReplyHref,
+} from "./assistantCitations.ts";
 import type { OrchestrationV2ConversationMessage } from "@t3tools/contracts";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "./proposedPlanText.ts";
 import { unified } from "unified";
@@ -139,6 +143,12 @@ function markdownThreadFindText(
       node.tagName === "a" && typeof href === "string" ? parseAssistantCitationHref(href) : null;
     if (citation) {
       text += assistantCitationLabel(citation);
+      return;
+    }
+    const reply =
+      node.tagName === "a" && typeof href === "string" ? parseAssistantReplyHref(href) : null;
+    if (reply) {
+      text += reply.excerpt;
       return;
     }
     {

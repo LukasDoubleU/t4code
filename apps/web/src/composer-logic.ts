@@ -1,12 +1,15 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import type {
   AssistantCitation,
+  AssistantReplyReference,
   EnvironmentId,
   ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import type { ComposerPathSearchTarget } from "@t3tools/client-runtime/state/threads";
 import {
+  collectAssistantReplyReferences,
   serializeAssistantCitation,
+  serializeAssistantReplyReference,
   withAssistantCitationComment,
 } from "@t3tools/shared/assistantCitations";
 import { isCurrencyAmountQuery, isPathWord } from "@t3tools/shared/composerTrigger";
@@ -44,6 +47,36 @@ export function isPathSuggestionCurrent(
 
 export function formatAssistantCitationForComposer(citation: AssistantCitation, comment = "") {
   return `${serializeAssistantCitation(withAssistantCitationComment(citation, comment))} `;
+}
+
+interface PromptEdit {
+  readonly start: number;
+  readonly end: number;
+  readonly text: string;
+}
+
+/**
+ * The edit that makes `reference` the reply a prompt answers. A message answers one reply, so it
+ * replaces the reference already there; otherwise it leads the prompt.
+ */
+export function replyReferenceEdit(prompt: string, reference: AssistantReplyReference): PromptEdit {
+  const source = serializeAssistantReplyReference(reference);
+  const current = collectAssistantReplyReferences(prompt)[0];
+  if (current) return { start: current.start, end: current.end, text: source };
+  return { start: 0, end: 0, text: /^\s/.test(prompt) ? source : `${source} ` };
+}
+
+/** The edit that removes the reply reference `source`, with the space after it. */
+export function replyReferenceRemoval(prompt: string, source: string): PromptEdit | null {
+  const match = collectAssistantReplyReferences(prompt).find(
+    (candidate) => candidate.source === source,
+  );
+  if (!match) return null;
+  return {
+    start: match.start,
+    end: prompt[match.end] === " " ? match.end + 1 : match.end,
+    text: "",
+  };
 }
 
 export function composerRequiresModifier(
@@ -130,6 +163,7 @@ export function expandCollapsedComposerCursor(
     if (
       segment.type === "mention" ||
       segment.type === "citation" ||
+      segment.type === "reply" ||
       segment.type === "context-reference"
     ) {
       const expandedLength = segment.source.length;
@@ -213,6 +247,7 @@ export function collapseExpandedComposerCursor(
     if (
       segment.type === "mention" ||
       segment.type === "citation" ||
+      segment.type === "reply" ||
       segment.type === "context-reference"
     ) {
       const expandedLength = segment.source.length;

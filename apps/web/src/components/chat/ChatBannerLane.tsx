@@ -1,11 +1,13 @@
 import type {
   OrchestrationV2ProviderFailureClass,
   ProviderInstanceId,
+  ScopedThreadRef,
   ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
 import type { Dispatch, SetStateAction } from "react";
 import { ProviderStatusBanner } from "./ProviderStatusBanner";
+import { ThreadCatchUpCard } from "./ThreadCatchUp";
 import { dismissThreadErrorBannerForSession, ThreadErrorBanner } from "./ThreadErrorBanner";
 
 /**
@@ -24,6 +26,8 @@ export function ChatBannerLane(props: {
   threadErrorBannerKey: string | null;
   setThreadError: (threadId: ThreadId | null, error: string | null) => void;
   setThreadErrorBannerDismissTick: Dispatch<SetStateAction<number>>;
+  /** The server thread whose "Catch me up" brief shows here. */
+  catchUpThreadRef: ScopedThreadRef | null;
 }) {
   const {
     providerStatus,
@@ -37,6 +41,7 @@ export function ChatBannerLane(props: {
     threadErrorBannerKey,
     setThreadError,
     setThreadErrorBannerDismissTick,
+    catchUpThreadRef,
   } = props;
   return (
     <div className="chat-banner-lane pointer-events-none absolute top-0 z-30 flex flex-col">
@@ -55,6 +60,7 @@ export function ChatBannerLane(props: {
           setThreadErrorBannerDismissTick((tick) => tick + 1);
         }}
       />
+      {catchUpThreadRef !== null ? <ThreadCatchUpCard threadRef={catchUpThreadRef} /> : null}
     </div>
   );
 }

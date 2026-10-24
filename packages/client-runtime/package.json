@@ -343,6 +343,10 @@
       "types": "./src/state/threadUndo.ts",
       "default": "./src/state/threadUndo.ts"
     },
+    "./state/thread-catch-up": {
+      "types": "./src/state/threadCatchUp.ts",
+      "default": "./src/state/threadCatchUp.ts"
+    },
     "./state/thread-settled": {
       "types": "./src/state/threadSettled.ts",
       "default": "./src/state/threadSettled.ts"

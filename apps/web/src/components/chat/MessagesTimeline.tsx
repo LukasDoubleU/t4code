@@ -17,6 +17,7 @@ import {
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
+import { sinceLastVisitIndex } from "@t3tools/client-runtime/state/thread-catch-up";
 import { observeResize } from "~/lib/observeResize";
 import { useStableCallback } from "~/hooks/useStableCallback";
 
@@ -72,6 +73,7 @@ import {
 } from "./MessagesTimeline.logic";
 import { type ThreadFindMatch } from "./threadFind";
 import { useThreadFindNavigation } from "./useThreadFindNavigation";
+import { useJumpToMyLastMessage } from "./useJumpToMyLastMessage";
 import type { ThreadFindPositionReader } from "./threadFind";
 import { TooltipScrollDismissArea } from "../ui/tooltip";
 import { WorktreeSetupCard } from "./WorktreeSetupCard";
@@ -265,6 +267,8 @@ interface MessagesTimelineProps {
   emptyPlaceholderInset: number;
   topFadeEnabled?: boolean;
   historyControls?: MessagesTimelineHistoryControls | undefined;
+  /** The visit the "Since your last visit" divider marks; fixed while the thread stays open. */
+  sinceLastVisitAt?: string | null;
   loadEarlier?: CitationHistoryPage | null;
   findPositionReaderRef?: React.RefObject<ThreadFindPositionReader | null>;
   findExpanded?: boolean;
@@ -358,6 +362,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   emptyPlaceholderInset,
   topFadeEnabled = false,
   historyControls,
+  sinceLastVisitAt = null,
   loadEarlier = null,
 }: MessagesTimelineProps) {
   const listIdentityKey = displayThreadKey ?? routeThreadKey;
@@ -607,6 +612,17 @@ const ConversationTimeline = memo(function ConversationTimeline({
     worktreeSetup,
   });
   const rows = useStableRows(rawRows, listIdentityKey);
+  const sinceLastVisitRowId = rows[sinceLastVisitIndex(rows, sinceLastVisitAt)]?.id ?? null;
+  useJumpToMyLastMessage({
+    threadKey: routeThreadKey,
+    enabled: !paintOnly,
+    rows,
+    entries: timelineEntries,
+    listRef,
+    historyControls,
+    reducedMotion: prefersReducedMotion,
+    onManualNavigation,
+  });
   // Run status/timestamps churn on every stream event; the shared row context
   // must not change with them or every timeline row re-renders per event.
   const runs = useStableHandoffRuns(runsProp);
@@ -1052,6 +1068,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const renderItem = ({ item }: { item: MessagesTimelineRow }) => (
     <TimelineRowCtx value={sharedState}>
       <div className="messages-timeline-row-frame">
+        {item.id === sinceLastVisitRowId ? <SinceLastVisitDivider /> : null}
         <div
           className="@container/chat-lane chat-content-lane overflow-x-clip"
           data-timeline-root="true"
@@ -1061,7 +1078,12 @@ const ConversationTimeline = memo(function ConversationTimeline({
       </div>
     </TimelineRowCtx>
   );
-  const listExtraData = { identity: listIdentityKey, rowCount: rows.length, sharedState };
+  const listExtraData = {
+    identity: listIdentityKey,
+    rowCount: rows.length,
+    sharedState,
+    sinceLastVisitRowId,
+  };
 
   const forwardMinimapWheel = (event: WheelEvent) => {
     const scrollNode = listRef.current?.getScrollableNode();
@@ -1172,6 +1194,16 @@ const ConversationTimeline = memo(function ConversationTimeline({
     </MarkdownFindContext>
   );
 });
+
+function SinceLastVisitDivider() {
+  return (
+    <div className="chat-content-lane flex items-center gap-3 py-2 text-info text-xs">
+      <span aria-hidden="true" className="h-px flex-1 bg-info/40" />
+      <span className="shrink-0">Since your last visit</span>
+      <span aria-hidden="true" className="h-px flex-1 bg-info/40" />
+    </div>
+  );
+}
 
 function TimelineHistoryControl(props: MessagesTimelineHistoryControls) {
   if (!props.hasMoreHistory && props.error === null) {

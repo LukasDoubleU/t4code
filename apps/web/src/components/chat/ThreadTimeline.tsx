@@ -1,5 +1,9 @@
+import {
+  EMPTY_SINCE_LAST_VISIT_MARKER,
+  nextSinceLastVisitMarker,
+} from "@t3tools/client-runtime/state/thread-catch-up";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { type ComponentProps, useLayoutEffect } from "react";
+import { type ComponentProps, useLayoutEffect, useState } from "react";
 import { useIncrementalTimelineEntries } from "../../hooks/useIncrementalTimelineEntries";
 import type { TimelineEntriesInput, TimelineEntry } from "../../session-logic";
 import { useThreadVisibleTurnItems } from "../../state/entities";
@@ -25,8 +29,9 @@ export function ThreadTimeline({
   detailLoading,
   readyMarkdownCwd,
   readyWorkspaceRoot,
+  lastVisitedAt,
   ...timelineProps
-}: Omit<ComponentProps<typeof MessagesTimeline>, "timelineEntries"> & {
+}: Omit<ComponentProps<typeof MessagesTimeline>, "timelineEntries" | "sinceLastVisitAt"> & {
   /** Null until the thread's detail may load; see resolveThreadDetailRef. */
   threadDetailRef: ScopedThreadRef | null;
   entriesInput: Omit<TimelineEntriesInput, "visibleTurnItems">;
@@ -37,6 +42,8 @@ export function ThreadTimeline({
   detailLoading: boolean;
   readyMarkdownCwd: string | null;
   readyWorkspaceRoot: string | null;
+  /** The thread's last visit; undefined while its shell is unknown. */
+  lastVisitedAt: string | null | undefined;
 }) {
   const visibleTurnItems = useThreadVisibleTurnItems(threadDetailRef);
   const serverEntries = useIncrementalTimelineEntries(activeThreadKey, {
@@ -61,5 +68,34 @@ export function ThreadTimeline({
       workspaceRoot: readyWorkspaceRoot,
     });
   }, [activeThreadKey, detailLoading, entries, readyMarkdownCwd, readyWorkspaceRoot]);
-  return <MessagesTimeline {...timelineProps} timelineEntries={displayed.entries} />;
+  const sinceLastVisitAt = useSinceLastVisitAt({
+    threadKey: draftEntries === null ? activeThreadKey : null,
+    lastVisitedAt,
+    entries,
+    ready: !detailLoading && entries.length > 0,
+  });
+  return (
+    <MessagesTimeline
+      {...timelineProps}
+      timelineEntries={displayed.entries}
+      sinceLastVisitAt={timelineProps.paintOnly ? null : sinceLastVisitAt}
+    />
+  );
+}
+
+function useSinceLastVisitAt(input: {
+  readonly threadKey: string | null;
+  readonly lastVisitedAt: string | null | undefined;
+  readonly entries: ReadonlyArray<TimelineEntry>;
+  readonly ready: boolean;
+}): string | null {
+  const [marker, setMarker] = useState(EMPTY_SINCE_LAST_VISIT_MARKER);
+  const next = nextSinceLastVisitMarker(marker, {
+    threadKey: input.threadKey,
+    lastVisitedAt: input.lastVisitedAt,
+    items: input.entries,
+    itemsReady: input.ready,
+  });
+  if (next !== marker) setMarker(next);
+  return next.threadKey === null ? null : (next.at ?? null);
 }

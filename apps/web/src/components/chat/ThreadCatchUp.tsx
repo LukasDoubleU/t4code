@@ -5,6 +5,8 @@ import {
   closeThreadCatchUp,
   isThreadCatchUpStale,
   requestThreadCatchUp,
+  requestThreadCatchUpAction,
+  subscribeThreadCatchUpAction,
   threadCatchUpAtom,
   threadCatchUpBasis,
 } from "@t3tools/client-runtime/state/thread-catch-up";
@@ -20,11 +22,6 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import {
-  requestJumpToMyLastMessage,
-  requestThreadCatchUpOpen,
-  subscribeThreadCatchUpOpen,
-} from "./threadCatchUpActionBus";
 
 /** Older servers cannot write briefs, and a read-only session may not run a model there. */
 export function useThreadCatchUpAvailable(environmentId: EnvironmentId | null): boolean {
@@ -47,7 +44,7 @@ export function ThreadCatchUpControls(props: { readonly threadRef: ScopedThreadR
               variant="ghost"
               size="icon-sm"
               aria-label="Jump to my last message"
-              onClick={() => requestJumpToMyLastMessage(threadKey)}
+              onClick={() => requestThreadCatchUpAction("jump-to-my-last-message", threadKey)}
             />
           }
         >
@@ -63,7 +60,7 @@ export function ThreadCatchUpControls(props: { readonly threadRef: ScopedThreadR
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Catch me up"
-                onClick={() => requestThreadCatchUpOpen(threadKey)}
+                onClick={() => requestThreadCatchUpAction("catch-up", threadKey)}
               />
             }
           >
@@ -110,7 +107,10 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
       },
     });
   });
-  useEffect(() => subscribeThreadCatchUpOpen(threadKey, () => request()), [threadKey]);
+  useEffect(
+    () => subscribeThreadCatchUpAction("catch-up", threadKey, () => request()),
+    [threadKey],
+  );
 
   if (!state.open) return null;
   const { brief } = state;

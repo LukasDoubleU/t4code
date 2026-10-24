@@ -84,10 +84,7 @@ import { goAheadTarget } from "./chat/AssistantReactions.logic";
 import { useReplyReactions } from "./chat/AssistantReactions";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
-import {
-  requestJumpToMyLastMessage,
-  requestThreadCatchUpOpen,
-} from "./chat/threadCatchUpActionBus";
+import { requestThreadCatchUpAction } from "@t3tools/client-runtime/state/thread-catch-up";
 import { useThreadCatchUpAvailable } from "./chat/ThreadCatchUp";
 import {
   useDeferredValue,
@@ -1392,7 +1389,7 @@ function OpenCommandPaletteDialog(props: {
       searchTerms: ["jump", "my last message", "scroll", "prompt", "what did I say"],
       icon: <CornerLeftUpIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "chat.jumpToMyLastMessage",
-      run: async () => requestJumpToMyLastMessage(routeServerThreadKey),
+      run: async () => requestThreadCatchUpAction("jump-to-my-last-message", routeServerThreadKey),
     });
     if (catchUpAvailable) {
       actionItems.push({
@@ -1402,7 +1399,7 @@ function OpenCommandPaletteDialog(props: {
         searchTerms: ["catch up", "brief", "summary", "what happened", "needs me"],
         icon: <NewspaperIcon className={ITEM_ICON_CLASS} />,
         shortcutCommand: "chat.catchUp",
-        run: async () => requestThreadCatchUpOpen(routeServerThreadKey),
+        run: async () => requestThreadCatchUpAction("catch-up", routeServerThreadKey),
       });
     }
   }

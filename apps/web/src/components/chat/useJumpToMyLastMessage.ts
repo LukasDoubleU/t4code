@@ -1,17 +1,16 @@
 import type { LegendListRef } from "@legendapp/list/react";
-import { isUserAuthoredMessage } from "@t3tools/client-runtime/state/thread-catch-up";
+import {
+  isUserAuthoredMessage,
+  nextJumpToMyLastMessageStep,
+  subscribeThreadCatchUpAction,
+} from "@t3tools/client-runtime/state/thread-catch-up";
 import { useEffect, useEffectEvent, useRef, type RefObject } from "react";
 
 import { toastManager } from "../ui/toast";
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
 import type { MessagesTimelineHistoryControls } from "./MessagesTimeline";
-import { subscribeJumpToMyLastMessage } from "./threadCatchUpActionBus";
 
-// A thread whose last message from the user is further back than this many pages gives up
-// instead of loading its whole history.
-const MAX_HISTORY_PAGES = 20;
-
-/** Scrolls to the user's latest message on request, loading older history until it is there. */
+/** Scrolls to the user's latest message on request, loading older turns until it is there. */
 export function useJumpToMyLastMessage(input: {
   readonly threadKey: string;
   readonly enabled: boolean;
@@ -23,57 +22,60 @@ export function useJumpToMyLastMessage(input: {
   readonly onManualNavigation: () => void;
 }) {
   const { threadKey, enabled, rows, historyControls } = input;
-  const pendingRef = useRef<{ readonly requestedPages: Set<string> } | null>(null);
+  const requestedPagesRef = useRef<Set<string> | null>(null);
 
   const tryJump = useEffectEvent(() => {
-    const pending = pendingRef.current;
-    if (pending === null) return;
-    const index = rows.findLastIndex(
-      (row) => row.kind === "message" && isUserAuthoredMessage(row.message),
-    );
-    if (index >= 0) {
-      pendingRef.current = null;
+    const requestedPages = requestedPagesRef.current;
+    if (requestedPages === null) return;
+    const step = nextJumpToMyLastMessageStep({
+      index: rows.findLastIndex(
+        (row) => row.kind === "message" && isUserAuthoredMessage(row.message),
+      ),
+      oldestItemId: input.entries[0]?.id,
+      history: historyControls,
+      requestedPages,
+    });
+    if (step.type === "wait") return;
+    if (step.type === "load") {
+      requestedPages.add(step.cursor);
+      historyControls?.onLoadEarlier();
+      return;
+    }
+    requestedPagesRef.current = null;
+    if (step.type === "scroll") {
       input.onManualNavigation();
       void input.listRef.current?.scrollToIndex({
-        index,
+        index: step.index,
         animated: !input.reducedMotion,
         viewOffset: 24,
       });
-      return;
+    } else {
+      toastManager.add(
+        step.type === "failed"
+          ? { type: "warning", title: "Could not load earlier turns", description: step.error }
+          : {
+              type: "info",
+              title: "No message from you here",
+              description: "You have not written in this thread yet, or it is too far back.",
+            },
+      );
     }
-    if (historyControls?.hasMoreHistory && historyControls.error === null) {
-      if (historyControls.loading) return;
-      const cursor = input.entries[0]?.id ?? "first";
-      if (!pending.requestedPages.has(cursor) && pending.requestedPages.size < MAX_HISTORY_PAGES) {
-        pending.requestedPages.add(cursor);
-        historyControls.onLoadEarlier();
-        return;
-      }
-    }
-    pendingRef.current = null;
-    toastManager.add({
-      type: "info",
-      title: historyControls?.error ? "Could not load earlier turns" : "No message from you here",
-      description:
-        historyControls?.error ??
-        "Your last message is not in this thread's history, or you have not written one yet.",
-    });
   });
 
   useEffect(() => {
     if (!enabled) return;
-    const unsubscribe = subscribeJumpToMyLastMessage(threadKey, () => {
-      pendingRef.current = { requestedPages: new Set() };
+    const unsubscribe = subscribeThreadCatchUpAction("jump-to-my-last-message", threadKey, () => {
+      requestedPagesRef.current = new Set();
       tryJump();
     });
     return () => {
       unsubscribe();
-      pendingRef.current = null;
+      requestedPagesRef.current = null;
     };
   }, [enabled, threadKey]);
 
   // Each loaded page re-renders the rows; keep going until the message is in them.
   useEffect(() => {
-    if (pendingRef.current !== null) tryJump();
+    if (requestedPagesRef.current !== null) tryJump();
   }, [rows, historyControls?.loading, historyControls?.hasMoreHistory, historyControls?.error]);
 }

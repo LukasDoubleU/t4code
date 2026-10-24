@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   closeThreadCatchUp,
   EMPTY_SINCE_LAST_VISIT_MARKER,
+  nextJumpToMyLastMessageStep,
   nextSinceLastVisitMarker,
+  requestThreadCatchUpAction,
+  subscribeThreadCatchUpAction,
   isThreadCatchUpStale,
   isUserAuthoredMessage,
   requestThreadCatchUp,
@@ -191,5 +194,84 @@ describe("nextSinceLastVisitMarker", () => {
     const first = open(EMPTY_SINCE_LAST_VISIT_MARKER);
     const second = open(first, { threadKey: "env:b", lastVisitedAt: "2026-10-01T11:00:00.000Z" });
     expect(second).toMatchObject({ threadKey: "env:b", at: "2026-10-01T11:00:00.000Z" });
+  });
+});
+
+describe("nextJumpToMyLastMessageStep", () => {
+  const history = { hasMoreHistory: true, loading: false, error: null };
+
+  it("scrolls once the message is loaded", () => {
+    expect(
+      nextJumpToMyLastMessageStep({
+        index: 4,
+        oldestItemId: "a",
+        history,
+        requestedPages: new Set(),
+      }),
+    ).toEqual({ type: "scroll", index: 4 });
+  });
+
+  it("loads each older page once and waits while one loads", () => {
+    const requestedPages = new Set<string>();
+    const step = nextJumpToMyLastMessageStep({
+      index: -1,
+      oldestItemId: "a",
+      history,
+      requestedPages,
+    });
+    expect(step).toEqual({ type: "load", cursor: "a" });
+    requestedPages.add("a");
+    expect(
+      nextJumpToMyLastMessageStep({
+        index: -1,
+        oldestItemId: "a",
+        history: { ...history, loading: true },
+        requestedPages,
+      }),
+    ).toEqual({ type: "wait" });
+    // A page that added nothing older does not loop.
+    expect(
+      nextJumpToMyLastMessageStep({ index: -1, oldestItemId: "a", history, requestedPages }),
+    ).toEqual({ type: "missing" });
+  });
+
+  it("stops without more history and reports a failed page", () => {
+    expect(
+      nextJumpToMyLastMessageStep({
+        index: -1,
+        oldestItemId: "a",
+        history: { ...history, hasMoreHistory: false },
+        requestedPages: new Set(),
+      }),
+    ).toEqual({ type: "missing" });
+    expect(
+      nextJumpToMyLastMessageStep({
+        index: -1,
+        oldestItemId: "a",
+        history: { ...history, error: "Offline" },
+        requestedPages: new Set(),
+      }),
+    ).toEqual({ type: "failed", error: "Offline" });
+  });
+});
+
+describe("thread catch-up actions", () => {
+  it("reach only the named thread's listeners until they unsubscribe", () => {
+    const jumpA = vi.fn();
+    const catchUpA = vi.fn();
+    const jumpB = vi.fn();
+    const stopJumpA = subscribeThreadCatchUpAction("jump-to-my-last-message", "env:a", jumpA);
+    const stopCatchUpA = subscribeThreadCatchUpAction("catch-up", "env:a", catchUpA);
+    const stopJumpB = subscribeThreadCatchUpAction("jump-to-my-last-message", "env:b", jumpB);
+
+    requestThreadCatchUpAction("jump-to-my-last-message", "env:a");
+    expect([jumpA.mock.calls.length, catchUpA.mock.calls.length, jumpB.mock.calls.length]).toEqual([
+      1, 0, 0,
+    ]);
+    stopJumpA();
+    requestThreadCatchUpAction("jump-to-my-last-message", "env:a");
+    expect(jumpA).toHaveBeenCalledTimes(1);
+    stopCatchUpA();
+    stopJumpB();
   });
 });

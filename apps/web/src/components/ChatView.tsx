@@ -354,10 +354,7 @@ import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { observeResize } from "~/lib/observeResize";
 import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
 import { useThreadCatchUpAvailable } from "./chat/ThreadCatchUp";
-import {
-  requestJumpToMyLastMessage,
-  requestThreadCatchUpOpen,
-} from "./chat/threadCatchUpActionBus";
+import { requestThreadCatchUpAction } from "@t3tools/client-runtime/state/thread-catch-up";
 import { resolveThreadLastVisitedAt } from "./Sidebar.logic";
 import { useUiStateStore } from "../uiStateStore";
 import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
@@ -2821,11 +2818,11 @@ export default function ChatView(props: ChatViewProps) {
       },
       "chat.jumpToMyLastMessage": ({ event }) => {
         if (!isServerThread) return false;
-        if (!event.repeat) requestJumpToMyLastMessage(routeThreadKey);
+        if (!event.repeat) requestThreadCatchUpAction("jump-to-my-last-message", routeThreadKey);
       },
       "chat.catchUp": ({ event }) => {
         if (!isServerThread || !catchUpAvailable) return false;
-        if (!event.repeat) requestThreadCatchUpOpen(routeThreadKey);
+        if (!event.repeat) requestThreadCatchUpAction("catch-up", routeThreadKey);
       },
       "chat.goAhead": ({ event }) => {
         // The quiet projection leaves out a reply's time, so read the full one on demand.

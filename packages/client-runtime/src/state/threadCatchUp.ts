@@ -156,3 +156,72 @@ export function nextSinceLastVisitMarker(
   }
   return next;
 }
+
+export type ThreadCatchUpAction = "jump-to-my-last-message" | "catch-up";
+
+const actionListeners = new Set<{
+  readonly action: ThreadCatchUpAction;
+  readonly threadKey: string;
+  readonly listener: () => void;
+}>();
+
+/**
+ * Header buttons, the command palette and keybindings ask one open thread's timeline or card to
+ * act. More than one thread can be open at once, so each request names its thread.
+ */
+export function requestThreadCatchUpAction(action: ThreadCatchUpAction, threadKey: string): void {
+  for (const entry of actionListeners) {
+    if (entry.action === action && entry.threadKey === threadKey) entry.listener();
+  }
+}
+
+export function subscribeThreadCatchUpAction(
+  action: ThreadCatchUpAction,
+  threadKey: string,
+  listener: () => void,
+): () => void {
+  const entry = { action, threadKey, listener };
+  actionListeners.add(entry);
+  return () => {
+    actionListeners.delete(entry);
+  };
+}
+
+// A thread whose last message from the user is further back than this many pages gives up
+// instead of loading its whole history.
+const JUMP_MAX_HISTORY_PAGES = 20;
+
+export type JumpToMyLastMessageStep =
+  | { readonly type: "scroll"; readonly index: number }
+  | { readonly type: "wait" }
+  | { readonly type: "load"; readonly cursor: string }
+  | { readonly type: "missing" }
+  | { readonly type: "failed"; readonly error: string };
+
+/**
+ * One step of "Jump to my last message": scroll once the user's message is loaded, otherwise
+ * load the next older page, at most once per page and for a bounded number of pages.
+ */
+export function nextJumpToMyLastMessageStep(input: {
+  /** The user's latest message among the loaded rows, or -1. */
+  readonly index: number;
+  readonly oldestItemId: string | undefined;
+  readonly history:
+    | {
+        readonly hasMoreHistory: boolean;
+        readonly loading: boolean;
+        readonly error: string | null;
+      }
+    | undefined;
+  readonly requestedPages: ReadonlySet<string>;
+}): JumpToMyLastMessageStep {
+  if (input.index >= 0) return { type: "scroll", index: input.index };
+  const history = input.history;
+  if (history?.error) return { type: "failed", error: history.error };
+  if (!history?.hasMoreHistory) return { type: "missing" };
+  if (history.loading) return { type: "wait" };
+  const cursor = input.oldestItemId ?? "first";
+  return input.requestedPages.has(cursor) || input.requestedPages.size >= JUMP_MAX_HISTORY_PAGES
+    ? { type: "missing" }
+    : { type: "load", cursor };
+}

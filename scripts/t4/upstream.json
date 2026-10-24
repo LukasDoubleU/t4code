@@ -29,6 +29,11 @@
       "name": "Agent scope for browsers, picked from main",
       "issue": 13,
       "pulls": { "21299": "merged" }
+    },
+    {
+      "name": "Pinned patched packages, picked from main",
+      "issue": 13,
+      "pulls": { "23798": "merged" }
     }
   ]
 }

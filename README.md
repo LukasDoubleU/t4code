@@ -76,6 +76,7 @@ T4 Code merges each upstream release rather than rebasing, and drops a change on
 | Sort threads by last message    | `#22032`                                                                       |
 | Stop stops a thread's subagents | `#23886`, merged after `v0.1.2`                                                |
 | Browsers end with their agent   | `#21299`, merged after `v0.1.2`                                                |
+| Pinned patched packages         | `#23798`, merged after `v0.1.2`                                                |
 
 Everything else is a fork patch, tracked in this repository's issues. A daily workflow comments on the upkeep issue (#13) when upstream publishes a release or a carried pull request changes state.
 

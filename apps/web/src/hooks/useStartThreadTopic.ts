@@ -22,9 +22,7 @@ export function useStartThreadTopic() {
     if (!opened) return null;
     useComposerDraftStore
       .getState()
-      .addThreadContexts(opened.draftId, [threadContextRecord(expert, shell.title)], {
-        insertAtCaret: false,
-      });
+      .addThreadContexts(opened.draftId, [threadContextRecord(expert, shell.title)]);
     return opened;
   };
 }

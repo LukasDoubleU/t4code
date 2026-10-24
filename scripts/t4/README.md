@@ -83,18 +83,22 @@ pwsh -File scripts/t4/rehearse-switch.ps1 -T3 <folder>\t3.exe
 
 If any of this fails, the rehearsal stops before starting on the copy. The server still finds git and the agent CLIs, because it rebuilds `PATH` from the registry: it reads the projects' repositories, as T3 Code does on every start, and checks the CLIs' versions, but it doesn't pull, fetch or start an agent.
 
-### Migrations 068–070: `undo-peer-link-migrations.ps1`
+### The fork's migrations: `undo-peer-link-migrations.ps1`
 
-The peer-link stack adds migrations 068 (`peer_environment_links`), 069 (its `fenced` column) and 070 (the index `orchestration_v2_projection_turn_items_waiting_link_idx`). Official `v0.1.1` and `v0.1.2` stop at 067 and only warn about ids they don't know. An official release that uses 068 for something else refuses to start, because the database "would skip required schema migrations". If upstream ships the stack with the same ids and names, nothing is needed.
+The peer-link stack adds three migrations: `PeerLinks` (`peer_environment_links`), `PeerLinkFence` (its `fenced` column) and `WaitingLinkRequestIndex` (the index `orchestration_v2_projection_turn_items_waiting_link_idx`), currently 068–070. They always follow upstream's. When an update moves them to make room for upstream's, the fork's build forgets their rows at the old ids on start, runs upstream's, then runs the stack's again at the new ids, which changes nothing.
+
+An official release only warns about ids it doesn't know, so one whose migrations end below the stack's starts. An official release that uses one of the stack's ids for its own refuses to start, because the database "would skip required schema migrations". If upstream ships the stack with the same ids and names, nothing is needed.
 
 When a rehearsal fails that way:
 
 1. Rehearse again with `-UndoPeerLinks`. It should pass.
 2. Run `pwsh -File scripts/t4/undo-peer-link-migrations.ps1`. It only reports what it would change.
-3. Quit T4 Code and run it again with `-Apply`. It backs up the database and link tokens to `~/.t3/backups/<time>-undo-peer-links`, drops the table and index, deletes migrations 68–70 from `effect_sql_migrations`, and removes the link tokens from the secret store.
+3. Quit T4 Code and run it again with `-Apply`. It backs up the database and link tokens to `~/.t3/backups/<time>-undo-peer-links`, drops the table and index, deletes the stack's migrations from `effect_sql_migrations`, found by name whatever their ids, and removes the link tokens from the secret store.
 4. Switch, then link the machines again.
 
-The script refuses when migrations above 067 aren't the stack's, for example after a switch already happened.
+The script refuses when other migrations were recorded after the stack's: without the stack's rows, a build would skip the ids below them.
+
+**At each upkeep**, when the merged upstream release adds migrations, renumber the stack's to follow upstream's latest id, in the same order and with the same names: rename their files in `apps/server/src/persistence/Migrations/`, and update their imports and entries at the end of the manifest in `Migrations.ts` and the ids `reconcileV2PreviewMigration.test.ts` lists. Existing databases are matched by the names, listed in `reconcileForkMigrations.ts`; a new fork migration goes last in that list and in the manifest, and must change nothing when it runs again.
 
 ## Icon: `export-t4-icons.ts`
 

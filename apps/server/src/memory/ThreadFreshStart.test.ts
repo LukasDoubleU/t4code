@@ -43,6 +43,13 @@ describe("ThreadFreshStart", () => {
       yield* fileSystem.makeDirectory(memory.directory, { recursive: true });
       yield* fileSystem.writeFileString(oldFile, "# Expert\nKnows the release process.\n");
       assert.equal(yield* memory.recordTurn(expert), "changed");
+      const icon = { kind: "lucide", name: "rocket", color: "teal" } as const;
+      yield* orchestrator.dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make("icon:expert"),
+        threadId: expert,
+        icon,
+      });
 
       yield* freshStart(expert);
 
@@ -56,6 +63,7 @@ describe("ThreadFreshStart", () => {
       // The old thread's slot in the pinned order.
       assert.equal(next.pinOrderKey, "a1");
       assert.equal(next.title, "expert");
+      assert.deepEqual(next.icon, icon);
       assert.deepEqual(next.modelSelection, modelSelection);
       assert.equal(next.runtimeMode, "full-access");
       assert.equal(next.branch, "main");
@@ -71,6 +79,8 @@ describe("ThreadFreshStart", () => {
       const turn = yield* memory.forTurn(next);
       assert.equal(turn?.path, newFile);
       assert.include(turn?.instructions ?? "", `continues thread ${expert}`);
+      // It keeps the icon it has, so it is not asked to pick one.
+      assert.notInclude(turn?.instructions ?? "", "t3_thread_update");
       assert.isUndefined(yield* memory.forTurn(old));
 
       // An agent looking the expert up by name finds the new thread.

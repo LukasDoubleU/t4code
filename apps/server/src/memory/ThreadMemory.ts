@@ -28,9 +28,13 @@ export const MEMORY_NUDGE_CONTEXT_SHARE = 0.85;
 
 /**
  * The same text on every turn of a thread, so the provider's prompt cache
- * stays valid until the thread is pinned, unpinned or the setting changes.
+ * stays valid until the thread is pinned, unpinned, gets its own icon or the
+ * setting changes.
  */
-export function threadMemoryInstructions(path: string, continuedFrom?: ThreadId): string {
+export function threadMemoryInstructions(
+  path: string,
+  { continuedFrom, icon }: Pick<OrchestrationV2AppThread, "continuedFrom" | "icon"> = {},
+): string {
   return [
     `This thread keeps a memory file: ${path}`,
     ...(continuedFrom === undefined
@@ -42,6 +46,12 @@ export function threadMemoryInstructions(path: string, continuedFrom?: ThreadId)
     "Keep it current: the thread's purpose, the current state, decisions and their reasons, the user's preferences, and open points.",
     "Not the history, which stays in the thread. Keep it under about 8k tokens and never put secrets in it.",
     "Create it the first time there is something worth keeping.",
+    // Only while unset, so an agent never replaces the user's choice.
+    ...(icon == null
+      ? [
+          "This thread has no icon of its own yet: set one that fits its role, once, with t3_thread_update (action set_icon), an emoji or a Lucide icon name, distinct from the other pinned threads where possible.",
+        ]
+      : []),
   ].join(" ");
 }
 
@@ -107,7 +117,10 @@ export class ThreadMemory extends Context.Service<
     readonly directory: string;
     /** The memory a turn of this thread carries, or undefined while it sleeps. */
     readonly forTurn: (
-      thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt" | "lineage" | "continuedFrom">,
+      thread: Pick<
+        OrchestrationV2AppThread,
+        "id" | "pinnedAt" | "lineage" | "continuedFrom" | "icon"
+      >,
     ) => Effect.Effect<{ readonly path: string; readonly instructions: string } | undefined>;
     /**
      * The note for a native fork's first turn, or undefined when its source
@@ -142,7 +155,10 @@ const make = Effect.gen(function* () {
     path.join(directory, "backups", threadMemoryFileName(threadId).replace(/\.md$/, ""));
 
   const forTurn = Effect.fn("ThreadMemory.forTurn")(function* (
-    thread: Pick<OrchestrationV2AppThread, "id" | "pinnedAt" | "lineage" | "continuedFrom">,
+    thread: Pick<
+      OrchestrationV2AppThread,
+      "id" | "pinnedAt" | "lineage" | "continuedFrom" | "icon"
+    >,
   ) {
     if (!isUserPinnedThread(thread)) return undefined;
     const current = yield* settings.getSettings.pipe(
@@ -164,7 +180,7 @@ const make = Effect.gen(function* () {
     const memoryPath = threadMemoryFilePath(directory, thread.id);
     return {
       path: memoryPath,
-      instructions: threadMemoryInstructions(memoryPath, thread.continuedFrom),
+      instructions: threadMemoryInstructions(memoryPath, thread),
     };
   });
 

@@ -36,6 +36,7 @@ It is based on upstream `v0.1.2` and follows upstream releases. Releases have Wi
 - Every message shows its time, relative by default (`Worked for 26s · 10m ago`). A reply longer than the screen shows it at its end too.
 - **Readable citations.** Cite a passage of a reply and comment on it: the agent receives the quote in place with your comment after it, and your sent message shows the quote. [Quote an assistant response](./docs/user/composer.md#quote-an-assistant-response)
 - **Reactions.** React 👍 to a reply, or 👍 or 👎 to a passage you select in it, without starting a turn; the agent learns it with your next message. **Go ahead** approves the reply or the passage and starts a turn. [React to a response](./docs/user/composer.md#react-to-a-response)
+- **Catch up.** A **Since your last visit** line marks what is new, **Jump to my last message** scrolls back to what you last wrote, and **Catch me up** writes a short brief (what needs you, what happened, what's next) without starting a turn, on web and mobile. [Catch up on a thread](./docs/user/thread-sidebar.md#catch-up-on-a-thread)
 - A message from an agent on a linked machine folds into one line that names the sending thread and its machine. [Link another environment](./docs/user/remote-access.md#link-another-environment)
 - The new-thread picker (<kbd>Ctrl</kbd>+<kbd>N</kbd>) lists projects by name.
 - Classic emoticons like `:D` show as emoji; the message itself keeps what you typed.

@@ -1,3 +1,4 @@
+import { isUserAuthoredMessage } from "@t3tools/client-runtime/state/thread-catch-up";
 import type { Nodes } from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -8,8 +9,17 @@ import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
 export interface TimelineMinimapItem {
   readonly id: string;
   readonly rowIndex: number;
+  readonly userAuthored: boolean;
   readonly userText: string | null;
   readonly assistantText: string | null;
+}
+
+/** One strip on the rail: a single turn, or consecutive turns grouped so a long thread fits. */
+export interface TimelineMinimapMark {
+  readonly id: string;
+  readonly firstItemIndex: number;
+  /** Never empty. */
+  readonly items: ReadonlyArray<TimelineMinimapItem>;
 }
 
 export function deriveTimelineMinimapItems(
@@ -25,6 +35,7 @@ export function deriveTimelineMinimapItems(
     items.push({
       id: row.id,
       rowIndex: index,
+      userAuthored: isUserAuthoredMessage(row.message),
       userText: row.message.text,
       assistantText: resolveFinalAssistantTextForTurn(rows, index),
     });
@@ -90,19 +101,121 @@ function compactMinimapPreview(text: string | null | undefined) {
   return compact.length > 0 ? compact : null;
 }
 
+function itemsToMarks(
+  items: ReadonlyArray<TimelineMinimapItem>,
+  start: number,
+  end: number,
+  partCount: number,
+  marks: TimelineMinimapMark[],
+) {
+  const length = end - start;
+  for (let part = 0; part < partCount; part += 1) {
+    const partStart = start + Math.floor((part * length) / partCount);
+    const partEnd = start + Math.floor(((part + 1) * length) / partCount);
+    const first = items[partStart];
+    if (first)
+      marks.push({
+        id: first.id,
+        firstItemIndex: partStart,
+        items: items.slice(partStart, partEnd),
+      });
+  }
+}
+
+/**
+ * Fits the turns into `capacity` marks. The user's own messages stay single marks because
+ * they are what people jump to; the runs of agent and scheduled turns between them are
+ * split into groups of the smallest size that fits. Only when the user's own messages
+ * alone do not fit is the whole thread split into even groups.
+ */
+export function groupTimelineMinimapItems(
+  items: ReadonlyArray<TimelineMinimapItem>,
+  capacity: number | null,
+): TimelineMinimapMark[] {
+  const marks: TimelineMinimapMark[] = [];
+  if (capacity === null || items.length <= capacity) {
+    itemsToMarks(items, 0, items.length, items.length, marks);
+    return marks;
+  }
+  const limit = Math.max(1, capacity);
+
+  const runs: Array<{ readonly start: number; readonly end: number }> = [];
+  let authoredCount = 0;
+  let runStart: number | null = null;
+  for (const [index, item] of items.entries()) {
+    if (!item.userAuthored) {
+      runStart ??= index;
+      continue;
+    }
+    authoredCount += 1;
+    if (runStart !== null) runs.push({ start: runStart, end: index });
+    runStart = null;
+  }
+  if (runStart !== null) runs.push({ start: runStart, end: items.length });
+
+  const runBudget = limit - authoredCount;
+  if (runBudget < runs.length) {
+    itemsToMarks(items, 0, items.length, limit, marks);
+    return marks;
+  }
+
+  const partsFor = (groupSize: number) =>
+    runs.reduce((total, run) => total + Math.ceil((run.end - run.start) / groupSize), 0);
+  let low = 1;
+  let high = Math.max(1, ...runs.map((run) => run.end - run.start));
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (partsFor(middle) <= runBudget) high = middle;
+    else low = middle + 1;
+  }
+
+  let index = 0;
+  for (const run of [...runs, { start: items.length, end: items.length }]) {
+    // The user's own messages between runs.
+    for (; index < run.start; index += 1) itemsToMarks(items, index, index + 1, 1, marks);
+    if (run.end > run.start) {
+      itemsToMarks(items, run.start, run.end, Math.ceil((run.end - run.start) / low), marks);
+    }
+    index = run.end;
+  }
+  return marks;
+}
+
+export type TimelineMinimapPreview =
+  | {
+      readonly kind: "turn";
+      readonly userText: string | null;
+      readonly assistantText: string | null;
+    }
+  | {
+      readonly kind: "group";
+      readonly turnCount: number;
+      readonly firstUserText: string | null;
+      readonly lastUserText: string | null;
+    };
+
 export function resolveTimelineMinimapPreview(
-  item: TimelineMinimapItem | null,
-): TimelineMinimapItem | null {
-  return item === null
-    ? null
-    : {
-        ...item,
-        userText: compactMinimapPreview(item.userText),
-        // The tooltip shows three lines; bound parsing work while long responses stream.
-        assistantText: compactMinimapPreview(
-          item.assistantText === null
-            ? null
-            : markdownNodeText(markdownPreviewParser.parse(item.assistantText.slice(0, 1_500))),
-        ),
-      };
+  mark: TimelineMinimapMark | null,
+): TimelineMinimapPreview | null {
+  const first = mark?.items[0];
+  const last = mark?.items.at(-1);
+  if (!mark || !first || !last) return null;
+  if (mark.items.length > 1) {
+    return {
+      kind: "group",
+      turnCount: mark.items.length,
+      firstUserText: compactMinimapPreview(first.userText),
+      lastUserText: compactMinimapPreview(last.userText),
+    };
+  }
+  return {
+    kind: "turn",
+    userText: compactMinimapPreview(first.userText),
+    // The tooltip shows three lines; bound parsing work while long responses stream.
+    assistantText: compactMinimapPreview(
+      first.assistantText === null
+        ? null
+        : markdownNodeText(markdownPreviewParser.parse(first.assistantText.slice(0, 1_500))),
+    ),
+  };
 }

@@ -3,7 +3,7 @@ import { MarkdownFindContext } from "./markdownFindContext";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { WorkLogBlock } from "./WorkLog";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
-import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
+import { deriveTimelineMinimapItems, groupTimelineMinimapItems } from "./timelineMinimapItems";
 import {
   type AssistantCitation,
   type EnvironmentId,
@@ -63,7 +63,7 @@ import {
   resolveTimelineIsAtEnd,
   resolveTimelineMinimapHasPersistentGutter,
   resolveTimelineMinimapCurrentIndex,
-  isTimelineMinimapRowVisible,
+  isTimelineMinimapRangeVisible,
   resolveTimelineMinimapVisibleRange,
   resolveTimelineMinimapHitStripWidth,
   timelineTurnFoldRunIdsByEntryId,
@@ -627,6 +627,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
   // must not change with them or every timeline row re-renders per event.
   const runs = useStableHandoffRuns(runsProp);
   const minimapItems = deriveTimelineMinimapItems(rows);
+  const [minimapMarkCapacity, setMinimapMarkCapacity] = useState<number | null>(null);
+  const minimapMarks = groupTimelineMinimapItems(minimapItems, minimapMarkCapacity);
   const minimapRowIndices = minimapItems.map((item) => item.rowIndex);
   const restoreRowIndex =
     restoringThreadPosition && rememberedPosition?.atEnd === false
@@ -798,10 +800,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
           firstBufferedRow.getBoundingClientRect().top
         : state.scroll;
     const visibleRange = resolveTimelineMinimapVisibleRange({ ...state, scroll });
-    for (const item of minimapItems) {
-      const strip = minimapStripMap.get(item.id);
-      const inView = isTimelineMinimapRowVisible(
-        item.rowIndex,
+    for (const mark of minimapMarks) {
+      const strip = minimapStripMap.get(mark.id);
+      const inView = isTimelineMinimapRangeVisible(
+        mark.items[0]?.rowIndex ?? -1,
+        mark.items.at(-1)?.rowIndex ?? -1,
         visibleRange.start,
         visibleRange.end,
       );
@@ -889,8 +892,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
   useEffect(() => {
     const frame = requestAnimationFrame(handleScroll);
     return () => cancelAnimationFrame(frame);
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Added or removed rows move the scroll position.
-  }, [handleScroll, rows.length]);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Added or removed rows move the scroll position, and regrouped minimap marks mount without their in-view state.
+  }, [handleScroll, rows.length, minimapMarkCapacity]);
 
   const savedLiveFollowEnabledRef = useRef(liveFollowEnabled);
   useLayoutEffect(() => {
@@ -1175,6 +1178,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
           />
           <TimelineMinimap
             items={minimapItems}
+            marks={minimapMarks}
+            onMarkCapacityChange={setMinimapMarkCapacity}
             hasPersistentGutter={minimapHasPersistentGutter}
             hitStripWidth={minimapHitStripWidth}
             currentIndex={minimapCurrentIndex}

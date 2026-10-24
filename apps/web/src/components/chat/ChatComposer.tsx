@@ -14,6 +14,7 @@ import {
 import type {
   KeybindingCommand,
   AssistantCitation,
+  AssistantReplyReference,
   ChatAttachment as ContractChatAttachment,
   ChatFileAttachment,
   EnvironmentId,
@@ -72,6 +73,8 @@ import {
   isPathSuggestionCurrent,
   extendReplacementRangeForTrailingSpace,
   replaceTextRange,
+  replyReferenceEdit,
+  replyReferenceRemoval,
 } from "../../composer-logic";
 import { DISCONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
 import {
@@ -322,6 +325,8 @@ export interface ChatComposerHandle {
     citation: AssistantCitation,
     sourceAnchor: AssistantCitationSourceAnchor,
   ) => boolean;
+  /** Makes the draft a reply to `reference`, in place of the reply it answered. */
+  replyToAssistant: (reference: AssistantReplyReference) => boolean;
   openModelPicker: () => void;
   stepReasoningEffort: (direction: 1 | -1) => void;
   toggleModelPicker: () => void;
@@ -787,6 +792,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
     openPullRequest: (event: React.MouseEvent<HTMLElement>, url: string) => {
       openPrLink(event, url);
+    },
+    removeReplyReference: (source: string) => {
+      const edit = replyReferenceRemoval(promptRef.current, source);
+      if (edit) applyPromptReplacementStable(edit.start, edit.end, edit.text);
     },
   };
   const composerContextRecords = composerContextRecordsFromDraft({
@@ -3183,6 +3192,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           "cursor",
           { ensureLeadingBoundary: true, citationCommentAnchor: sourceAnchor },
         ),
+      replyToAssistant: (reference) => {
+        if (isConnecting || pendingUserInputs.length > 0 || projectSelectionRequired) return false;
+        const prompt = promptRef.current;
+        const edit = replyReferenceEdit(prompt, reference);
+        // The cursor goes to the end, where the answer is typed.
+        return applyPromptReplacementStable(edit.start, edit.end, edit.text, {
+          expandedCursorAfterReplace: prompt.length - (edit.end - edit.start) + edit.text.length,
+        });
+      },
       openModelPicker: openModelPickerStable,
       stepReasoningEffort: (direction) => {
         if (

@@ -84,10 +84,14 @@ import type {
 import ReactMarkdown from "react-markdown";
 import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
 import { defaultUrlTransform } from "react-markdown";
-import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
+import {
+  parseAssistantCitationHref,
+  parseAssistantReplyHref,
+} from "@t3tools/shared/assistantCitations";
 import { parseComposerContextHref } from "@t3tools/shared/composerContextReferences";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { AssistantCitationQuote } from "./chat/AssistantCitationQuote";
+import { AssistantReplyReferenceLink } from "./chat/AssistantReplyReference";
 import { MarkdownThreadLink } from "./chat/MarkdownThreadLink";
 import { mathKind } from "@t3tools/shared/markdownMath";
 import remarkMath from "remark-math";
@@ -655,7 +659,7 @@ function useChatMarkdownState({
     return buildFileLinkParentSuffixByPath(filePaths);
   })();
   const markdownUrlTransform = (href: string) => {
-    if (parseAssistantCitationHref(href)) return href;
+    if (parseAssistantCitationHref(href) || parseAssistantReplyHref(href)) return href;
     if (parseComposerContextHref(href)) return href;
     if (parseThreadLinkHref(href)) return href;
     if (isWindowsDrivePathHref(href)) return href;
@@ -1084,6 +1088,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const text = use(ChatMarkdownTextContext);
     const citation = href ? parseAssistantCitationHref(href) : null;
     if (citation) return <AssistantCitationQuote citation={citation} />;
+    const reply = href ? parseAssistantReplyHref(href) : null;
+    if (reply) return <AssistantReplyReferenceLink reference={reply} />;
     const linkedThreadId = href ? parseThreadLinkHref(href) : null;
     if (linkedThreadId) {
       const label = hastPlainTextDeep(node) || linkedThreadId;

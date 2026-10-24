@@ -11,7 +11,7 @@ import {
   threadCatchUpBasis,
 } from "@t3tools/client-runtime/state/thread-catch-up";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { CornerLeftUpIcon, NewspaperIcon, XIcon } from "lucide-react";
+import { NewspaperIcon, XIcon } from "lucide-react";
 import { memo, useContext, useEffect, useEffectEvent } from "react";
 
 import { useQuietThreadShell } from "../../state/entities";
@@ -32,44 +32,27 @@ export function useThreadCatchUpAvailable(environmentId: EnvironmentId | null): 
   return supported && permitted;
 }
 
+/** Catch me up in the chat header. "My last message" floats above the composer instead. */
 export function ThreadCatchUpControls(props: { readonly threadRef: ScopedThreadRef }) {
   const catchUpAvailable = useThreadCatchUpAvailable(props.threadRef.environmentId);
   const threadKey = scopedThreadKey(props.threadRef);
+  if (!catchUpAvailable) return null;
   return (
-    <div className="flex shrink-0 items-center gap-0.5">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Jump to my last message"
-              onClick={() => requestThreadCatchUpAction("jump-to-my-last-message", threadKey)}
-            />
-          }
-        >
-          <CornerLeftUpIcon />
-        </TooltipTrigger>
-        <TooltipPopup side="bottom">Jump to my last message</TooltipPopup>
-      </Tooltip>
-      {catchUpAvailable ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Catch me up"
-                onClick={() => requestThreadCatchUpAction("catch-up", threadKey)}
-              />
-            }
-          >
-            <NewspaperIcon />
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">Catch me up</TooltipPopup>
-        </Tooltip>
-      ) : null}
-    </div>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Catch me up"
+            onClick={() => requestThreadCatchUpAction("catch-up", threadKey)}
+          />
+        }
+      >
+        <NewspaperIcon />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">Catch me up</TooltipPopup>
+    </Tooltip>
   );
 }
 

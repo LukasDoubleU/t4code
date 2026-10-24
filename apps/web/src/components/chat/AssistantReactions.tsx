@@ -14,7 +14,7 @@ import {
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import { PlayIcon, ThumbsUpIcon } from "lucide-react";
+import { PlayIcon, ReplyIcon, ThumbsUpIcon } from "lucide-react";
 import { useState } from "react";
 
 import { newMessageId } from "~/lib/utils";
@@ -36,6 +36,7 @@ import {
 } from "./AssistantReactions.logic";
 
 const GO_AHEAD_LABEL = "👍 Go ahead: starts a turn";
+const REPLY_LABEL = "Reply to this response";
 
 function reportFailure(title: string, result: AtomCommandResult<unknown, unknown>) {
   if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
@@ -50,9 +51,9 @@ function reportFailure(title: string, result: AtomCommandResult<unknown, unknown
 /** Reactions on the replies of threads in `environmentId`, and "Go ahead". */
 export function useReplyReactions(environmentId: EnvironmentId | null) {
   const serverConfigs = useServerConfigs();
-  const supported =
-    environmentId !== null &&
-    serverConfigs.get(environmentId)?.environment.capabilities.messageReactions === true;
+  const capabilities =
+    environmentId === null ? undefined : serverConfigs.get(environmentId)?.environment.capabilities;
+  const supported = capabilities?.messageReactions === true;
   const canOperate = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const setReaction = useOrchestrationCommand(threadEnvironment.setMessageReaction, {
     reportFailure: false,
@@ -135,19 +136,27 @@ export function useReplyReactions(environmentId: EnvironmentId | null) {
   const goAheadOnPassage = (reply: ReactionTarget, citation: AssistantCitation) =>
     sendGoAhead(reply, citationPassage(citation), () => passageGoAheadText(citation));
 
-  return { available: supported && canOperate, react, goAhead, goAheadOnPassage };
+  return {
+    available: supported && canOperate,
+    canReply: capabilities?.replyReferences === true && canOperate,
+    react,
+    goAhead,
+    goAheadOnPassage,
+  };
 }
 
 type ReactionTarget = Pick<ReactableReply, "threadId" | "itemId">;
 
-/** 👍 and Go ahead with the reply's footer actions, revealed on hover like them. */
+/** 👍, Go ahead and Reply with the reply's footer actions, revealed on hover like them. */
 export function AssistantReactionActions(props: {
   readonly environmentId: EnvironmentId;
   readonly projectedItem: OrchestrationV2ProjectedTurnItem | undefined;
   readonly reactions: ReadonlyArray<OrchestrationV2MessageReactionEmoji> | undefined;
   readonly timestampFormat: TimestampFormat;
+  /** Puts a reference to this reply in the composer; absent where there is no composer. */
+  readonly onReply?: (() => void) | undefined;
 }) {
-  const { available, react, goAhead } = useReplyReactions(props.environmentId);
+  const { available, canReply, react, goAhead } = useReplyReactions(props.environmentId);
   const [busy, setBusy] = useState(false);
   const reply = reactableReply(props.projectedItem);
   if (!available || reply === null) return null;
@@ -194,6 +203,24 @@ export function AssistantReactionActions(props: {
         </TooltipTrigger>
         <TooltipPopup side="top">{GO_AHEAD_LABEL}</TooltipPopup>
       </Tooltip>
+      {canReply && props.onReply ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                aria-label={REPLY_LABEL}
+                onClick={props.onReply}
+              />
+            }
+          >
+            <ReplyIcon className="size-3" />
+          </TooltipTrigger>
+          <TooltipPopup side="top">{REPLY_LABEL}</TooltipPopup>
+        </Tooltip>
+      ) : null}
     </>
   );
 }

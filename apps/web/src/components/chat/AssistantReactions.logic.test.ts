@@ -1,4 +1,5 @@
 import {
+  EnvironmentId,
   MessageId,
   RunId,
   ThreadId,
@@ -14,6 +15,8 @@ import {
   goAheadText,
   latestReplyItemId,
   reactableReply,
+  replyReference,
+  replyReferenceLabel,
   thumbsUpAction,
 } from "./AssistantReactions.logic";
 
@@ -109,5 +112,34 @@ describe("goAheadText", () => {
         nowMs,
       }),
     ).toMatch(/^👍 Go ahead with your reply from yesterday at \d{1,2}:\d{2}\.$/);
+  });
+});
+
+describe("replyReference", () => {
+  it("names the reply by its footer time and first line, not its text", () => {
+    const reference = replyReference(
+      { environmentId: EnvironmentId.make("environment-1"), threadId },
+      {
+        id: MessageId.make("message-plan"),
+        text: "\n## Release plan\nTag first, then publish the packages in order.",
+        updatedAt: NOW,
+      },
+    );
+
+    expect(reference).toStrictEqual({
+      version: 1,
+      environmentId: EnvironmentId.make("environment-1"),
+      threadId,
+      messageId: MessageId.make("message-plan"),
+      repliedAt: NOW,
+      excerpt: "## Release plan",
+    });
+    const nowMs = Date.parse(NOW);
+    expect(replyReferenceLabel(reference, "24-hour", nowMs)).toMatch(
+      /^Replying to \d{1,2}:\d{2} · ## Release plan$/,
+    );
+    expect(replyReferenceLabel({ ...reference, excerpt: "" }, "24-hour", nowMs)).toMatch(
+      /^Replying to \d{1,2}:\d{2}$/,
+    );
   });
 });

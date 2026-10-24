@@ -17,7 +17,10 @@ import {
   type OrchestrationV2MessageReaction,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
-import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
+import {
+  serializeAssistantCitation,
+  serializeAssistantReplyReference,
+} from "@t3tools/shared/assistantCitations";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -601,5 +604,73 @@ it.effect.each(storageCases)(
       assert.match(goAhead.text, /^Quoted from an earlier assistant reply\b/);
       assert.include(goAhead.text, "> Option B: rewrite the parser.\n\nUser comment: 👍 Go ahead.");
       assert.notInclude(goAhead.text, "The user reacted");
+    }).pipe(Effect.provide(storeLayer)),
+);
+
+it.effect.each(storageCases)(
+  "$storage: a reply reference reaches the agent as the reply's time and first line, beside a citation",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const thread = yield* makeDeliveryThread("reactions-reply-reference");
+      yield* thread.startRun("message:first", "Which option?", at("13:00:00"));
+      const text = "\n## Two options\nOption A: patch it. Option B: rewrite the parser.";
+      yield* thread.reply("reply:options", text, at("13:20:10"));
+      yield* thread.reply("reply:later", "Another agent wrote in since.", at("13:30:00"));
+      const reply = {
+        version: 1 as const,
+        environmentId: EnvironmentId.make("environment:reactions"),
+        threadId: ThreadId.make("thread:reactions-reply-reference"),
+        messageId: MessageId.make("reply:options"),
+      };
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      yield* store.apply({
+        id: EventId.make("event:reply:options:message"),
+        type: "message.updated",
+        threadId: reply.threadId,
+        occurredAt: at("13:21:00"),
+        payload: {
+          id: reply.messageId,
+          threadId: reply.threadId,
+          runId: null,
+          nodeId: null,
+          role: "assistant",
+          text,
+          attachments: [],
+          streaming: false,
+          createdBy: "agent",
+          creationSource: "provider",
+          createdAt: at("13:20:10"),
+          updatedAt: at("13:21:00"),
+        },
+      });
+
+      const answer = yield* thread.startRun(
+        "message:answer",
+        [
+          serializeAssistantReplyReference({
+            ...reply,
+            // The footer's time; the agent is told the reply's own time, as for a citation.
+            repliedAt: "2026-10-22T13:21:00.000Z",
+            excerpt: "## Two options",
+          }),
+          " Go with B.\n",
+          serializeAssistantCitation({
+            ...reply,
+            ...passageOf(text, "Option B: rewrite the parser."),
+          }),
+        ].join(""),
+        at("13:40:00"),
+      );
+      assert.equal(
+        answer.text,
+        [
+          'Reply to your message from 2026-10-22 13:20 UTC ("## Two options"):',
+          "",
+          "Go with B.",
+          "",
+          "Quoted from an earlier assistant reply (2026-10-22 13:20 UTC):",
+          "> Option B: rewrite the parser.",
+        ].join("\n"),
+      );
     }).pipe(Effect.provide(storeLayer)),
 );

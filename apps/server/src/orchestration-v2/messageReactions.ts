@@ -8,12 +8,11 @@ import type {
   OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import {
+  assistantReplyExcerpt,
   formatQuoteForProvider,
   formatReplyTimeForProvider,
 } from "@t3tools/shared/assistantCitations";
 import * as DateTime from "effect/DateTime";
-
-const REPLY_EXCERPT_LENGTH = 60;
 
 export type AssistantReplyItem = Extract<
   OrchestrationV2TurnItem,
@@ -145,17 +144,6 @@ export function pendingReactions(
     );
 }
 
-function replyExcerpt(text: string): string {
-  const firstLine =
-    text
-      .split(/\r?\n/)
-      .map((line) => line.replace(/\s+/g, " ").trim())
-      .find((line) => line.length > 0) ?? "";
-  return firstLine.length > REPLY_EXCERPT_LENGTH
-    ? `${firstLine.slice(0, REPLY_EXCERPT_LENGTH).trimEnd()}…`
-    : firstLine;
-}
-
 export function reactionNote(input: {
   readonly reply: AssistantReplyItem;
   readonly reaction: Pick<OrchestrationV2MessageReaction, "emoji" | "passage">;
@@ -163,7 +151,7 @@ export function reactionNote(input: {
   const time = formatReplyTimeForProvider(repliedAt(input.reply));
   const { emoji, passage } = input.reaction;
   return passage === undefined
-    ? `The user reacted ${emoji} to your reply from ${time} ("${replyExcerpt(input.reply.text)}").`
+    ? `The user reacted ${emoji} to your reply from ${time} ("${assistantReplyExcerpt(input.reply.text)}").`
     : `The user reacted ${emoji} to this passage of your reply from ${time}:\n${formatQuoteForProvider(passage.text)}`;
 }
 

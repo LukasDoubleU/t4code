@@ -1,7 +1,9 @@
 import {
   ASSISTANT_CITATION_MAX_COMMENT_LENGTH,
   ASSISTANT_CITATION_MAX_TEXT_LENGTH,
+  ASSISTANT_REPLY_EXCERPT_LENGTH,
   AssistantCitation,
+  AssistantReplyReference,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
@@ -12,11 +14,15 @@ const CITATION_HREF_PREFIX = `${CITATION_PROTOCOL}//v1/`;
 // Percent encoding needs up to nine characters per UTF-16 code unit; 16k covers selectors.
 const MAX_CITATION_HREF_LENGTH =
   9 * (ASSISTANT_CITATION_MAX_TEXT_LENGTH + ASSISTANT_CITATION_MAX_COMMENT_LENGTH) + 16_000;
-const CITATION_LINK = new RegExp(
-  String.raw`\[Assistant quote\]\((${CITATION_HREF_PREFIX}[^\s)]{1,${MAX_CITATION_HREF_LENGTH - CITATION_HREF_PREFIX.length}})\)`,
-  "g",
-);
+const referenceLink = (label: string) =>
+  new RegExp(
+    String.raw`\[${label}\]\((${CITATION_HREF_PREFIX}[^\s)]{1,${MAX_CITATION_HREF_LENGTH - CITATION_HREF_PREFIX.length}})\)`,
+    "g",
+  );
+const CITATION_LINK = referenceLink("Assistant quote");
+const REPLY_LINK = referenceLink("Assistant reply");
 const decodeCitation = Schema.decodeUnknownOption(AssistantCitation);
+const decodeReplyReference = Schema.decodeUnknownOption(AssistantReplyReference);
 
 function encodePathPart(value: string): string {
   return encodeURIComponent(value).replace(
@@ -34,10 +40,14 @@ export function withAssistantCitationComment(
   return trimmedComment ? { ...source, comment: trimmedComment } : source;
 }
 
+function referenceHrefPath(
+  source: Pick<AssistantCitation, "environmentId" | "threadId" | "messageId">,
+): string {
+  return [source.environmentId, source.threadId, source.messageId].map(encodePathPart).join("/");
+}
+
 export function formatAssistantCitationHref(citation: AssistantCitation): string {
-  const path = [citation.environmentId, citation.threadId, citation.messageId]
-    .map(encodePathPart)
-    .join("/");
+  const path = referenceHrefPath(citation);
   const query = new URLSearchParams({
     text: citation.text,
     start: String(citation.start),
@@ -49,29 +59,50 @@ export function formatAssistantCitationHref(citation: AssistantCitation): string
   return `${CITATION_HREF_PREFIX}${path}?${query}`;
 }
 
-export function parseAssistantCitationHref(href: string): AssistantCitation | null {
+/** The URL of a citation link and the reply it names; throws on a malformed URL. */
+function parseReferenceUrl(href: string) {
   if (!href.startsWith(CITATION_HREF_PREFIX) || href.length > MAX_CITATION_HREF_LENGTH) {
     return null;
   }
+  const url = new URL(href);
+  const parts = url.pathname.slice(1).split("/");
+  if (
+    url.protocol !== CITATION_PROTOCOL ||
+    url.hostname !== "v1" ||
+    parts.length !== 3 ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.hash
+  ) {
+    return null;
+  }
+  return {
+    url,
+    source: {
+      version: 1,
+      environmentId: decodeURIComponent(parts[0]!),
+      threadId: decodeURIComponent(parts[1]!),
+      messageId: decodeURIComponent(parts[2]!),
+    },
+  };
+}
+
+function hasExactlyKeys(url: URL, keys: ReadonlyArray<string>, optional = 0): boolean {
+  return (
+    url.searchParams.size === keys.length + optional &&
+    keys.every((key) => url.searchParams.getAll(key).length === 1)
+  );
+}
+
+export function parseAssistantCitationHref(href: string): AssistantCitation | null {
   try {
-    const url = new URL(href);
-    const parts = url.pathname.slice(1).split("/");
-    if (
-      url.protocol !== CITATION_PROTOCOL ||
-      url.hostname !== "v1" ||
-      parts.length !== 3 ||
-      url.username ||
-      url.password ||
-      url.port ||
-      url.hash
-    ) {
-      return null;
-    }
-    const requiredKeys = ["text", "start", "end", "prefix", "suffix"];
+    const parsed = parseReferenceUrl(href);
+    if (!parsed) return null;
+    const { url, source } = parsed;
     const comment = url.searchParams.get("comment");
     if (
-      url.searchParams.size !== requiredKeys.length + (comment === null ? 0 : 1) ||
-      requiredKeys.some((key) => url.searchParams.getAll(key).length !== 1)
+      !hasExactlyKeys(url, ["text", "start", "end", "prefix", "suffix"], comment === null ? 0 : 1)
     ) {
       return null;
     }
@@ -80,10 +111,7 @@ export function parseAssistantCitationHref(href: string): AssistantCitation | nu
     if (!/^\d{1,16}$/.test(start) || !/^\d{1,16}$/.test(end)) return null;
     return Option.getOrNull(
       decodeCitation({
-        version: 1,
-        environmentId: decodeURIComponent(parts[0]!),
-        threadId: decodeURIComponent(parts[1]!),
-        messageId: decodeURIComponent(parts[2]!),
+        ...source,
         text: url.searchParams.get("text"),
         start: Number(start),
         end: Number(end),
@@ -95,6 +123,52 @@ export function parseAssistantCitationHref(href: string): AssistantCitation | nu
   } catch {
     return null;
   }
+}
+
+export function formatAssistantReplyHref(reference: AssistantReplyReference): string {
+  const query = new URLSearchParams({ repliedAt: reference.repliedAt, excerpt: reference.excerpt });
+  return `${CITATION_HREF_PREFIX}${referenceHrefPath(reference)}?${query}`;
+}
+
+export function parseAssistantReplyHref(href: string): AssistantReplyReference | null {
+  try {
+    const parsed = parseReferenceUrl(href);
+    if (!parsed || !hasExactlyKeys(parsed.url, ["repliedAt", "excerpt"])) return null;
+    return Option.getOrNull(
+      decodeReplyReference({
+        ...parsed.source,
+        repliedAt: parsed.url.searchParams.get("repliedAt"),
+        excerpt: parsed.url.searchParams.get("excerpt"),
+      }),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** A link to an assistant reply: a passage of it, or the whole reply a message answers. */
+export type AssistantReference = AssistantCitation | AssistantReplyReference;
+
+export function isAssistantReplyReference(
+  reference: AssistantReference,
+): reference is AssistantReplyReference {
+  return "repliedAt" in reference;
+}
+
+/** A reply's first non-blank line with its whitespace collapsed, cut short with an ellipsis. */
+export function assistantReplyExcerpt(text: string): string {
+  const firstLine =
+    text
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .find((line) => line.length > 0) ?? "";
+  return firstLine.length > ASSISTANT_REPLY_EXCERPT_LENGTH
+    ? `${firstLine.slice(0, ASSISTANT_REPLY_EXCERPT_LENGTH).trimEnd()}…`
+    : firstLine;
+}
+
+export function serializeAssistantReplyReference(reference: AssistantReplyReference): string {
+  return `[Assistant reply](${formatAssistantReplyHref(reference)})`;
 }
 
 export function assistantCitationLabel(citation: AssistantCitation): string {
@@ -122,14 +196,47 @@ export function collectAssistantCitations(text: string) {
   return citations;
 }
 
+export function collectAssistantReplyReferences(text: string) {
+  const references: {
+    reference: AssistantReplyReference;
+    source: string;
+    start: number;
+    end: number;
+  }[] = [];
+  for (const match of text.matchAll(REPLY_LINK)) {
+    const reference = parseAssistantReplyHref(match[1]!);
+    if (!reference) continue;
+    references.push({
+      reference,
+      source: match[0],
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+  return references;
+}
+
+/** Citations and reply references in the order they appear in `text`. */
+function collectAssistantReferences(text: string) {
+  return [
+    ...collectAssistantCitations(text).map((match) => ({ kind: "quote" as const, ...match })),
+    ...collectAssistantReplyReferences(text).map((match) => ({ kind: "reply" as const, ...match })),
+  ].sort((left, right) => left.start - right.start);
+}
+
+/** Titles and previews read a citation as its quote; a reply reference is left out. */
 export function assistantCitationsToPlainText(prompt: string): string {
-  return prompt.replace(CITATION_LINK, (source: string, href: string) => {
-    const citation = parseAssistantCitationHref(href);
-    if (!citation) return source;
-    return citation.comment === undefined
-      ? citation.text
-      : `${citation.text}\nComment: ${citation.comment}`;
-  });
+  return prompt
+    .replace(CITATION_LINK, (source: string, href: string) => {
+      const citation = parseAssistantCitationHref(href);
+      if (!citation) return source;
+      return citation.comment === undefined
+        ? citation.text
+        : `${citation.text}\nComment: ${citation.comment}`;
+    })
+    .replace(REPLY_LINK, (source: string, href: string) =>
+      parseAssistantReplyHref(href) ? "" : source,
+    );
 }
 
 /** How an agent reads the time of one of its replies, e.g. `2026-09-04 11:58 UTC`. */
@@ -160,6 +267,15 @@ function formatAssistantCitationForProvider(
   ].join("\n");
 }
 
+function formatAssistantReplyForProvider(
+  reference: AssistantReplyReference,
+  repliedAt: DateTime.Utc | undefined,
+): string {
+  const time = formatReplyTimeForProvider(repliedAt ?? DateTime.makeUnsafe(reference.repliedAt));
+  const excerpt = reference.excerpt ? ` ("${reference.excerpt}")` : "";
+  return `Reply to your message from ${time}${excerpt}:`;
+}
+
 // Text that follows a quote block starts its own paragraph; keep the indentation of a next line.
 function trimAfterQuoteBlock(text: string): string {
   const rest = text.replace(/^(?:[ \t]*\r?\n)+/, "");
@@ -168,14 +284,17 @@ function trimAfterQuoteBlock(text: string): string {
 
 /**
  * What an agent reads for a prompt: each citation becomes, in place, its quote as a Markdown
- * blockquote followed by the user's comment. `replyCreatedAt` returns the cited reply's time when
- * the caller found it.
+ * blockquote followed by the user's comment, and a reply reference names the reply by its time
+ * and first line. `replyCreatedAt` returns the reply's time when the caller found it; a reply
+ * reference falls back to the time it carries.
  */
 export function expandAssistantCitationsForProvider(
   prompt: string,
-  replyCreatedAt: (citation: AssistantCitation) => DateTime.Utc | undefined = () => undefined,
+  replyCreatedAt: (
+    reply: Pick<AssistantCitation, "threadId" | "messageId">,
+  ) => DateTime.Utc | undefined = () => undefined,
 ): string {
-  const matches = collectAssistantCitations(prompt);
+  const matches = collectAssistantReferences(prompt);
   if (matches.length === 0) return prompt;
   const parts: string[] = [];
   let cursor = 0;
@@ -183,7 +302,9 @@ export function expandAssistantCitationsForProvider(
     const before = prompt.slice(cursor, match.start);
     parts.push(
       (index === 0 ? before : trimAfterQuoteBlock(before)).trimEnd(),
-      formatAssistantCitationForProvider(match.citation, replyCreatedAt(match.citation)),
+      match.kind === "quote"
+        ? formatAssistantCitationForProvider(match.citation, replyCreatedAt(match.citation))
+        : formatAssistantReplyForProvider(match.reference, replyCreatedAt(match.reference)),
     );
     cursor = match.end;
   }
@@ -200,10 +321,15 @@ function escapeMarkdownText(text: string): string {
 }
 
 export function renderAssistantCitationsAsText(prompt: string): string {
-  const matches = collectAssistantCitations(prompt);
+  const matches = collectAssistantReferences(prompt);
   let text = "";
   let cursor = 0;
   for (const match of matches) {
+    if (match.kind === "reply") {
+      text += `${prompt.slice(cursor, match.start)}Replying to “${escapeMarkdownText(match.reference.excerpt)}”\n\n`;
+      cursor = match.end;
+      continue;
+    }
     const quote = escapeMarkdownText(match.citation.text);
     text += `${prompt.slice(cursor, match.start)}\n\n> Assistant quote:\n${quote
       .split("\n")

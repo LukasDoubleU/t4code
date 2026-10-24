@@ -1,4 +1,8 @@
-import { resolveTimelineMinimapPreview, type TimelineMinimapItem } from "./timelineMinimapItems";
+import {
+  resolveTimelineMinimapPreview,
+  type TimelineMinimapItem,
+  type TimelineMinimapMark,
+} from "./timelineMinimapItems";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { Button } from "../ui/button";
@@ -6,12 +10,14 @@ import {
   resolveTimelineMinimapHeightStyle,
   resolveTimelineMinimapIndexFromPointer,
   resolveTimelineMinimapInteractiveWidth,
+  resolveTimelineMinimapMarkCapacity,
   resolveTimelineMinimapNavigationInteractive,
   resolveTimelineMinimapTopPercent,
   TIMELINE_MINIMAP_MIN_ITEMS,
 } from "./MessagesTimeline.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
+import { observeResize } from "~/lib/observeResize";
 
 function timelineMinimapEventTargetsPreview(target: EventTarget): boolean {
   return target instanceof Element && target.closest("[data-minimap-preview]") !== null;
@@ -39,16 +45,21 @@ export function TimelineMinimap({
   hitStripWidth,
   currentIndex,
   items,
+  marks,
   stripMap,
   onWheel,
+  onMarkCapacityChange,
   onSelect,
 }: {
   hasPersistentGutter: boolean;
   hitStripWidth: number;
+  /** Index into `items`, so previous and next still step one turn inside a group. */
   currentIndex: number | null;
   items: ReadonlyArray<TimelineMinimapItem>;
+  marks: ReadonlyArray<TimelineMinimapMark>;
   stripMap: Map<string, HTMLSpanElement>;
   onWheel: (event: WheelEvent) => void;
+  onMarkCapacityChange: (capacity: number | null) => void;
   onSelect: (item: TimelineMinimapItem) => void;
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -56,6 +67,13 @@ export function TimelineMinimap({
     if (!node) return;
     node.addEventListener("wheel", onWheel, { passive: false });
     return () => node.removeEventListener("wheel", onWheel);
+  };
+  const railRef = (node: HTMLDivElement | null) => {
+    if (!node) return;
+    return observeResize(node, (entries) => {
+      const height = entries.at(-1)?.contentRect.height;
+      if (height !== undefined) onMarkCapacityChange(resolveTimelineMinimapMarkCapacity(height));
+    });
   };
 
   const pressedOnStripRef = useRef(false);
@@ -67,22 +85,21 @@ export function TimelineMinimap({
   }, [passThrough]);
 
   const resolvedActiveIndex =
-    activeIndex !== null && activeIndex < items.length ? activeIndex : null;
-  const activeItem = resolveTimelineMinimapPreview(
-    resolvedActiveIndex === null ? null : (items[resolvedActiveIndex] ?? null),
-  );
+    activeIndex !== null && activeIndex < marks.length ? activeIndex : null;
+  const activeMark = resolvedActiveIndex === null ? null : (marks[resolvedActiveIndex] ?? null);
+  const activePreview = resolveTimelineMinimapPreview(activeMark);
   const navigationInteractive =
     resolveTimelineMinimapNavigationInteractive(hitStripWidth) && !passThrough;
   const activeTopPercent =
     resolvedActiveIndex === null
       ? 0
-      : resolveTimelineMinimapTopPercent(resolvedActiveIndex, items.length);
+      : resolveTimelineMinimapTopPercent(resolvedActiveIndex, marks.length);
   const activeTooltipTranslate =
     resolvedActiveIndex === null
       ? "-50%"
       : resolvedActiveIndex === 0
         ? "0%"
-        : resolvedActiveIndex === items.length - 1
+        : resolvedActiveIndex === marks.length - 1
           ? "-100%"
           : "-50%";
   const resolvedCurrentIndex =
@@ -90,11 +107,15 @@ export function TimelineMinimap({
   const previousItem =
     resolvedCurrentIndex === null ? null : (items[resolvedCurrentIndex - 1] ?? null);
   const nextItem = resolvedCurrentIndex === null ? null : (items[resolvedCurrentIndex + 1] ?? null);
+  const currentMarkIndex =
+    resolvedCurrentIndex === null
+      ? null
+      : marks.findLastIndex((mark) => mark.firstItemIndex <= resolvedCurrentIndex);
 
   const resolveActiveIndexFromPointer = (event: MouseEvent<HTMLElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return resolveTimelineMinimapIndexFromPointer({
-      itemCount: items.length,
+      itemCount: marks.length,
       railTop: rect.top,
       railHeight: rect.height,
       pointerY: event.clientY,
@@ -109,7 +130,7 @@ export function TimelineMinimap({
   const moveActiveIndex = (delta: number) => {
     setActiveIndex((current) => {
       const base = current ?? 0;
-      return Math.max(0, Math.min(items.length - 1, base + delta));
+      return Math.max(0, Math.min(marks.length - 1, base + delta));
     });
   };
 
@@ -147,8 +168,9 @@ export function TimelineMinimap({
           }}
           style={{
             height: resolveTimelineMinimapHeightStyle(items.length),
-            width: resolveTimelineMinimapInteractiveWidth(hitStripWidth, activeItem !== null),
+            width: resolveTimelineMinimapInteractiveWidth(hitStripWidth, activePreview !== null),
           }}
+          ref={railRef}
         >
           <TimelineMinimapNavigationButton
             direction="previous"
@@ -159,7 +181,11 @@ export function TimelineMinimap({
             }}
           />
           <button
-            aria-label={`Jump to message: ${activeItem?.userText ?? "User message"}`}
+            aria-label={
+              activePreview?.kind === "group"
+                ? `Jump to ${activePreview.turnCount} turns from: ${activePreview.firstUserText ?? "User message"}`
+                : `Jump to message: ${activePreview?.userText ?? "User message"}`
+            }
             className="absolute inset-y-0 left-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
             onBlur={() => setActiveIndex(null)}
             onClick={(event) => {
@@ -167,13 +193,13 @@ export function TimelineMinimap({
                 return;
               }
               const nextIndex = resolveActiveIndexFromPointer(event);
-              const selectedItem = nextIndex === null ? null : (items[nextIndex] ?? null);
+              const selectedItem = nextIndex === null ? null : (marks[nextIndex]?.items[0] ?? null);
               if (selectedItem) {
                 onSelect(selectedItem);
               }
               event.currentTarget.blur();
             }}
-            onFocus={() => setActiveIndex((current) => current ?? resolvedCurrentIndex ?? 0)}
+            onFocus={() => setActiveIndex((current) => current ?? currentMarkIndex ?? 0)}
             onKeyDown={(event) => {
               if (event.key === "ArrowDown") {
                 event.preventDefault();
@@ -186,11 +212,12 @@ export function TimelineMinimap({
                 setActiveIndex(0);
               } else if (event.key === "End") {
                 event.preventDefault();
-                setActiveIndex(items.length - 1);
+                setActiveIndex(marks.length - 1);
               } else if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                if (activeItem) {
-                  onSelect(activeItem);
+                const selectedItem = activeMark?.items[0];
+                if (selectedItem) {
+                  onSelect(selectedItem);
                 }
               }
             }}
@@ -208,8 +235,8 @@ export function TimelineMinimap({
             type="button"
           >
             <div className="absolute top-0 left-3 h-full w-px bg-border/15" />
-            {items.map((item, index) => {
-              const top = `${resolveTimelineMinimapTopPercent(index, items.length)}%`;
+            {marks.map((mark, index) => {
+              const top = `${resolveTimelineMinimapTopPercent(index, marks.length)}%`;
               const activeDistance =
                 resolvedActiveIndex === null ? null : Math.abs(index - resolvedActiveIndex);
               return (
@@ -220,7 +247,8 @@ export function TimelineMinimap({
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "group/strip pointer-events-none absolute left-0 h-0.5 w-6 origin-left -translate-y-1/2 rounded-full transition-transform duration-150",
+                    "group/strip pointer-events-none absolute left-0 w-6 origin-left -translate-y-1/2 rounded-full transition-transform duration-150",
+                    mark.items.length > 1 ? "h-1" : "h-0.5",
                     activeDistance === 0 ? "bg-muted-foreground/75" : "bg-muted-foreground/35",
                     activeDistance === 0
                       ? "scale-x-100"
@@ -232,12 +260,12 @@ export function TimelineMinimap({
                   )}
                   data-in-view="false"
                   data-minimap-strip
-                  key={item.id}
+                  key={mark.id}
                   ref={(node) => {
                     if (node) {
-                      stripMap.set(item.id, node);
+                      stripMap.set(mark.id, node);
                     } else {
-                      stripMap.delete(item.id);
+                      stripMap.delete(mark.id);
                     }
                   }}
                   style={{ top }}
@@ -246,7 +274,7 @@ export function TimelineMinimap({
                 </span>
               );
             })}
-            {activeItem ? (
+            {activePreview ? (
               <span
                 className="pointer-events-auto absolute left-8 w-80 cursor-text select-text"
                 data-minimap-preview
@@ -257,10 +285,24 @@ export function TimelineMinimap({
                 }}
               >
                 <span className="dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25">
-                  <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-5">
-                    {activeItem.userText ?? "User message"}
-                  </span>
-                  {activeItem.assistantText ? (
+                  {activePreview.kind === "group" ? (
+                    <>
+                      <span className="block text-muted-foreground text-xs leading-4">
+                        {activePreview.turnCount} turns
+                      </span>
+                      <span className="mt-1 block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-5">
+                        {activePreview.firstUserText ?? "User message"}
+                      </span>
+                      <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground text-sm leading-5">
+                        to {activePreview.lastUserText ?? "User message"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-5">
+                      {activePreview.userText ?? "User message"}
+                    </span>
+                  )}
+                  {activePreview.kind === "turn" && activePreview.assistantText ? (
                     <span
                       className="mt-1 max-h-[3.75rem] overflow-hidden text-muted-foreground text-sm leading-5"
                       style={{
@@ -269,7 +311,7 @@ export function TimelineMinimap({
                         WebkitLineClamp: 3,
                       }}
                     >
-                      {activeItem.assistantText}
+                      {activePreview.assistantText}
                     </span>
                   ) : null}
                 </span>

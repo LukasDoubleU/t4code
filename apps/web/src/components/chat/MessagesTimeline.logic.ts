@@ -340,6 +340,16 @@ export function resolveTimelineMinimapHeightStyle(itemCount: number): string {
   return `min(${naturalHeight}px, ${TIMELINE_MINIMAP_MAX_HEIGHT_CSS})`;
 }
 
+/**
+ * Marks never sit closer than a short thread's spacing. The rail is sized by the turn count,
+ * so its measured height, and with it the capacity, does not move when marks get grouped.
+ */
+export function resolveTimelineMinimapMarkCapacity(railHeight: number): number | null {
+  if (!Number.isFinite(railHeight) || railHeight <= 0) return null;
+  // Half a pixel of slack keeps a sub-pixel rail from grouping an uncapped thread.
+  return Math.floor((railHeight + 0.5) / TIMELINE_MINIMAP_ITEM_SPACING) + 1;
+}
+
 export function resolveTimelineMinimapTopPercent(index: number, itemCount: number): number {
   if (itemCount <= 1) {
     return 0;
@@ -395,13 +405,17 @@ export function resolveTimelineMinimapVisibleRange(state: {
   return { start, end };
 }
 
-export function isTimelineMinimapRowVisible(
-  rowIndex: number,
+export function isTimelineMinimapRangeVisible(
+  firstRowIndex: number,
+  lastRowIndex: number,
   visibleStart: number | null | undefined,
   visibleEnd: number | null | undefined,
 ): boolean {
   return (
-    visibleStart != null && visibleEnd != null && rowIndex >= visibleStart && rowIndex <= visibleEnd
+    visibleStart != null &&
+    visibleEnd != null &&
+    lastRowIndex >= visibleStart &&
+    firstRowIndex <= visibleEnd
   );
 }
 

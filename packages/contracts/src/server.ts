@@ -627,6 +627,8 @@ export const ServerConfig = Schema.Struct({
   reasoningMessages: Schema.optionalKey(Schema.Boolean),
   threadFind: Schema.optionalKey(Schema.Boolean),
   threadFindProgressive: Schema.optionalKey(Schema.Boolean),
+  /** The server writes "Catch me up" briefs (`orchestration.catchUpThread`). */
+  threadCatchUp: Schema.optionalKey(Schema.Boolean),
   scratchWorkspaceRoot: Schema.optionalKey(TrimmedNonEmptyString),
   newProjectsRoot: Schema.optionalKey(TrimmedNonEmptyString),
   /** Where pinned threads keep their memory files. Absent on servers without them. */

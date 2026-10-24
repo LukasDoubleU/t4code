@@ -118,3 +118,32 @@ export function normalizeCliError(
     cause: error,
   });
 }
+
+const MAX_CATCH_UP_LINE_CHARS = 280;
+const MAX_CATCH_UP_HAPPENED = 3;
+
+function catchUpLine(raw: string): string {
+  const line = raw
+    .trim()
+    .replace(/^(?:[-*•]|\d+[.)])\s+/, "")
+    .replace(/\s+/g, " ");
+  return line.length <= MAX_CATCH_UP_LINE_CHARS
+    ? line
+    : `${line.slice(0, MAX_CATCH_UP_LINE_CHARS - 3).trimEnd()}...`;
+}
+
+export function sanitizeThreadCatchUp(raw: {
+  readonly needsYou: string;
+  readonly happened: ReadonlyArray<string>;
+  readonly next: string;
+}) {
+  const needsYou = catchUpLine(raw.needsYou);
+  return {
+    needsYou: needsYou.length === 0 ? null : needsYou,
+    happened: raw.happened
+      .map(catchUpLine)
+      .filter((line) => line.length > 0)
+      .slice(0, MAX_CATCH_UP_HAPPENED),
+    next: catchUpLine(raw.next),
+  };
+}

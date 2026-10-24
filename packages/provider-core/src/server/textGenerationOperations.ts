@@ -11,11 +11,13 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildReviewGuidePrompt,
+  buildThreadCatchUpPrompt,
   buildThreadTitlePrompt,
 } from "./textGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
+  sanitizeThreadCatchUp,
   sanitizeThreadTitle,
 } from "./textGenerationUtils.ts";
 
@@ -169,11 +171,24 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
     });
   });
 
+  const generateThreadCatchUp: ProviderTextGeneration["generateThreadCatchUp"] = Effect.fn(
+    `${name}.generateThreadCatchUp`,
+  )(function* (input) {
+    const generated = yield* run({
+      operation: "generateThreadCatchUp",
+      cwd: input.cwd,
+      modelSelection: input.modelSelection,
+      ...buildThreadCatchUpPrompt(input),
+    });
+    return sanitizeThreadCatchUp(generated);
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateReviewGuide,
+    generateThreadCatchUp,
   } satisfies ProviderTextGeneration;
 }

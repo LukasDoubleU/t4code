@@ -12,6 +12,7 @@ import {
   AuthSourceControlWriteScope,
   AuthTerminalReadScope,
   AuthTerminalOperateScope,
+  ORCHESTRATION_V2_WS_METHODS,
   WS_METHODS,
   WsRpcGroup,
 } from "@t3tools/contracts";
@@ -371,3 +372,47 @@ it.effect("denies manual cleanup before the handler without settings permission"
     expect(handled).toBe(false);
   }).pipe(Effect.scoped),
 );
+
+describe("catch-up brief authorization", () => {
+  const group = WsRpcGroup.omit(
+    ...[...WsRpcGroup.requests.keys()].filter(
+      (
+        tag,
+      ): tag is Exclude<
+        keyof typeof RPC_REQUIRED_SCOPES,
+        typeof ORCHESTRATION_V2_WS_METHODS.catchUpThread
+      > => tag !== ORCHESTRATION_V2_WS_METHODS.catchUpThread,
+    ),
+  );
+
+  it.effect("runs a model only for sessions that may operate this environment", () =>
+    Effect.gen(function* () {
+      let handled = 0;
+      const brief = { needsYou: null, happened: [], next: "", generatedAt: "2026-10-01T00:00:00Z" };
+      const handler = group.toLayerHandler(ORCHESTRATION_V2_WS_METHODS.catchUpThread, () =>
+        Effect.sync(() => {
+          handled++;
+          return brief;
+        }),
+      );
+      const input = { threadId: ThreadId.make("thread-1") };
+      const reader = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(
+          Layer.mergeAll(handler, RpcAuthorization.layer([AuthOrchestrationReadScope])),
+        ),
+      );
+      expect(
+        yield* reader[ORCHESTRATION_V2_WS_METHODS.catchUpThread](input).pipe(Effect.flip),
+      ).toMatchObject({ requiredPermission: AuthOrchestrationOperateScope });
+      expect(handled).toBe(0);
+
+      const operator = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(
+          Layer.mergeAll(handler, RpcAuthorization.layer([AuthOrchestrationOperateScope])),
+        ),
+      );
+      expect(yield* operator[ORCHESTRATION_V2_WS_METHODS.catchUpThread](input)).toEqual(brief);
+      expect(handled).toBe(1);
+    }).pipe(Effect.scoped),
+  );
+});

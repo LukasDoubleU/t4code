@@ -159,6 +159,11 @@ function selectOpenCodeRuntimeTextGeneration(
         v1: v1.generateReviewGuide(input),
         v2: v2.generateReviewGuide(input),
       }),
+    generateThreadCatchUp: (input) =>
+      byOpenCodeRuntime(probe.get, {
+        v1: v1.generateThreadCatchUp(input),
+        v2: v2.generateThreadCatchUp(input),
+      }),
   };
 }
 

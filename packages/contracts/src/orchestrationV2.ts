@@ -3503,6 +3503,7 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   searchThreads: "orchestration.searchThreads",
   searchThread: "orchestration.searchThread",
   searchThreadStream: "orchestration.searchThreadStream",
+  catchUpThread: "orchestration.catchUpThread",
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   getThreadProjection: "orchestration.getThreadProjection",
   getWorkflowScript: "orchestration.getWorkflowScript",
@@ -4001,6 +4002,28 @@ export class OrchestrationV2SearchThreadError extends Schema.TaggedError<Orchest
 ) {
   override get message(): string {
     return "Could not search this thread. Please retry.";
+  }
+}
+
+export const OrchestrationV2CatchUpThreadInput = Schema.Struct({ threadId: ThreadId });
+export type OrchestrationV2CatchUpThreadInput = typeof OrchestrationV2CatchUpThreadInput.Type;
+
+/** A short brief on a thread, written on request. It is not a message: nothing stores it, and the agent never sees it. */
+export const OrchestrationV2ThreadCatchUp = Schema.Struct({
+  /** The question or decision waiting on the user; null when nothing is. */
+  needsYou: Schema.NullOr(Schema.String),
+  happened: Schema.Array(Schema.String),
+  next: Schema.String,
+  generatedAt: IsoDateTime,
+});
+export type OrchestrationV2ThreadCatchUp = typeof OrchestrationV2ThreadCatchUp.Type;
+
+export class OrchestrationV2CatchUpThreadError extends Schema.TaggedError<OrchestrationV2CatchUpThreadError>()(
+  "OrchestrationV2CatchUpThreadError",
+  { detail: Schema.String, cause: Schema.optional(Schema.Defect()) },
+) {
+  override get message(): string {
+    return this.detail;
   }
 }
 

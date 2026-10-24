@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { sanitizeCommitSubject } from "./textGenerationUtils.ts";
+import { sanitizeCommitSubject, sanitizeThreadCatchUp } from "./textGenerationUtils.ts";
 
 describe("sanitizeCommitSubject", () => {
   // regression: #19181 truncation split grapheme clusters at the subject limit
@@ -12,5 +12,21 @@ describe("sanitizeCommitSubject", () => {
     const prefix = "a".repeat(prefixLength);
 
     expect(sanitizeCommitSubject(`${prefix}${character} more`)).toBe(prefix);
+  });
+});
+
+describe("sanitizeThreadCatchUp", () => {
+  it("keeps three plain lines and reads an empty needsYou as nothing", () => {
+    expect(
+      sanitizeThreadCatchUp({
+        needsYou: "  ",
+        happened: ["- Fixed the build", "", "2. Opened #12", "* Ran the tests", "• Fourth"],
+        next: "  Waits for review\n",
+      }),
+    ).toEqual({
+      needsYou: null,
+      happened: ["Fixed the build", "Opened #12", "Ran the tests"],
+      next: "Waits for review",
+    });
   });
 });

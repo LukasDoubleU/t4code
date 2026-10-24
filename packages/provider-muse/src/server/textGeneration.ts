@@ -22,11 +22,13 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildThreadCatchUpPrompt,
   buildThreadTitlePrompt,
 } from "@t3tools/provider-core/server/textGenerationPrompts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
+  sanitizeThreadCatchUp,
   sanitizeThreadTitle,
   toJsonSchemaObject,
 } from "@t3tools/provider-core/server/textGenerationUtils";
@@ -342,11 +344,22 @@ export const makeMuseTextGeneration = Effect.fn("makeMuseTextGeneration")(functi
   });
   const generateReviewGuide: ProviderTextGeneration["generateReviewGuide"] = () =>
     Effect.fail(investigationUnsupported("generateReviewGuide", "Muse Code"));
+  const generateThreadCatchUp: ProviderTextGeneration["generateThreadCatchUp"] = Effect.fn(
+    "MuseTextGeneration.generateThreadCatchUp",
+  )(function* (input) {
+    const generated = yield* runMuseJson({
+      operation: "generateThreadCatchUp",
+      ...buildThreadCatchUpPrompt(input),
+      modelSelection: input.modelSelection,
+    });
+    return sanitizeThreadCatchUp(generated);
+  });
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateReviewGuide,
+    generateThreadCatchUp,
   } satisfies ProviderTextGeneration;
 });

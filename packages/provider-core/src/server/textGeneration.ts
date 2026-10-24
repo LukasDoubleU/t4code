@@ -94,6 +94,22 @@ export type ReviewGuideGenerationResult = Omit<
   "headSha" | "generatedAt" | "modelSelection"
 >;
 
+export interface ThreadCatchUpGenerationInput {
+  cwd: string;
+  /** The thread's recent items as plain text, oldest first, already capped. */
+  items: string;
+  /** Requests open on the user; the brief's "Needs you" must not leave them out. */
+  waitingOnUser: ReadonlyArray<string>;
+  modelSelection: ModelSelection;
+}
+
+export interface ThreadCatchUpGenerationResult {
+  /** Null when nothing needs the user. */
+  needsYou: string | null;
+  happened: ReadonlyArray<string>;
+  next: string;
+}
+
 export interface ProviderTextGeneration {
   readonly generateCommitMessage: (
     input: CommitMessageGenerationInput,
@@ -114,4 +130,8 @@ export interface ProviderTextGeneration {
   readonly generateReviewGuide: (
     input: ReviewGuideGenerationInput,
   ) => Effect.Effect<ReviewGuideGenerationResult, TextGenerationError>;
+
+  readonly generateThreadCatchUp: (
+    input: ThreadCatchUpGenerationInput,
+  ) => Effect.Effect<ThreadCatchUpGenerationResult, TextGenerationError>;
 }

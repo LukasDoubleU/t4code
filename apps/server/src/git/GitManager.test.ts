@@ -361,6 +361,7 @@ function createTextGeneration(
         title: "Update workflow",
       }),
     generateReviewGuide: () => Effect.succeed({ stops: [] }),
+    generateThreadCatchUp: () => Effect.succeed({ needsYou: null, happened: [], next: "" }),
     ...overrides,
   };
 
@@ -410,6 +411,7 @@ function createTextGeneration(
         ),
       ),
     generateReviewGuide: (input) => implementation.generateReviewGuide(input),
+    generateThreadCatchUp: (input) => implementation.generateThreadCatchUp(input),
   };
 }
 

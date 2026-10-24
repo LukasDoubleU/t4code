@@ -7,7 +7,7 @@ import {
   type ProviderInstanceId,
   type ProviderInteractionMode,
   type RuntimeMode,
-  type ThreadId,
+  ThreadId,
   type OrchestrationV2LaunchedBy,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
@@ -131,6 +131,27 @@ export const isLiveCallerShell = (
       false));
 
 /**
+ * Threads an agent starts over MCP are `mcp:<uuid>`, and agents often paste the
+ * bare uuid. The id is never rewritten, so permission checks keyed on it still
+ * hold; the miss only names a live thread the caller could read by its full id.
+ */
+export const threadNotFound = Effect.fn("OrchestratorMcpService.threadNotFound")(function* (
+  threads: Pick<ThreadManagement.ThreadManagementService["Service"], "getThreadShell">,
+  threadId: ThreadId,
+  message: string,
+) {
+  const prefixed = ThreadId.make(`mcp:${threadId}`);
+  const shell = yield* threads.getThreadShell(prefixed).pipe(Effect.orElseSucceed(() => null));
+  return yield* new OrchestratorMcpFailure({
+    code: "thread_not_found",
+    message:
+      shell === null || shell.deletedAt !== null
+        ? message
+        : `${message} Did you mean \`${prefixed}\`?`,
+  });
+});
+
+/**
  * A thread caller acts only while it owns a live run, or a background
  * subagent that run started, of a thread that is not archived, so a provider
  * token that outlived its session cannot act. An OAuth client has no run; its
@@ -184,10 +205,7 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
   const targetId = yield* resolveThreadId(context, threadId);
   const shell = yield* context.threads.getThreadShell(targetId).pipe(Effect.mapError(unavailable));
   if (shell === null || shell.deletedAt !== null) {
-    return yield* new OrchestratorMcpFailure({
-      code: "thread_not_found",
-      message: "The thread was not found.",
-    });
+    return yield* threadNotFound(context.threads, targetId, "The thread was not found.");
   }
   const projection = yield* context.threads
     .getProjectThreadRecords({ projectId: shell.projectId, threadId: targetId }, fields, {

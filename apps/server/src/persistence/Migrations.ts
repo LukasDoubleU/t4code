@@ -74,7 +74,7 @@ import Migration0068 from "./Migrations/068_PeerLinks.ts";
 import Migration0069 from "./Migrations/069_PeerLinkFence.ts";
 import Migration0070 from "./Migrations/070_WaitingLinkRequestIndex.ts";
 
-export const migrationEntries = [
+const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
   [2, "OrchestrationCommandReceipts", Migration0002],
   [3, "CheckpointDiffBlobs", Migration0003],

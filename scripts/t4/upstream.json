@@ -1,7 +1,7 @@
 {
   "upstream": "pingdotgg/t3code",
   "issue": 13,
-  "base": "v0.1.1",
+  "base": "v0.1.2",
   "carried": [
     {
       "name": "Peer-link stack",
@@ -19,6 +19,16 @@
     },
     { "name": "Tray", "issue": 2, "pulls": { "19176": "closed" } },
     { "name": "Boring Sidebar", "issue": 7, "pulls": { "21039": "open" } },
-    { "name": "Last-message sort", "issue": 8, "pulls": { "22032": "open" } }
+    { "name": "Last-message sort", "issue": 8, "pulls": { "22032": "open" } },
+    {
+      "name": "Stop stops subagents, picked from main",
+      "issue": 13,
+      "pulls": { "23886": "merged" }
+    },
+    {
+      "name": "Agent scope for browsers, picked from main",
+      "issue": 13,
+      "pulls": { "21299": "merged" }
+    }
   ]
 }

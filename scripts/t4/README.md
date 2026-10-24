@@ -85,7 +85,7 @@ If any of this fails, the rehearsal stops before starting on the copy. The serve
 
 ### Migrations 068–070: `undo-peer-link-migrations.ps1`
 
-The peer-link stack adds migrations 068 (`peer_environment_links`), 069 (its `fenced` column) and 070 (the index `orchestration_v2_projection_turn_items_waiting_link_idx`). Official `v0.1.1` stops at 067 and only warns about ids it doesn't know. An official release that uses 068 for something else refuses to start, because the database "would skip required schema migrations". If upstream ships the stack with the same ids and names, nothing is needed.
+The peer-link stack adds migrations 068 (`peer_environment_links`), 069 (its `fenced` column) and 070 (the index `orchestration_v2_projection_turn_items_waiting_link_idx`). Official `v0.1.1` and `v0.1.2` stop at 067 and only warn about ids they don't know. An official release that uses 068 for something else refuses to start, because the database "would skip required schema migrations". If upstream ships the stack with the same ids and names, nothing is needed.
 
 When a rehearsal fails that way:
 

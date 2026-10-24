@@ -152,8 +152,12 @@ function EnvironmentNotifications({
         continue;
       }
       const thread = presentThreadShell(environmentId, rawThread, subagentRequest);
-      const { marks, status, kind } = decideThreadNotification(thread, prior);
-      next.set(thread.id, { raw: rawThread, subagentRequest, ...marks });
+      const decision = decideThreadNotification(thread, prior);
+      next.set(thread.id, { raw: rawThread, subagentRequest, ...decision.marks });
+      const { status } = decision;
+      // Stopping a turn ends it on purpose, so it gets no completion notice.
+      const kind =
+        decision.kind === "completion" && rawThread.latestRunStopRequested ? null : decision.kind;
       if (!kind) continue;
       const title =
         kind === "completion"

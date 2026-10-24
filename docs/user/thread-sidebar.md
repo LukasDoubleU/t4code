@@ -57,6 +57,24 @@ apart, for example your experts, choose **Change icon…** in the thread's menu 
 emoji, or monogram; on mobile, type or paste an emoji. **Use project icon** takes it back. The icon
 shows on every connected client, and agents can set it for the threads they manage.
 
+## Catch up on a thread
+
+When you open a thread with activity you have not seen, a **Since your last visit** line marks
+the first item after your previous visit. It stays put while you read.
+
+**Jump to my last message** scrolls back to the last message you wrote, loading older turns if
+needed. On web and desktop it is in the thread header and the command palette, and `mod+alt+up`
+runs it. On mobile, it is in the header's **Catch up** menu.
+
+**Catch me up**, next to it, writes a short brief from the thread's items since your last message
+or your last visit, whichever is earlier: what needs you, up to three things that happened, and
+what comes next. An open question or approval, or an agent's call for you, always shows under
+**Needs you**. The brief uses the text generation model from **Settings → General**. It is not a
+message: the agent never sees it, and asking for one starts no turn and does not count as a
+visit. The card keeps the brief until you dismiss it, and says so once new activity arrives;
+**Refresh** writes a new one. On an older server, or with read-only access, **Catch me up** is
+hidden.
+
 ## Experts: pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work. Pinned threads form the

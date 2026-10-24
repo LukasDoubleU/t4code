@@ -92,6 +92,10 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
       staleTimeMs: 300_000,
       idleTtlMs: 300_000,
     }),
+    catchUpThread: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:orchestration:catch-up-thread",
+      tag: ORCHESTRATION_V2_WS_METHODS.catchUpThread,
+    }),
     stopWorkflow: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:orchestration:stop-workflow",
       tag: ORCHESTRATION_V2_WS_METHODS.stopWorkflow,

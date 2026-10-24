@@ -1,7 +1,11 @@
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import {
   canCreateProjectInEnvironment,
   getCloneDestinationBrowsePath,
@@ -66,6 +70,7 @@ import {
   LinkIcon,
   MessageSquareIcon,
   MessagesSquareIcon,
+  NewspaperIcon,
   PaletteIcon,
   PlayIcon,
   QuoteIcon,
@@ -79,6 +84,8 @@ import { goAheadTarget } from "./chat/AssistantReactions.logic";
 import { useReplyReactions } from "./chat/AssistantReactions";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
+import { requestThreadCatchUpAction } from "@t3tools/client-runtime/state/thread-catch-up";
+import { useThreadCatchUpAvailable } from "./chat/ThreadCatchUp";
 import {
   useDeferredValue,
   useEffect,
@@ -568,6 +575,8 @@ function OpenCommandPaletteDialog(props: {
         : appAtomRegistry.get(environmentThreadDetails.threadAtom(goAheadThreadRef));
     return thread === null ? null : goAheadTarget(thread.projection, thread.projection.thread.id);
   });
+  const routeServerThreadKey = goAheadThreadRef === null ? null : scopedThreadKey(goAheadThreadRef);
+  const catchUpAvailable = useThreadCatchUpAvailable(goAheadThreadRef?.environmentId ?? null);
   const projects = useProjects();
   const referenceThreadRef =
     pathname === "/pull-requests"
@@ -1370,6 +1379,29 @@ function OpenCommandPaletteDialog(props: {
         requestThreadFindOpen();
       },
     });
+  }
+
+  if (routeServerThreadKey !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:jump-to-my-last-message",
+      title: "Jump to my last message",
+      searchTerms: ["jump", "my last message", "scroll", "prompt", "what did I say"],
+      icon: <CornerLeftUpIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "chat.jumpToMyLastMessage",
+      run: async () => requestThreadCatchUpAction("jump-to-my-last-message", routeServerThreadKey),
+    });
+    if (catchUpAvailable) {
+      actionItems.push({
+        kind: "action",
+        value: "action:catch-me-up",
+        title: "Catch me up",
+        searchTerms: ["catch up", "brief", "summary", "what happened", "needs me"],
+        icon: <NewspaperIcon className={ITEM_ICON_CLASS} />,
+        shortcutCommand: "chat.catchUp",
+        run: async () => requestThreadCatchUpAction("catch-up", routeServerThreadKey),
+      });
+    }
   }
 
   if (selectedCitation !== null) {

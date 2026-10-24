@@ -23,7 +23,18 @@ import {
 import * as Haptics from "expo-haptics";
 import { KeyboardAwareLegendList } from "@legendapp/list/keyboard";
 import { useViewabilityAmount, type LegendListRef } from "@legendapp/list/react-native";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedThreadKey as threadRefKey,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
+import {
+  EMPTY_SINCE_LAST_VISIT_MARKER,
+  isUserAuthoredMessage,
+  nextJumpToMyLastMessageStep,
+  nextSinceLastVisitMarker,
+  sinceLastVisitIndex,
+  subscribeThreadCatchUpAction,
+} from "@t3tools/client-runtime/state/thread-catch-up";
 import type { HandoffEndpoints } from "@t3tools/client-runtime/handoff";
 import {
   agentMessageSenderLabel,
@@ -352,6 +363,8 @@ export interface ThreadFeedProps {
   readonly contentTopInset?: number;
   readonly contentBottomInset?: number;
   readonly historyControls?: ThreadFeedHistoryControls;
+  /** The thread's last visit, for the "Since your last visit" divider; undefined while unknown. */
+  readonly lastVisitedAt?: string | null;
   readonly contentMaxWidth?: number;
   readonly contentSideInsets?: { readonly left: number; readonly right: number };
   readonly layoutVariant?: LayoutVariant;
@@ -2627,6 +2640,75 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   }, [feedThreadKey, reportHeaderMaterialVisibility]);
 
   const presentedFeed = useThreadFeedPresentation(props, expandedTurnIds, expandedWorkGroups);
+  const [visitMarker, setVisitMarker] = useState(EMPTY_SINCE_LAST_VISIT_MARKER);
+  const nextVisitMarker = nextSinceLastVisitMarker(visitMarker, {
+    threadKey: feedThreadKey,
+    lastVisitedAt: props.lastVisitedAt,
+    items: props.feed,
+    itemsReady: props.contentPresentation.kind === "ready" && props.feed.length > 0,
+  });
+  if (nextVisitMarker !== visitMarker) setVisitMarker(nextVisitMarker);
+  const sinceLastVisitRowId =
+    presentedFeed[sinceLastVisitIndex(presentedFeed, nextVisitMarker.at)]?.id ?? null;
+  const jumpPagesRef = useRef<Set<string> | null>(null);
+  const tryJumpToMyLastMessage = useEffectEvent(
+    (feed: typeof presentedFeed, history: ThreadFeedHistoryControls | undefined) => {
+      const requestedPages = jumpPagesRef.current;
+      if (requestedPages === null) return;
+      const step = nextJumpToMyLastMessageStep({
+        index: feed.findLastIndex(
+          (entry) => entry.type === "message" && isUserAuthoredMessage(entry.message),
+        ),
+        oldestItemId: feed[0]?.id,
+        history,
+        requestedPages,
+      });
+      if (step.type === "wait") return;
+      if (step.type === "load") {
+        requestedPages.add(step.cursor);
+        history?.onLoadEarlier();
+        return;
+      }
+      jumpPagesRef.current = null;
+      if (step.type === "scroll") {
+        clearUserScrollSettle();
+        cancelReflow();
+        setEndFollow(false);
+        void listRef.current?.scrollToIndex({
+          index: step.index,
+          viewPosition: 0,
+          viewOffset: anchorTopInset + 8,
+          animated: true,
+        });
+      } else if (step.type === "failed") {
+        Dialog.alert("Could not load earlier activity", step.error);
+      } else {
+        Dialog.alert(
+          "No message from you here",
+          "You have not written in this thread yet, or it is too far back.",
+        );
+      }
+    },
+  );
+  const onJumpToMyLastMessage = useEffectEvent(() => {
+    jumpPagesRef.current = new Set();
+    tryJumpToMyLastMessage(presentedFeed, props.historyControls);
+  });
+  const jumpThreadKey = threadRefKey(scopeThreadRef(props.environmentId, props.threadId));
+  useEffect(() => {
+    const unsubscribe = subscribeThreadCatchUpAction("jump-to-my-last-message", jumpThreadKey, () =>
+      onJumpToMyLastMessage(),
+    );
+    return () => {
+      unsubscribe();
+      jumpPagesRef.current = null;
+    };
+  }, [jumpThreadKey]);
+  // Each loaded page re-renders the feed; keep going until the message is in it.
+  const jumpHistoryControls = props.historyControls;
+  useEffect(() => {
+    if (jumpPagesRef.current !== null) tryJumpToMyLastMessage(presentedFeed, jumpHistoryControls);
+  }, [presentedFeed, jumpHistoryControls]);
   const setupAnchorIndex = presentedFeed.findIndex(
     (entry) => entry.type === "message" && entry.message.role === "user",
   );
@@ -2947,6 +3029,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         workspaceRoot={props.workspaceRoot}
       >
         <ThreadMediaVisibility>
+          {info.item.id === sinceLastVisitRowId ? <SinceLastVisitDivider /> : null}
           {renderFeedEntry(info, {
             environmentId: props.environmentId,
             dispatchingMessageId: props.dispatchingMessageId,
@@ -3089,7 +3172,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
               endFollowEnabled && !disclosureToggleSettling ? false : maintainVisibleContentPosition
             }
             data={presentedFeed}
-            extraData={listAppearanceData}
+            extraData={{ ...listAppearanceData, sinceLastVisitRowId }}
             renderItem={renderItem}
             viewabilityConfig={THREAD_MEDIA_VIEWABILITY_CONFIG}
             keyExtractor={(entry) => entry.id}
@@ -3190,6 +3273,16 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     </PresentationSource>
   );
 });
+
+function SinceLastVisitDivider() {
+  return (
+    <View className="mb-3 flex-row items-center gap-3" accessibilityRole="text">
+      <View className="h-px flex-1 bg-primary/40" />
+      <Text className="font-sans text-xs text-primary-text">Since your last visit</Text>
+      <View className="h-px flex-1 bg-primary/40" />
+    </View>
+  );
+}
 
 function ThreadFeedLoadEarlierControl(props: ThreadFeedHistoryControls) {
   const theme = useUniwindTheme();

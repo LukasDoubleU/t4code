@@ -1,7 +1,10 @@
 import {
+  OrchestrationV2CatchUpThreadError,
+  OrchestrationV2CatchUpThreadInput,
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
+  OrchestrationV2ThreadCatchUp,
 } from "./orchestrationV2.ts";
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
 import {
@@ -1694,6 +1697,12 @@ const WsOrchestrationV2SearchThreadStreamRpc = Rpc.make(
   },
 );
 
+const WsOrchestrationV2CatchUpThreadRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS.catchUpThread, {
+  payload: OrchestrationV2CatchUpThreadInput,
+  success: OrchestrationV2ThreadCatchUp,
+  error: Schema.Union([OrchestrationV2CatchUpThreadError, EnvironmentAuthorizationError]),
+});
+
 const WsOrchestrationV2SearchThreadsRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS.searchThreads, {
   payload: OrchestrationSearchThreadsInput,
   success: OrchestrationSearchThreadsResult,
@@ -2111,6 +2120,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2GetFullThreadDiffRpc,
   WsOrchestrationV2SearchThreadsRpc,
   WsOrchestrationV2SearchThreadRpc,
+  WsOrchestrationV2CatchUpThreadRpc,
   WsOrchestrationV2SearchThreadStreamRpc,
   WsOrchestrationV2GetArchivedShellSnapshotRpc,
   WsOrchestrationV2GetThreadProjectionRpc,

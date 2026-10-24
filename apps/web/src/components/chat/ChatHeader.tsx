@@ -29,6 +29,7 @@ import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { useQuietThreadShell } from "../../state/entities";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { ThreadCatchUpControls } from "./ThreadCatchUp";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -428,6 +429,9 @@ export const ChatHeader = memo(function ChatHeader({
           ) : null}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
+      {isServerThread && renamingTitle === null ? (
+        <ThreadCatchUpControls threadRef={activeThreadRef} />
+      ) : null}
     </div>
   );
 });

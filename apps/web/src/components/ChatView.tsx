@@ -353,6 +353,10 @@ import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { observeResize } from "~/lib/observeResize";
 import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
+import { useThreadCatchUpAvailable } from "./chat/ThreadCatchUp";
+import { requestThreadCatchUpAction } from "@t3tools/client-runtime/state/thread-catch-up";
+import { resolveThreadLastVisitedAt } from "./Sidebar.logic";
+import { useUiStateStore } from "../uiStateStore";
 import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
 import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
@@ -487,6 +491,15 @@ export default function ChatView(props: ChatViewProps) {
           updatedAt: fallbackUpdatedAt,
           lastVisitedAt: fallbackLastVisitedAt,
         });
+  const localLastVisitedAt = useUiStateStore(
+    (store) => store.threadLastVisitedAtById[routeThreadKey],
+  );
+  // Undefined until the shell is known, so the timeline takes the visit from before this one.
+  const timelineLastVisitedAt =
+    serverThread === null
+      ? undefined
+      : (resolveThreadLastVisitedAt(serverThread.lastVisitedAt, localLastVisitedAt) ?? null);
+  const catchUpAvailable = useThreadCatchUpAvailable(environmentId);
   const promptRef = useRef("");
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
@@ -2803,6 +2816,14 @@ export default function ChatView(props: ChatViewProps) {
         }
         window.getSelection()?.removeAllRanges();
       },
+      "chat.jumpToMyLastMessage": ({ event }) => {
+        if (!isServerThread) return false;
+        if (!event.repeat) requestThreadCatchUpAction("jump-to-my-last-message", routeThreadKey);
+      },
+      "chat.catchUp": ({ event }) => {
+        if (!isServerThread || !catchUpAvailable) return false;
+        if (!event.repeat) requestThreadCatchUpAction("catch-up", routeThreadKey);
+      },
       "chat.goAhead": ({ event }) => {
         // The quiet projection leaves out a reply's time, so read the full one on demand.
         const projection =
@@ -3346,6 +3367,7 @@ export default function ChatView(props: ChatViewProps) {
               threadErrorBannerKey={threadErrorBannerKey}
               setThreadError={setThreadError}
               setThreadErrorBannerDismissTick={setThreadErrorBannerDismissTick}
+              catchUpThreadRef={isServerThread ? routeThreadRef : null}
             />
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">
               <ThreadTimeline
@@ -3357,6 +3379,7 @@ export default function ChatView(props: ChatViewProps) {
                 detailLoading={threadDetailLoading}
                 readyMarkdownCwd={gitCwd}
                 readyWorkspaceRoot={activeWorkspaceRoot ?? null}
+                lastVisitedAt={isServerThread ? timelineLastVisitedAt : null}
                 citationRequest={paintOnlyDisplayedTimeline ? null : citationRequest}
                 citationHistoryLoading={threadDetailLoading}
                 {...(!paintOnlyDisplayedTimeline

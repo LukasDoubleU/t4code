@@ -83,6 +83,7 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadFreshStart from "./memory/ThreadFreshStart.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
+import * as ThreadCatchUpService from "./orchestration-v2/ThreadCatchUpService.ts";
 import * as ThreadMemory from "./memory/ThreadMemory.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as UsageService from "./usage/UsageService.ts";
@@ -357,6 +358,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(ThreadManagement.ThreadManagementService)({}),
   Layer.mock(ThreadMemory.ThreadMemory)({ directory: "/unused" }),
   Layer.mock(ThreadSearch.ThreadSearch)({}),
+  Layer.mock(ThreadCatchUpService.ThreadCatchUpService)({}),
   Layer.mock(UsageService.UsageService)({}),
   Layer.mock(VcsProvisioningService.VcsProvisioningService)({}),
   Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),

@@ -76,7 +76,8 @@ const [from, to] = process.argv.slice(1);
 const db = new DatabaseSync(from, { readOnly: true });
 // One step copies every page in a single read transaction, so the copy is
 // consistent while T3 Code keeps writing. Smaller steps restart on each write.
-backup(db, to, { rate: -1 }).finally(() => db.close());
+// Node 24.22 rejects SQLite's -1 (all pages), so ask for the most a rate allows.
+backup(db, to, { rate: 2147483647 }).finally(() => db.close());
 '@ $from, $to | Out-Null
 }
 

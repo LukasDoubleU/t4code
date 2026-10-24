@@ -3089,6 +3089,7 @@ const make = Effect.gen(function* () {
             type: "thread.stop",
             commandId,
             threadId: input.threadId,
+            stopDelegatedTasks: false,
             ...(input.reason === undefined ? {} : { reason: input.reason }),
           })
           .pipe(Effect.catch(stopFailed));

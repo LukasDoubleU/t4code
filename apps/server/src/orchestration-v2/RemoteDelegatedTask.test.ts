@@ -17,6 +17,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EventSink from "./EventSink.ts";
@@ -289,6 +290,39 @@ it.layer(layerTest)("a delegated task in a linked environment", (it) => {
       assert.equal(settled.status, "completed");
       assert.equal(settled.remoteChild?.stoppedThere, true);
       assert.deepEqual(yield* openFor, []);
+    }),
+  );
+
+  it.effect("is stopped with its parent's Stop", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const sql = yield* SqlClient.SqlClient;
+      const parent = yield* seedLiveParent("parent-stop");
+      yield* orchestrator.dispatch({
+        type: "delegated_task.remote.request",
+        commandId: CommandId.make("command:remote-delegate:parent-stop"),
+        parentThreadId: parent.threadId,
+        parentRunId: parent.runId,
+        parentNodeId: parent.rootNodeId,
+        task: "Run a check.",
+        driver: ProviderDriverKind.make("remote"),
+        modelSelection,
+        remoteChild,
+      });
+      const stopCommandId = CommandId.make("command:stop:parent-stop");
+      yield* orchestrator.dispatch({
+        type: "thread.stop",
+        commandId: stopCommandId,
+        threadId: parent.threadId,
+      });
+      const walks = yield* sql<{ readonly command_id: string }>`
+        SELECT command_id FROM orchestration_v2_effect_outbox
+        WHERE effect_type = 'delegated-tasks.stop' AND thread_id = ${parent.threadId}
+      `;
+      assert.deepEqual(
+        walks.map((row) => row.command_id),
+        [stopCommandId],
+      );
     }),
   );
 

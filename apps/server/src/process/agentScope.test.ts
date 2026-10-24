@@ -334,3 +334,30 @@ describe("AgentScope service", () => {
     ),
   );
 });
+
+describe("agent memory pressure", () => {
+  it.effect("reads how hard the shared slice's memory limit holds agents back", () =>
+    withFakeSystemd(({ scope, units, cgroupRoot }) =>
+      Effect.gen(function* () {
+        expect(yield* scope.memoryPressure!).toBeUndefined();
+        const controlGroup = "/app.slice/app-t3code.slice/app-t3code-agents.slice";
+        NodeFS.mkdirSync(NodePath.join(cgroupRoot, controlGroup), { recursive: true });
+        NodeFS.writeFileSync(
+          NodePath.join(cgroupRoot, controlGroup, "memory.events"),
+          "low 0\nhigh 2817403\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+        );
+        NodeFS.writeFileSync(
+          NodePath.join(cgroupRoot, controlGroup, "memory.pressure"),
+          "some avg10=61.20 avg60=55.02 avg300=48.91 total=91234567\n" +
+            "full avg10=38.75 avg60=41.10 avg300=40.02 total=81234567\n",
+        );
+        units.set("app-t3code-agents.slice", {
+          activeState: "active",
+          result: "success",
+          controlGroup,
+        });
+        expect(yield* scope.memoryPressure!).toEqual({ highEvents: 2817403, fullAvg10: 38.75 });
+      }),
+    ),
+  );
+});

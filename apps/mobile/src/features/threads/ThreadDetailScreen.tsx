@@ -166,6 +166,7 @@ import {
   ThreadComposer,
 } from "./ThreadComposer";
 import { ComposerPopoverHost } from "./ComposerPopoverHost";
+import { ThreadCatchUpCard } from "./ThreadCatchUp";
 import { ThreadFeed, type ThreadFeedHistoryControls } from "./ThreadFeed";
 import { useThreadTurnSubagents } from "./ThreadAgentsSheet";
 import { ComposerQueuedEditBanner } from "./ComposerQueuedEdit";
@@ -1386,6 +1387,7 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
               }
               contentMaxWidth={contentMaxWidth}
               historyControls={props.historyControls}
+              lastVisitedAt={props.selectedThread.lastVisitedAt}
               contentSideInsets={nativeMetrics?.safeArea}
               layoutVariant={layoutVariant}
               usesAutomaticContentInsets={props.usesAutomaticContentInsets}
@@ -1399,6 +1401,14 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
       ) : (
         <View className="flex-1" />
       )}
+
+      {showContent && !props.draftMode ? (
+        <ThreadCatchUpCard
+          environmentId={props.environmentId}
+          thread={props.selectedThread}
+          top={navigationHeaderHeight + 8}
+        />
+      ) : null}
 
       {showContent ? (
         <ThreadBrowserFloat

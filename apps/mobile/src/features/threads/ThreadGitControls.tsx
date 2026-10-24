@@ -111,6 +111,8 @@ type ThreadGitControlsProps = ThreadGitMenuProps & {
   readonly onOpenTerminal: (terminalId?: string | null) => void;
   readonly onOpenNewTerminal: () => void;
   readonly onRunProjectScript: (script: ProjectScript) => Promise<void>;
+  /** Other thread menus that share this header toolbar. */
+  readonly extraMenus?: ReadonlyArray<AppBarMenu>;
 };
 
 function useThreadGitControlModel(props: ThreadGitMenuProps) {
@@ -505,6 +507,7 @@ export function ThreadGitControls(props: ThreadGitControlsProps) {
         />
       ) : null}
       {showActionControls ? createNativeHeaderMenu(threadGitMenuDefinition(props, model)) : null}
+      {showActionControls ? props.extraMenus?.map(createNativeHeaderMenu) : null}
     </Toolbar>
   );
 }

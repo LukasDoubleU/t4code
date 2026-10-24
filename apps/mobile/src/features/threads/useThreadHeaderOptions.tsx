@@ -9,6 +9,11 @@ import { useNativeWorkspaceColumnsSupported } from "../../native/NativeWorkspace
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import {
+  threadCatchUpAppBarMenu,
+  threadCatchUpHeaderItem,
+  type ThreadCatchUpHeader,
+} from "./ThreadCatchUp";
+import {
   ThreadGitControls,
   useThreadGitCenterHeaderItems,
   useThreadGitRightHeaderItems,
@@ -24,6 +29,7 @@ export function useThreadHeaderOptions(props: {
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
   readonly onReturnToThread?: () => void;
   readonly draft?: boolean;
+  readonly catchUp?: ThreadCatchUpHeader;
 }) {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
   const deviceType = useDeviceType();
@@ -33,6 +39,15 @@ export function useThreadHeaderOptions(props: {
   const sidebarHeaderItem = useWorkspaceSidebarHeaderItem();
   const threadCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
   const compactRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
+  const catchUpThreadKey = props.catchUp?.threadKey ?? null;
+  const catchUpAvailable = props.catchUp?.catchUpAvailable ?? false;
+  const catchUpHeaderItems = useMemo<NativeHeaderItems>(
+    () =>
+      catchUpThreadKey === null
+        ? []
+        : [threadCatchUpHeaderItem({ threadKey: catchUpThreadKey, catchUpAvailable })],
+    [catchUpThreadKey, catchUpAvailable],
+  );
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [
       ...(!usesDuoHeader
@@ -95,8 +110,12 @@ export function useThreadHeaderOptions(props: {
         ? undefined
         : () => compactHomeHeaderItems,
     // The workspace navigator adds compose to the Duo detail column's bar.
-    unstable_headerRightItems: () =>
-      usesDuoHeader || layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems,
+    unstable_headerRightItems: () => [
+      ...(usesDuoHeader || layout.usesSplitView
+        ? threadCenterHeaderItems
+        : compactRightHeaderItems),
+      ...catchUpHeaderItems,
+    ],
     unstable_headerToolbarItems: () => [],
     unstable_headerSubtitle: props.usesNativeHeaderGlass ? props.subtitle : undefined,
     contentStyle: undefined,
@@ -112,6 +131,7 @@ export function useThreadHeaderOptions(props: {
       splitLeftHeaderItems,
       threadCenterHeaderItems,
       compactRightHeaderItems,
+      catchUpHeaderItems,
       usesDuoHeader,
       environmentId,
       threadId,
@@ -122,7 +142,11 @@ export function useThreadHeaderOptions(props: {
     sidebar: false,
     fallback:
       !layout.usesSplitView && !props.usesNativeHeaderGlass ? (
-        <ThreadGitControls {...props.gitControls} showActionControls />
+        <ThreadGitControls
+          {...props.gitControls}
+          showActionControls
+          {...(props.catchUp ? { extraMenus: [threadCatchUpAppBarMenu(props.catchUp)] } : {})}
+        />
       ) : null,
   };
 }

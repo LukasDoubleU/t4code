@@ -95,6 +95,7 @@ import {
 import { threadRouteIsHydrating } from "./thread-route-hydration";
 import { useThreadPromptLink } from "../prompt-links/useThreadPromptLink";
 import { ThreadHeader } from "./ThreadHeader";
+import { useThreadCatchUpHeader } from "./ThreadCatchUp";
 import {
   useAndroidWorkspaceBack,
   useWorkspaceBackNavigation,
@@ -297,6 +298,7 @@ function ThreadRouteContent(
     selectedThread?.environmentId ?? null,
     AuthTerminalOperateScope,
   );
+  const catchUpHeader = useThreadCatchUpHeader(selectedThread);
   const selectedThreadDetailState = props.selectedThreadDetailState;
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
   const { selectedThreadCwd } = useSelectedThreadWorktree();
@@ -942,6 +944,7 @@ function ThreadRouteContent(
               onOpenGitInspector={handleOpenGitInspector}
               onOpenFilesInspector={handleOpenFilesInspector}
               onReturnToThread={props.onReturnToThread}
+              {...(catchUpHeader ? { catchUp: catchUpHeader } : {})}
             />
           }
           canOperateThread={canOperateThread}

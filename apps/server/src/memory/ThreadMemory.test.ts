@@ -61,6 +61,28 @@ describe("ThreadMemory", () => {
     }).pipe(Effect.provide(layerWithSetting(true))),
   );
 
+  it.effect("asks a pinned thread to pick an icon only while it has none of its own", () =>
+    Effect.gen(function* () {
+      const memory = yield* ThreadMemory.ThreadMemory;
+      const pinnedAt = yield* DateTime.now;
+      const ask = "set one that fits its role, once, with t3_thread_update (action set_icon)";
+
+      const without = yield* memory.forTurn({ id: threadId, pinnedAt, lineage });
+      assert.include(without?.instructions ?? "", ask);
+      const cleared = yield* memory.forTurn({ id: threadId, pinnedAt, lineage, icon: null });
+      assert.include(cleared?.instructions ?? "", ask);
+
+      const withIcon = yield* memory.forTurn({
+        id: threadId,
+        pinnedAt,
+        lineage,
+        icon: { kind: "emoji", emoji: "🧪" },
+      });
+      assert.isDefined(withIcon);
+      assert.notInclude(withIcon?.instructions ?? "", "icon");
+    }).pipe(Effect.provide(layerWithSetting(true))),
+  );
+
   it.effect("gives no memory to a delegated task or subagent that copied its parent's pin", () =>
     Effect.gen(function* () {
       const memory = yield* ThreadMemory.ThreadMemory;

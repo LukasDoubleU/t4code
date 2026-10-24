@@ -35,8 +35,8 @@ export interface ThreadFreshStartInput {
 }
 
 /**
- * Continues a pinned thread in a new one with the same title, project, model
- * and modes. The new thread takes over the pin's place and the memory file;
+ * Continues a pinned thread in a new one with the same title, icon, project,
+ * model and modes. The new thread takes over the pin's place and the memory file;
  * the old one is settled, so exactly one thread writes the file.
  */
 export class ThreadFreshStart extends Context.Service<
@@ -98,6 +98,16 @@ const make = Effect.gen(function* () {
         creationSource: input.creationSource,
       })
       .pipe(Effect.mapError(fail("Could not create the thread to continue in.")));
+    if (thread.icon != null) {
+      yield* threads
+        .dispatch({
+          type: "thread.metadata.update",
+          commandId: step("icon"),
+          threadId: input.newThreadId,
+          icon: thread.icon,
+        })
+        .pipe(Effect.mapError(fail("Could not give the new thread the old one's icon.")));
+    }
     yield* threads
       .dispatch({
         type: "thread.metadata.update",

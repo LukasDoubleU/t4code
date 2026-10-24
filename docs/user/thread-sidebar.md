@@ -43,6 +43,20 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## The thread menu
+
+Right-click a thread in the sidebar, or click its title in the header, to open its menu. On web
+and desktop it keeps the everyday actions on top: pin, rename, change the icon, settle, snooze,
+mark unread, and copy the thread's ID. The rest, such as **Regenerate title**, **Open memory**,
+**Fresh start**, **Auto-settle behavior**, **Archive thread**, and **Delete**, is under **More**.
+
+### Give a thread its own icon
+
+A thread shows its project's icon unless it has one of its own. To tell threads in one project
+apart, for example your experts, choose **Change icon…** in the thread's menu and pick an icon,
+emoji, or monogram; on mobile, type or paste an emoji. **Use project icon** takes it back. The icon
+shows on every connected client, and agents can set it for the threads they manage.
+
 ## Experts: pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work. Pinned threads form the
@@ -76,6 +90,12 @@ A thread an expert's agent starts for one subject is one of its topics, and so i
 its subagents or topics starts. On web and desktop, the expert's row counts its open topics; click
 the count to show them nested under it, instead of in Background. A topic that needs you comes
 forward as usual, settled topics leave, and a topic's chat opens with a link back to its expert.
+
+To start a topic yourself, without interrupting the expert, choose **Start new topic** in the
+expert's menu, or **New topic of** in the command palette. It opens a new thread in the expert's
+project that starts with a link to the expert, so its agent can read up on the expert's work. Pick
+the model and workspace as for any new thread; once you send, it nests under the expert and
+notifies you like any thread you started.
 
 On web and desktop, unpinning, settling, snoozing, and archiving a thread each show
 a notification with **Undo** for five seconds. Undo restores the thread's previous
@@ -142,7 +162,7 @@ To generate a fresh title from the conversation, open a thread's menu and choose
 or when the connected environment needs a server update.
 
 Agents connected through T3 Code can use the same server-owned metadata workflow to
-rename a thread, regenerate its title, or link and unlink a pull request. These changes
+rename a thread, regenerate its title, set or clear its icon, or link and unlink a pull request. These changes
 appear on web, desktop, and mobile without requiring the originating browser to remain
 open.
 

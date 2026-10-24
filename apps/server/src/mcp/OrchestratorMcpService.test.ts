@@ -2121,7 +2121,7 @@ describe("OrchestratorMcpService provider resolution", () => {
         ),
       );
 
-    it.effect("hides a webhook URL from a caller below the task's modes", () =>
+    it.effect("hides a webhook URL and path from a caller below the task's modes", () =>
       Effect.gen(function* () {
         const upserted = yield* Ref.make(0);
         const listed = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
@@ -2138,9 +2138,34 @@ describe("OrchestratorMcpService provider resolution", () => {
           ),
         );
         assert.deepEqual(
-          listed.tasks.map((summary) => summary.webhookUrl),
-          [undefined, "https://t3.example/hooks/secret"],
+          listed.tasks.map((summary) => [summary.webhookUrl, summary.webhookPath]),
+          [
+            [undefined, undefined],
+            ["https://t3.example/hooks/secret", "/hooks/scheduled-task/secret"],
+          ],
         );
+      }),
+    );
+
+    it.effect("gives the local webhook path when there is no public URL", () =>
+      Effect.gen(function* () {
+        const upserted = yield* Ref.make(0);
+        const listed = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
+          Effect.flatMap((mcp) => mcp.listScheduledTasks(supervisedClient, { projectId })),
+          Effect.provide(
+            service(
+              [
+                task({
+                  webhook: { path: "/hooks/scheduled-task/secret", url: null, hasSecret: false },
+                }),
+              ],
+              null,
+              upserted,
+            ),
+          ),
+        );
+        assert.equal(listed.tasks[0]?.webhookUrl, undefined);
+        assert.equal(listed.tasks[0]?.webhookPath, "/hooks/scheduled-task/secret");
       }),
     );
 
@@ -2211,6 +2236,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           Effect.provide(service([task({})], null, upserted)),
         );
         assert.equal(listed.tasks[0]?.webhookUrl, undefined);
+        assert.equal(listed.tasks[0]?.webhookPath, undefined);
       }),
     );
 

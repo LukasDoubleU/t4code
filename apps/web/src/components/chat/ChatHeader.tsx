@@ -27,6 +27,7 @@ import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
+import { useQuietThreadShell } from "../../state/entities";
 import { ProjectFavicon } from "../ProjectFavicon";
 import {
   WorkspaceBreadcrumb,
@@ -87,6 +88,7 @@ export const ChatHeader = memo(function ChatHeader({
   const breadcrumbContainerRef = useRef<HTMLDivElement>(null);
   const [collapseParentTitle, setCollapseParentTitle] = useState(false);
   const activeThreadRef = scopeThreadRef(activeThreadEnvironmentId, activeThreadId);
+  const threadIcon = useQuietThreadShell(isServerThread ? activeThreadRef : null)?.icon ?? null;
   const canOperateThread = useEnvironmentScope(
     activeThreadEnvironmentId,
     AuthOrchestrationOperateScope,
@@ -380,6 +382,13 @@ export const ChatHeader = memo(function ChatHeader({
                   />
                 }
               >
+                {threadIcon !== null && activeProject ? (
+                  <ProjectFavicon
+                    project={activeProject}
+                    icon={threadIcon}
+                    className="size-3.5 shrink-0"
+                  />
+                ) : null}
                 <h2 className="min-w-0" dir={textDirection(activeThreadTitle)}>
                   <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
                 </h2>

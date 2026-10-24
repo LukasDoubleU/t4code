@@ -47,6 +47,7 @@ import {
   type FilesystemBrowseResult,
   SourceControlProviderKind,
   PRIMARY_LOCAL_ENVIRONMENT_ID,
+  isUserPinnedThread,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -95,6 +96,8 @@ import { useAtomValue } from "@effect/atom-react";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useStartThreadTopic } from "../hooks/useStartThreadTopic";
+import { ProjectFavicon } from "./ProjectFavicon";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import {
@@ -613,6 +616,8 @@ function OpenCommandPaletteDialog(props: {
     }
   };
   const threads = useThreadShells();
+  const serverConfigs = useServerConfigs();
+  const startThreadTopic = useStartThreadTopic();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const providersByEnvironment = useEnvironmentProviders();
   const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
@@ -1276,6 +1281,68 @@ function OpenCommandPaletteDialog(props: {
       ...(projectThreadItems.highlightedItemValue === null
         ? {}
         : { initialHighlightedItemValue: projectThreadItems.highlightedItemValue }),
+    });
+  }
+
+  const topicExperts = threads.filter(
+    (thread) =>
+      thread.archivedAt === null &&
+      isUserPinnedThread(thread) &&
+      serverConfigs.get(thread.environmentId)?.environment.capabilities.threadTopics === true,
+  );
+  const startTopicOf = (expert: (typeof topicExperts)[number]) => async () => {
+    await startThreadTopic(scopeThreadRef(expert.environmentId, expert.id));
+  };
+  const activeExpert =
+    activeThread === undefined || activeThread === null
+      ? undefined
+      : topicExperts.find(
+          (expert) =>
+            expert.environmentId === activeThread.environmentId && expert.id === activeThread.id,
+        );
+  if (activeExpert) {
+    actionItems.push({
+      kind: "action",
+      value: "action:new-topic",
+      searchTerms: ["new topic", "topic", "expert", activeExpert.title],
+      title: (
+        <>
+          New topic of <span className="font-semibold">{activeExpert.title}</span>
+        </>
+      ),
+      icon: <MessagesSquareIcon className={ITEM_ICON_CLASS} />,
+      run: startTopicOf(activeExpert),
+    });
+  }
+  if (topicExperts.length > 0) {
+    actionItems.push({
+      kind: "submenu",
+      value: "action:new-topic-of",
+      searchTerms: ["new topic", "topic", "expert", "pinned"],
+      title: "New topic of...",
+      icon: <MessagesSquareIcon className={ITEM_ICON_CLASS} />,
+      addonIcon: <MessagesSquareIcon className={ADDON_ICON_CLASS} />,
+      groups: [
+        {
+          value: "experts",
+          label: "Experts",
+          items: topicExperts.map((expert) => {
+            const project = projectByKey.get(`${expert.environmentId}:${expert.projectId}`);
+            return {
+              kind: "action" as const,
+              value: `new-topic-of:${expert.environmentId}:${expert.id}`,
+              searchTerms: [expert.title, project?.title ?? ""],
+              title: expert.title,
+              icon: project ? (
+                <ProjectFavicon project={project} icon={expert.icon} className={ITEM_ICON_CLASS} />
+              ) : (
+                <MessagesSquareIcon className={ITEM_ICON_CLASS} />
+              ),
+              run: startTopicOf(expert),
+            };
+          }),
+        },
+      ],
     });
   }
 

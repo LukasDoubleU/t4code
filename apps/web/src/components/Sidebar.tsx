@@ -15,6 +15,7 @@ import {
 } from "./chat/threadContextDrag";
 import { discardComposerDraft } from "../lib/discardComposerDraft";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
+import { requestThreadIcon } from "./ThreadIconDialog";
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
@@ -50,6 +51,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import {
   AuthOrchestrationOperateScope,
+  isUserPinnedThread,
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -112,8 +114,10 @@ import {
 import {
   useAcknowledgeThreadWoke,
   useDismissThreadAttention,
+  useSetThreadIcon,
   useThreadActions,
 } from "../hooks/useThreadActions";
+import { useStartThreadTopic } from "../hooks/useStartThreadTopic";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
@@ -2803,6 +2807,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const openThreadMemory = useOpenThreadMemory();
   const freshStartThread = useFreshStartThread();
   const openLinkedThread = useOpenLinkedThread();
+  const setThreadIcon = useSetThreadIcon();
+  const startThreadTopic = useStartThreadTopic();
   const handleThreadContextMenu = useStableCallback(
     (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
       void (async () => {
@@ -2869,6 +2875,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   }
                 : null,
               isPinned,
+              canStartTopic:
+                serverConfigs.get(thread.environmentId)?.environment.capabilities.threadTopics ===
+                  true && isUserPinnedThread(thread),
+              hasOwnIcon: thread.icon != null,
               needsYou: thread.attention != null,
               hasMemory: memoryPath !== null,
               continuedIn: thread.source.continuedIn !== undefined,
@@ -2891,6 +2901,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 pinning: supportsPinning,
                 titleRegeneration: supportsTitleRegeneration,
                 freshStart: readEnvironmentSupportsFreshStart(thread.environmentId),
+                icons:
+                  serverConfigs.get(thread.environmentId)?.environment.capabilities.threadIcons ===
+                  true,
               },
               snoozePresets,
             }),
@@ -3021,6 +3034,31 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           case "rename":
             startThreadRename(threadRef, thread.title);
             return;
+          case "change-icon": {
+            const icon = await requestThreadIcon({
+              current: thread.icon ?? null,
+              threadTitle: thread.title,
+            });
+            if (icon) setThreadIcon(threadRef, icon);
+            return;
+          }
+          case "use-project-icon":
+            setThreadIcon(threadRef, null);
+            return;
+          case "start-topic": {
+            const result = await settlePromise(() => startThreadTopic(threadRef));
+            if (result._tag === "Failure") {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Could not start a topic",
+                  description: error instanceof Error ? error.message : "An error occurred.",
+                }),
+              );
+            }
+            return;
+          }
           case "regenerate-title": {
             if (isRegeneratingTitle) return;
             const result = await updateThreadMetadata({

@@ -338,6 +338,20 @@ export function readEnvironmentSupportsTitleRegeneration(environmentId: Environm
   );
 }
 
+export function readEnvironmentSupportsThreadIcons(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadIcons === true
+  );
+}
+
+export function readEnvironmentSupportsThreadTopics(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadTopics === true
+  );
+}
+
 export function readEnvironmentSupportsPinning(environmentId: EnvironmentId): boolean {
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities

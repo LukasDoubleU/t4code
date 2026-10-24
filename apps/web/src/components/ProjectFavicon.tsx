@@ -1,4 +1,5 @@
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import type { ProjectIconOverride } from "@t3tools/contracts";
 import {
   getProjectFaviconResourceKey,
   isProjectFaviconFallbackUrl,
@@ -36,10 +37,13 @@ export type ProjectFaviconProject = Pick<
 >;
 export function ProjectFavicon(input: {
   project: ProjectFaviconProject;
+  /** A thread's own icon, shown instead of its project's where the icon stands for the thread. */
+  icon?: ProjectIconOverride | null | undefined;
   className?: string | undefined;
   fallbackIcon?: ComponentType<{ className?: string }>;
 }) {
   const { project } = input;
+  const projectIcon = input.icon ?? project.projectIcon;
   const src = useAtomValue(
     projectFaviconUrlAtom({
       environmentId: project.environmentId,
@@ -47,26 +51,26 @@ export function ProjectFavicon(input: {
       faviconPath: project.faviconPath,
     }),
   );
-  if (project.projectIcon?.kind === "monogram") {
+  if (projectIcon?.kind === "monogram") {
     return (
       <ProjectMonogram
-        text={project.projectIcon.text}
-        color={project.projectIcon.color}
+        text={projectIcon.text}
+        color={projectIcon.color}
         className={input.className}
       />
     );
   }
-  if (project.projectIcon?.kind === "emoji") {
+  if (projectIcon?.kind === "emoji") {
     return (
       <ProjectFaviconFallback
         className={input.className}
         icon={FolderCodeIcon}
-        emoji={project.projectIcon.emoji}
+        emoji={projectIcon.emoji}
       />
     );
   }
-  if (project.projectIcon?.kind === "lucide") {
-    const colorClassName = projectIconColorClassName(project.projectIcon.color);
+  if (projectIcon?.kind === "lucide") {
+    const colorClassName = projectIconColorClassName(projectIcon.color);
     const iconClassName = cn(
       "inline-flex size-3.5 shrink-0 items-center justify-center",
       colorClassName,
@@ -75,10 +79,7 @@ export function ProjectFavicon(input: {
     return (
       <span aria-hidden="true" className={iconClassName}>
         <Suspense fallback={<DynamicProjectIconFallback />}>
-          <LucideProjectIcon
-            name={project.projectIcon.name}
-            className={cn("size-full", colorClassName)}
-          />
+          <LucideProjectIcon name={projectIcon.name} className={cn("size-full", colorClassName)} />
         </Suspense>
       </span>
     );

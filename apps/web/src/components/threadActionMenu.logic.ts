@@ -4,6 +4,10 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
 export type ThreadActionMenuId =
   | "dismiss-attention"
   | "new-thread-on-branch"
+  | "start-topic"
+  | "change-icon"
+  | "use-project-icon"
+  | "more"
   | "filter-by-project"
   | "project-settings"
   | "pin"
@@ -81,6 +85,10 @@ export interface ThreadActionMenuState {
     readonly isActive: boolean;
   } | null;
   readonly isPinned: boolean;
+  /** An expert row on a server that files topics: the user can start one under it. */
+  readonly canStartTopic?: boolean;
+  /** The thread shows an icon of its own instead of its project's. */
+  readonly hasOwnIcon?: boolean;
   /** The thread's agent asked for the user. */
   readonly needsYou?: boolean;
   /** A pinned thread whose memory is active. */
@@ -111,6 +119,7 @@ export interface ThreadActionMenuState {
     readonly pinning: boolean;
     readonly titleRegeneration: boolean;
     readonly freshStart?: boolean;
+    readonly icons?: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
 }
@@ -122,6 +131,7 @@ export interface ThreadActionMenuState {
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
   return ![
     "new-thread-on-branch",
+    "more",
     "project-settings",
     "mark-unread",
     "open-memory",
@@ -136,92 +146,20 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
   ].includes(action);
 }
 
+/**
+ * Everyday actions stay on top; the rest waits under More. Entries that only show in a given
+ * state keep their places among the top ones.
+ */
 export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
-  const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
-    ...(state.needsYou === true
-      ? [{ id: "dismiss-attention" as const, label: "Dismiss Needs you", icon: "check" }]
-      : []),
-    ...(state.branch
-      ? [
-          {
-            id: "new-thread-on-branch" as const,
-            label: `New thread on ${state.branch}`,
-            icon: "message-square-plus",
-          },
-        ]
-      : []),
-    ...(state.supports.pinning
-      ? [
-          state.isPinned
-            ? { id: "unpin" as const, label: "Unpin thread", icon: "pin-off" }
-            : { id: "pin" as const, label: "Pin thread", icon: "pin" },
-        ]
-      : []),
+  const more: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
     ...(state.hasMemory === true
       ? [{ id: "open-memory" as const, label: "Open memory", icon: "brain" }]
       : []),
     ...(state.isPinned && state.supports.freshStart === true
       ? [{ id: "fresh-start" as const, label: "Fresh start", icon: "rotate-ccw" }]
       : []),
-    ...(state.continuedIn === true
-      ? [
-          {
-            id: "open-continued-in" as const,
-            label: "Continued in new thread",
-            icon: "arrow-right",
-          },
-        ]
-      : []),
-    ...(state.continuedFrom === true
-      ? [
-          {
-            id: "open-continued-from" as const,
-            label: "Continued from earlier thread",
-            icon: "arrow-left",
-          },
-        ]
-      : []),
-    ...(state.supports.settlement
-      ? [
-          state.isSettled
-            ? { id: "unsettle" as const, label: "Un-settle thread", icon: "circle-check" }
-            : { id: "settle" as const, label: "Settle thread", icon: "circle-check" },
-        ]
-      : []),
-    ...(state.supports.snooze
-      ? [
-          state.isSnoozed
-            ? { id: "unsnooze" as const, label: "Wake thread", icon: "clock" }
-            : {
-                id: "snooze" as const,
-                label: "Snooze",
-                icon: "clock",
-                disabled: !state.canSnoozeNow,
-                children: [
-                  ...state.snoozePresets.map((preset) => ({
-                    id: `snooze:${preset.id}` as const,
-                    label: `${preset.label} (${preset.whenLabel})`,
-                  })),
-                  { id: "snooze:custom" as const, label: "Custom…", separatorBefore: true },
-                ],
-              },
-        ]
-      : []),
-    ...(state.background?.placement === "background"
-      ? [
-          {
-            id: "move-to-background" as const,
-            label: "Move to background",
-            icon: "send-to-back",
-            disabled: !state.background.available,
-          },
-        ]
-      : state.background?.placement === "front"
-        ? [{ id: "bring-to-front" as const, label: "Bring to front", icon: "bring-to-front" }]
-        : []),
-    { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },
     ...(state.supports.titleRegeneration
       ? [
           {
@@ -232,7 +170,6 @@ export function buildThreadActionMenuItems(
           },
         ]
       : []),
-    { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
     ...(state.projectFilter
       ? [
           {
@@ -290,13 +227,11 @@ export function buildThreadActionMenuItems(
       id: "copy",
       label: "Copy",
       icon: "copy",
-      separatorBefore: true,
       children: [
         { id: "copy-path", label: "Path", icon: "folder" },
         ...(state.branch
           ? [{ id: "copy-branch" as const, label: "Branch", icon: "git-branch" }]
           : []),
-        { id: "copy-thread-id", label: "Thread ID", icon: "hash" },
       ],
     },
     { id: "project-settings", label: "Project settings", icon: "settings" },
@@ -314,17 +249,114 @@ export function buildThreadActionMenuItems(
       icon: "trash",
     },
   ];
-  return state.canOperate
-    ? items
-    : items.map((item) =>
-        threadActionRequiresOperate(item.id)
-          ? {
-              ...item,
-              disabled: true,
-              ...(item.children
-                ? { children: item.children.map((child) => ({ ...child, disabled: true })) }
-                : {}),
-            }
-          : item,
-      );
+  const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
+    ...(state.needsYou === true
+      ? [{ id: "dismiss-attention" as const, label: "Dismiss Needs you", icon: "check" }]
+      : []),
+    ...(state.branch
+      ? [
+          {
+            id: "new-thread-on-branch" as const,
+            label: `New thread on ${state.branch}`,
+            icon: "message-square-plus",
+          },
+        ]
+      : []),
+    ...(state.canStartTopic === true
+      ? [{ id: "start-topic" as const, label: "Start new topic", icon: "messages-square" }]
+      : []),
+    ...(state.supports.pinning
+      ? [
+          state.isPinned
+            ? { id: "unpin" as const, label: "Unpin thread", icon: "pin-off" }
+            : { id: "pin" as const, label: "Pin thread", icon: "pin" },
+        ]
+      : []),
+    ...(state.continuedIn === true
+      ? [
+          {
+            id: "open-continued-in" as const,
+            label: "Continued in new thread",
+            icon: "arrow-right",
+          },
+        ]
+      : []),
+    ...(state.continuedFrom === true
+      ? [
+          {
+            id: "open-continued-from" as const,
+            label: "Continued from earlier thread",
+            icon: "arrow-left",
+          },
+        ]
+      : []),
+    { id: "rename", label: "Rename thread", icon: "pencil" },
+    ...(state.supports.icons === true
+      ? [
+          { id: "change-icon" as const, label: "Change icon…", icon: "smile" },
+          ...(state.hasOwnIcon === true
+            ? [{ id: "use-project-icon" as const, label: "Use project icon", icon: "folder" }]
+            : []),
+        ]
+      : []),
+    ...(state.supports.settlement
+      ? [
+          state.isSettled
+            ? { id: "unsettle" as const, label: "Un-settle thread", icon: "circle-check" }
+            : { id: "settle" as const, label: "Settle thread", icon: "circle-check" },
+        ]
+      : []),
+    ...(state.supports.snooze
+      ? [
+          state.isSnoozed
+            ? { id: "unsnooze" as const, label: "Wake thread", icon: "clock" }
+            : {
+                id: "snooze" as const,
+                label: "Snooze",
+                icon: "clock",
+                disabled: !state.canSnoozeNow,
+                children: [
+                  ...state.snoozePresets.map((preset) => ({
+                    id: `snooze:${preset.id}` as const,
+                    label: `${preset.label} (${preset.whenLabel})`,
+                  })),
+                  { id: "snooze:custom" as const, label: "Custom…", separatorBefore: true },
+                ],
+              },
+        ]
+      : []),
+    ...(state.background?.placement === "background"
+      ? [
+          {
+            id: "move-to-background" as const,
+            label: "Move to background",
+            icon: "send-to-back",
+            disabled: !state.background.available,
+          },
+        ]
+      : state.background?.placement === "front"
+        ? [{ id: "bring-to-front" as const, label: "Bring to front", icon: "bring-to-front" }]
+        : []),
+    { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
+    { id: "copy-thread-id", label: "Copy thread ID", icon: "hash" },
+    { id: "more", label: "More", icon: "ellipsis", separatorBefore: true, children: more },
+  ];
+  return state.canOperate ? items : items.map(disableOperations);
+}
+
+function disableOperations(
+  item: ContextMenuItem<ThreadActionMenuId>,
+): ContextMenuItem<ThreadActionMenuId> {
+  if (!threadActionRequiresOperate(item.id)) {
+    return item.children ? { ...item, children: item.children.map(disableOperations) } : item;
+  }
+  return {
+    ...item,
+    disabled: true,
+    ...(item.children
+      ? {
+          children: item.children.map((child) => ({ ...disableOperations(child), disabled: true })),
+        }
+      : {}),
+  };
 }

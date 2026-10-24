@@ -314,7 +314,9 @@ function SidebarThreadTooltip({
         ) : null}
         {projectDisplayName ? (
           <div className="flex min-w-0 items-center gap-2">
-            {project ? <ProjectFavicon project={project} className="size-3 shrink-0" /> : null}
+            {project ? (
+              <ProjectFavicon project={project} icon={thread.icon} className="size-3 shrink-0" />
+            ) : null}
             <div className="min-w-0 truncate text-foreground/75">{projectDisplayName}</div>
           </div>
         ) : null}
@@ -1369,7 +1371,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           >
             {accessibleTitle}
             {props.project ? (
-              <ProjectFavicon project={props.project} className="mr-0.5 size-4 shrink-0" />
+              <ProjectFavicon
+                project={props.project}
+                icon={thread.icon}
+                className="mr-0.5 size-4 shrink-0"
+              />
             ) : null}
             {draftIndicator}
             {title}
@@ -1458,7 +1464,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 )}
               >
                 {props.project ? (
-                  <ProjectFavicon project={props.project} className="size-4" />
+                  <ProjectFavicon project={props.project} icon={thread.icon} className="size-4" />
                 ) : null}
               </span>
             )}
@@ -1627,7 +1633,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
               {props.project ? (
-                <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+                <ProjectFavicon
+                  project={props.project}
+                  icon={thread.icon}
+                  className="size-4 shrink-0"
+                />
               ) : null}
               {/* Left of the status slot, the pin would slide when hover swaps the
                 label for the wider row controls. */}
@@ -1919,6 +1929,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
           {props.project ? (
             <ProjectFavicon
               project={props.project}
+              icon={thread.icon}
               className={cn(
                 "size-4 shrink-0 transition-opacity",
                 props.isSettled &&

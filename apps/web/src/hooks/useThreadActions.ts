@@ -12,6 +12,7 @@ import {
   AuthSourceControlWriteScope,
   EnvironmentAuthorizationError,
   EnvironmentId,
+  type ProjectIconOverride,
   type ScopedThreadRef,
   ThreadId,
   sessionGrantsScope,
@@ -229,6 +230,17 @@ export function useAcknowledgeThreadWoke() {
       return;
     }
     markThreadVisited(scopedThreadKey(target), wokeAt);
+  };
+}
+
+/** Gives a thread its own icon, or with null shows its project's again. */
+export function useSetThreadIcon() {
+  const setIcon = useAtomCommand(threadEnvironment.setIcon, "Change icon");
+  return (target: ScopedThreadRef, icon: ProjectIconOverride | null) => {
+    void setIcon({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, icon },
+    });
   };
 }
 

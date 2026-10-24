@@ -35,6 +35,12 @@ function recordEffect(action: string) {
 }
 
 vi.mock("../components/CustomSnoozeDialog", () => ({ requestCustomSnooze: vi.fn() }));
+vi.mock("../components/ThreadIconDialog", () => ({
+  requestThreadIcon: async () => ({ kind: "emoji", emoji: "x" }),
+}));
+vi.mock("./useStartThreadTopic", () => ({
+  useStartThreadTopic: () => async () => recordEffect("start-topic"),
+}));
 vi.mock("react", () => ({
   useCallback: (callback: unknown) => callback,
   useMemo: (factory: () => unknown) => factory(),
@@ -52,6 +58,8 @@ vi.mock("../state/entities", () => ({
   readEnvironmentSupportsPinning: () => true,
   readEnvironmentSupportsSettlement: () => true,
   readEnvironmentSupportsSnooze: () => true,
+  readEnvironmentSupportsThreadIcons: () => true,
+  readEnvironmentSupportsThreadTopics: () => true,
   readEnvironmentSupportsTitleRegeneration: () => true,
   readThreadShell: () => ({
     id: "thread",
@@ -148,6 +156,8 @@ vi.mock("./useSettings", () => ({
 }));
 vi.mock("./useThreadActions", () => ({
   useDismissThreadAttention: () => () => recordEffect("dismiss-attention"),
+  useSetThreadIcon: () => (_target: unknown, icon: unknown) =>
+    recordEffect(icon === null ? "use-project-icon" : "change-icon"),
   useThreadActions: () =>
     Object.fromEntries(
       [
@@ -192,17 +202,35 @@ beforeEach(() => {
 });
 
 describe("thread menu permissions", () => {
-  it.each(["rename", "regenerate-title", "delete", "pin", "settle", "archive"] as const)(
-    "%s rechecks after the native menu closes",
+  it.each([
+    "rename",
+    "regenerate-title",
+    "delete",
+    "pin",
+    "settle",
+    "archive",
+    "start-topic",
+    "change-icon",
+    "use-project-icon",
+  ] as const)("%s rechecks after the native menu closes", async (action) => {
+    state.granted.add("secondary");
+    const choice = deferred<ThreadActionMenuId | null>();
+    state.show.mockReturnValue(choice.promise);
+    createMenu().openMenu(position);
+    state.granted.delete("secondary");
+    choice.resolve(action);
+    await state.completed.promise;
+    expect(state.effects).toEqual([]);
+  });
+
+  it.each(["start-topic", "change-icon", "use-project-icon"] as const)(
+    "runs %s with permission",
     async (action) => {
       state.granted.add("secondary");
-      const choice = deferred<ThreadActionMenuId | null>();
-      state.show.mockReturnValue(choice.promise);
+      state.show.mockResolvedValue(action);
       createMenu().openMenu(position);
-      state.granted.delete("secondary");
-      choice.resolve(action);
       await state.completed.promise;
-      expect(state.effects).toEqual([]);
+      expect(state.effects).toEqual([action]);
     },
   );
 

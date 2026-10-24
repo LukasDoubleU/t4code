@@ -846,6 +846,46 @@ describe("composerDraftStore project draft thread mapping", () => {
     expect(store.getComposerDraft(draftId)?.prompt).toBe("keep this prompt");
   });
 
+  it("keeps an expert's topic on its draft until another project or a plain new thread", () => {
+    const store = useComposerDraftStore.getState();
+    const expert = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-expert"));
+    store.setLogicalProjectDraftThreadId(scopedProjectKey(projectRef), projectRef, draftId, {
+      threadId,
+      topicOf: expert,
+    });
+    store.setDraftThreadContext(draftId, { branch: "feature/topic" });
+    expect(useComposerDraftStore.getState().getDraftSession(draftId)?.topicOf).toEqual(expert);
+
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+    const hydrated = persistApi
+      .getOptions()
+      .merge(
+        partializeComposerDraftStoreState(useComposerDraftStore.getState()),
+        useComposerDraftStore.getState(),
+      );
+    expect(hydrated.draftThreadsByThreadKey[draftId]?.topicOf).toEqual(expert);
+
+    store.setDraftThreadContext(draftId, { projectRef: otherProjectRef });
+    expect(useComposerDraftStore.getState().getDraftSession(draftId)?.topicOf).toBeUndefined();
+
+    store.setLogicalProjectDraftThreadId(scopedProjectKey(projectRef), projectRef, draftId, {
+      threadId,
+      topicOf: expert,
+    });
+    store.setLogicalProjectDraftThreadId(scopedProjectKey(projectRef), projectRef, draftId, {
+      threadId,
+      topicOf: null,
+    });
+    expect(useComposerDraftStore.getState().getDraftSession(draftId)?.topicOf).toBeUndefined();
+  });
+
   it("rotates a failed bootstrap thread id without losing its draft", () => {
     const store = useComposerDraftStore.getState();
     const retryThreadId = ThreadId.make("thread-retry");

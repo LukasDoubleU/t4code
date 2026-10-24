@@ -1200,6 +1200,10 @@ export function useComposerSend(input: ComposerSendInput) {
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
                       createdAt: activeThread.createdAt,
+                      // A draft sent to another environment than its expert's is no topic.
+                      ...(draftThread?.topicOf?.environmentId === environmentId
+                        ? { topicOf: draftThread.topicOf.threadId }
+                        : {}),
                     },
                   }
                 : {}),

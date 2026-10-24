@@ -18,9 +18,10 @@ It is based on upstream `v0.1.2` and follows upstream releases. Releases have Wi
 
 **Long-lived threads**
 
-- **Experts.** Pinned threads form a collapsible Experts section that gathers them from every connected machine, one line per expert with the details on hover. The threads an expert's agent starts nest under it as its topics. Work an expert does on its own stays quiet, and an expert that needs you shows **Needs you** with its reason. [Experts](./docs/user/thread-sidebar.md#experts-pin-and-reorder-threads)
+- **Experts.** Pinned threads form a collapsible Experts section that gathers them from every connected machine, one line per expert with the details on hover. The threads an expert's agent starts nest under it as its topics, and **Start new topic** in its menu starts one yourself without interrupting it. Work an expert does on its own stays quiet, and an expert that needs you shows **Needs you** with its reason. [Experts](./docs/user/thread-sidebar.md#experts-pin-and-reorder-threads)
 - **Experts feed.** One list with every expert's latest replies, labeled with expert, machine and status, and a **Reply** that sends into that expert's own thread. [Experts feed](./docs/user/thread-sidebar.md#follow-every-expert-in-one-feed)
 - **Memory for pinned threads.** A pinned thread keeps a memory file that its agent reads after every compaction and keeps current. A brain icon on the expert's row shows it; **Open memory** opens the file. [Keep a memory](./docs/user/thread-sidebar.md#keep-a-memory-for-a-pinned-thread)
+- **Thread icons.** Give a thread its own emoji or icon instead of its project's with **Change icon…** in its menu; agents can set one too. [Give a thread its own icon](./docs/user/thread-sidebar.md#give-a-thread-its-own-icon)
 - **Background section.** Threads that agents start on their own wait there and come forward only while they need you: a question, an approval or a failed run. The **Status** sort puts the same things first. [Keep agents' threads in the background](./docs/user/thread-sidebar.md#keep-agents-threads-in-the-background)
 - **Quiet agent turns.** A turn that another agent started doesn't notify you when it finishes; its questions, approvals and failures still do. An agent waiting on another thread wakes as soon as a message for it arrives.
 - **Sidebar.** Group threads by project, sort by last message, both in one menu; compact cards; the Background and Settled shelves stay at the bottom. [Sort and group threads](./docs/user/thread-sidebar.md#sort-and-group-threads)
@@ -28,6 +29,7 @@ It is based on upstream `v0.1.2` and follows upstream releases. Releases have Wi
 **Several accounts**
 
 - **Use next.** **Usage → Limits** ranks your Claude and Codex accounts by the room they have left, and new threads start on the recommended one. Agents see the same ranking in `orchestrator_capabilities`. [Track subscription limits](./docs/user/usage.md#track-subscription-limits)
+- **Failover at the usage limit.** A turn that stops on an account's limit continues once on the recommended account, with the same model and options. **At the usage limit** in the thread menu keeps a thread on its account. [Track subscription limits](./docs/user/usage.md#track-subscription-limits)
 
 **Chat**
 
@@ -36,6 +38,7 @@ It is based on upstream `v0.1.2` and follows upstream releases. Releases have Wi
 - **Reactions.** React 👍 to a reply, or 👍 or 👎 to a passage you select in it, without starting a turn; the agent learns it with your next message. **Go ahead** approves the reply or the passage and starts a turn. [React to a response](./docs/user/composer.md#react-to-a-response)
 - A message from an agent on a linked machine folds into one line that names the sending thread and its machine. [Link another environment](./docs/user/remote-access.md#link-another-environment)
 - The new-thread picker (<kbd>Ctrl</kbd>+<kbd>N</kbd>) lists projects by name.
+- Classic emoticons like `:D` show as emoji; the message itself keeps what you typed.
 
 **Windows desktop**
 

@@ -52,6 +52,7 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
               threadRef={ctx.threadRef ?? undefined}
               isStreaming={Boolean(row.message.streaming)}
               lineBreaks={shouldPreserveAssistantLineBreaks(messageText)}
+              emoticons
               skills={ctx.skills}
               headingLevelOffset={MESSAGE_HEADING_LEVEL}
               onUseArtifactTemplate={ctx.onUseArtifactTemplate}

@@ -202,6 +202,7 @@ import { MarkdownExternalLinkContent } from "./chat/MarkdownExternalLink";
 import { MarkdownFileLink } from "./chat/MarkdownFileLink";
 import { canUseMarkdownFileShellActions } from "./chat/MarkdownFileLink.logic";
 import { handleMarkdownFragmentClick, rehypeHeadingIds } from "./chat/markdownFragments";
+import { rehypeEmoticons } from "./chat/markdownEmoticons";
 import { rehypeTextDirection } from "./chat/markdownTextDirection";
 import { hastHasText, hastPlainTextDeep, plainHastText } from "./chat/markdownHast.logic";
 import {
@@ -230,6 +231,8 @@ interface ChatMarkdownProps {
   className?: string;
   lineBreaks?: boolean;
   parseRawHtml?: boolean;
+  /** Shows classic emoticons such as `:D` as emoji; for chat messages only. */
+  emoticons?: boolean;
   onUseArtifactTemplate?: ((template: CodexArtifactTemplate) => void) | undefined;
   onRunShellCommand?: ((command: string) => void) | undefined;
   imageBaseDir?: string | undefined;
@@ -391,6 +394,16 @@ const CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS = [
 const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS = [
   rehypeHeadingIds,
   rehypeTextDirection,
+] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
+
+const CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS_WITH_EMOTICONS = [
+  ...CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS,
+  rehypeEmoticons,
+] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
+
+const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS_WITH_EMOTICONS = [
+  ...CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS,
+  rehypeEmoticons,
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
 const NO_MARKDOWN_EDITORS: ReadonlyArray<EditorId> = [];
@@ -1567,6 +1580,7 @@ function ChatMarkdown({
   inline = false,
   lineBreaks = false,
   parseRawHtml = true,
+  emoticons = false,
   extraRemarkPlugins = EMPTY_REMARK_PLUGINS,
   ...props
 }: ChatMarkdownProps) {
@@ -1612,8 +1626,12 @@ function ChatMarkdown({
             remarkPlugins={remarkPlugins}
             rehypePlugins={
               parseRawHtml
-                ? CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS
-                : CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
+                ? emoticons
+                  ? CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS_WITH_EMOTICONS
+                  : CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS
+                : emoticons
+                  ? CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS_WITH_EMOTICONS
+                  : CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
             }
             skipHtml={false}
             components={CHAT_MARKDOWN_COMPONENTS}

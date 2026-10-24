@@ -98,6 +98,9 @@ class SelectionNode {
       );
     });
   }
+  getAttribute(name: string): string | null {
+    return this.attributes[name] ?? null;
+  }
   closest(selector: string): SelectionNode | null {
     return this.matches(selector) ? this : (this.parentElement?.closest(selector) ?? null);
   }
@@ -230,6 +233,26 @@ describe("captureAssistantTextSelection", () => {
       expect(selection.getRangeAt(0).endOffset).toBe(end[1]);
     },
   );
+
+  it("quotes an emoticon shown as emoji as it was written", () => {
+    const before = textNode("Works ");
+    const emoji = textNode("😄");
+    const after = textNode(" now.");
+    const source = assistantSource(
+      new SelectionNode("P").append(
+        before,
+        new SelectionNode("SPAN", "", {
+          "data-markdown-emoticon": "",
+          "data-markdown-copy": ":D",
+        }).append(emoji),
+        after,
+      ),
+    );
+    const viewport = new SelectionNode("MAIN").append(source);
+    const captured = capture(viewport, nativeSelection([before, 0], [after, after.length]));
+
+    expect(captured?.selector.text).toBe("Works :D now.");
+  });
 
   it("captures the final paragraph when Chromium extends to the timestamp paragraph boundary", () => {
     const quote = textNode("The final paragraph.");

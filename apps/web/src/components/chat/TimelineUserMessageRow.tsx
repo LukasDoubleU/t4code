@@ -845,6 +845,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       className="text-foreground"
       lineBreaks
       parseRawHtml={false}
+      emoticons
       renderContextReference={props.renderContextReference}
       headingLevelOffset={MESSAGE_HEADING_LEVEL}
     />

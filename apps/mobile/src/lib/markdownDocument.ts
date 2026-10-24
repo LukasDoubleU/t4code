@@ -1,3 +1,4 @@
+import { mayContainEmoticon, replaceEmoticons } from "@t3tools/shared/emoticons";
 import type { Root, RootContent } from "mdast";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
@@ -162,6 +163,27 @@ export function markdownWithInlineFileLinks(markdown: string, fileLink: RegExp):
           end,
           content: `[${escaped}](<${escaped}>)`,
         });
+    } else if (node.type !== "link" && node.type !== "linkReference" && "children" in node)
+      node.children.forEach(visit);
+  };
+  visit(parser.parse(markdown));
+  for (const edit of edits.reverse())
+    markdown = markdown.slice(0, edit.start) + edit.content + markdown.slice(edit.end);
+  return markdown;
+}
+
+/** Shows classic emoticons in prose as emoji, leaving code, links and HTML verbatim. */
+export function markdownWithEmoticons(markdown: string): string {
+  if (!mayContainEmoticon(markdown)) return markdown;
+  const edits: Array<{ start: number; end: number; content: string }> = [];
+  const visit = (node: MarkdownNode) => {
+    if (node.type === "text") {
+      const start = node.position?.start.offset;
+      const end = node.position?.end.offset;
+      if (start === undefined || end === undefined) return;
+      const source = markdown.slice(start, end);
+      const content = replaceEmoticons(source);
+      if (content !== source) edits.push({ start, end, content });
     } else if (node.type !== "link" && node.type !== "linkReference" && "children" in node)
       node.children.forEach(visit);
   };

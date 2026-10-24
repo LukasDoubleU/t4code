@@ -71,6 +71,8 @@ export interface SelectableMarkdownTextProps {
   readonly textStyle: NativeMarkdownTextStyle;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
   readonly preserveSoftBreaks?: boolean;
+  /** Shows classic emoticons such as `:D` as emoji; for chat messages only. */
+  readonly emoticons?: boolean;
   readonly onLinkPress?: (href: string) => void;
   readonly fileContextMenu?: (href: string) => MarkdownFileContextMenu | undefined;
   readonly onFileContextMenuAction?: (href: string, actionId: string) => void;

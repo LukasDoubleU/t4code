@@ -30,7 +30,11 @@ export function ThreadContextChip(props: {
             className="no-underline"
           >
             {project ? (
-              <ProjectFavicon project={project} className="size-[1.17em] self-center" />
+              <ProjectFavicon
+                project={project}
+                icon={shell?.icon}
+                className="size-[1.17em] self-center"
+              />
             ) : (
               <MessagesSquareIcon />
             )}

@@ -204,6 +204,7 @@ import {
   restoreCloudComposerDrafts,
   retargetNewTaskDraft,
   setComposerDraftText,
+  setComposerDraftTopic,
   insertComposerDraftContext,
   insertComposerDraftText,
   rememberComposerDraftSelection,
@@ -977,6 +978,35 @@ describe("mobile composer drafts", () => {
     expect(clearComposerDraftContentState(restored, draftKey)[draftKey]?.context).toBeUndefined();
     setComposerDraftText(draftKey, "Fix next");
     expect(getComposerDraftSnapshot(draftKey).context).toBeUndefined();
+  });
+
+  it("files a draft under an expert once, with one link to it, until the text is sent", () => {
+    const draftKey = "new-task:topic";
+    const expert = {
+      ref: {
+        environmentId: EnvironmentId.make("topic-environment"),
+        threadId: ThreadId.make("thread-expert"),
+      },
+      title: "Docs expert",
+    };
+    setComposerDraftTopic(draftKey, expert);
+    setComposerDraftTopic(draftKey, expert);
+    const draft = getComposerDraftSnapshot(draftKey);
+    expect(draft.topicOf).toEqual(expert.ref);
+    expect(draft.context?.records).toHaveLength(1);
+    expect(draft.context?.records[0]).toMatchObject({ kind: "thread", threadId: "thread-expert" });
+    expect(collectComposerContextReferences(draft.text)).toHaveLength(1);
+
+    const decoded = decodePersistedComposerState(
+      JSON.parse(JSON.stringify({ schemaVersion: 1, drafts: { [draftKey]: draft } })),
+    ).drafts[draftKey];
+    expect(decoded?.topicOf).toEqual(expert.ref);
+    expect(
+      clearComposerDraftContentState({ [draftKey]: draft }, draftKey)[draftKey]?.topicOf,
+    ).toBeUndefined();
+
+    setComposerDraftTopic(draftKey, null);
+    expect(getComposerDraftSnapshot(draftKey).topicOf).toBeUndefined();
   });
 
   it("releases videos rejected by the live draft limit and keeps accepted files", async () => {

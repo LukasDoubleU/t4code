@@ -15,6 +15,7 @@ import {
   type ChatAttachment,
   CommandId,
   DEFAULT_SERVER_SETTINGS,
+  EnvironmentId,
   GitCommandError,
   MessageId,
   ProjectId,
@@ -63,9 +64,11 @@ import * as ThreadManagement from "./ThreadManagementService.ts";
 import * as ThreadTitleRegeneration from "./ThreadTitleRegenerationService.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
 const projectId = ProjectId.make("project:launch-test");
+const environmentId = EnvironmentId.make("environment:launch-test");
 const otherProjectId = ProjectId.make("project:launch-other");
 const encodeThreadProjection = Schema.encodeEffect(OrchestrationV2ThreadProjectionJson);
 const modelSelection = {
@@ -172,6 +175,9 @@ function makeHarness(options: HarnessOptions = {}) {
   );
   const layerExternalServices = Layer.mergeAll(
     WorktreeSetupTracker.layer,
+    Layer.succeed(ServerEnvironment.ServerEnvironmentIdentity, {
+      getEnvironmentId: Effect.succeed(environmentId),
+    }),
     Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({ get: () => Effect.succeed(null) }),
     Layer.mock(TerminalManager.TerminalManager)({ close: closeTerminal }),
     Layer.succeed(ProjectService.ProjectService, {
@@ -1457,6 +1463,38 @@ it.effect("an agent's launch never starts work above the modes it asks for", () 
     const projection = yield* threads.getThreadProjection(created.threadId);
     assert.equal(projection.runs.length, 0);
     assert.equal(projection.messages.length, 0);
+  }).pipe(Effect.provide(harness.layer));
+});
+
+it.effect("files the user's launch as a topic of the thread it names", () => {
+  const harness = makeHarness();
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const expert = yield* launches.launch(
+      launchInput({ command: "command:launch:expert", thread: "thread:expert" }),
+    );
+    const topic = yield* launches.launch({
+      ...launchInput({ command: "command:launch:topic", thread: "thread:topic", message: "Hi" }),
+      topicOf: expert.threadId,
+    });
+    assert.deepEqual(topic.projection.thread.launchedBy, {
+      environmentId,
+      threadId: expert.threadId,
+      title: "New thread",
+    });
+    // The user started it, so it notifies like any thread of theirs.
+    assert.equal(topic.projection.runs[0]?.origin, "user");
+
+    const failed = yield* launches
+      .launch({
+        ...launchInput({ command: "command:launch:lost-topic", thread: "thread:lost-topic" }),
+        topicOf: ThreadId.make("thread:missing"),
+      })
+      .pipe(Effect.flip);
+    if (failed._tag !== "ThreadLaunchError") {
+      assert.fail(`expected ThreadLaunchError, got ${failed._tag}`);
+    }
+    assert.equal(failed.operation, "resolve-topic");
   }).pipe(Effect.provide(harness.layer));
 });
 

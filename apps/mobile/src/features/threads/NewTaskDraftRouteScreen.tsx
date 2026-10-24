@@ -58,6 +58,7 @@ export function NewTaskDraftRouteScreen({ route }: StaticScreenProps<NewTaskDraf
       branch: params.branch,
       worktreePath: params.worktreePath,
       cloning: (Array.isArray(params.cloning) ? params.cloning[0] : params.cloning) === "1",
+      topicOf: Array.isArray(params.topicOf) ? params.topicOf[0] : params.topicOf,
     }),
     [params],
   );

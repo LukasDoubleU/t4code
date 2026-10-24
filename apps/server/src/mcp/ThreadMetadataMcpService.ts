@@ -112,6 +112,14 @@ function metadataCommand(input: {
         threadId: input.threadId,
         linkedPullRequest: null,
       };
+    case "set_icon":
+    case "clear_icon":
+      return {
+        type: "thread.metadata.update",
+        commandId: input.commandId,
+        threadId: input.threadId,
+        icon: input.update.action === "set_icon" ? input.update.icon! : null,
+      };
   }
 }
 
@@ -121,7 +129,7 @@ function resultFromThread(input: {
   readonly sequence: number;
   readonly thread: Pick<
     OrchestrationV2AppThread,
-    "id" | "title" | "titleRegeneration" | "linkedPullRequest" | "updatedAt"
+    "id" | "title" | "titleRegeneration" | "linkedPullRequest" | "icon" | "updatedAt"
   >;
 }): ThreadMetadataMcpUpdateResult {
   return {
@@ -138,6 +146,7 @@ function resultFromThread(input: {
             startedAt: DateTime.formatIso(input.thread.titleRegeneration.startedAt),
           },
     linkedPullRequest: input.thread.linkedPullRequest ?? null,
+    icon: input.thread.icon ?? null,
     updatedAt: DateTime.formatIso(input.thread.updatedAt),
   };
 }

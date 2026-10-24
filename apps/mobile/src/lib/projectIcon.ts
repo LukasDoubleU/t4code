@@ -46,6 +46,29 @@ export function resolveProjectIconGlyph(
   }
 }
 
+/**
+ * What a thread's icon slot shows: its own icon when it has one, else its project's. Mobile draws
+ * a Lucide icon as a monogram, which for a thread's own icon takes the thread's letters.
+ */
+export function threadIconSource(
+  project: { readonly title: string; readonly projectIcon?: ProjectIconOverride | null },
+  thread: { readonly title: string; readonly icon?: ProjectIconOverride | null },
+): { readonly projectIcon: ProjectIconOverride | null; readonly projectTitle: string } {
+  return thread.icon
+    ? { projectIcon: thread.icon, projectTitle: thread.title }
+    : { projectIcon: project.projectIcon ?? null, projectTitle: project.title };
+}
+
+/**
+ * The emoji someone typed or pasted as an icon, or null for text. Hermes has no Intl.Segmenter
+ * to cut out one emoji, so anything without letters that fits an icon passes.
+ */
+export function emojiIconInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 32 || /\p{L}/u.test(trimmed)) return null;
+  return trimmed;
+}
+
 const PROJECT_ICON_COLOR_CLASSES: Record<
   ProjectIconColor,
   { readonly text: string; readonly background: string }

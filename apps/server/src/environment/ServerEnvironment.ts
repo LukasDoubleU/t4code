@@ -251,6 +251,8 @@ export const make = Effect.gen(function* () {
       threadAutoSettleOptOut: true,
       threadAccountFailover: true,
       threadTitleRegeneration: true,
+      threadIcons: true,
+      threadTopics: true,
       commandOutputStreaming: true,
       threadVisitedTracking: true,
       threadPullRequests: true,

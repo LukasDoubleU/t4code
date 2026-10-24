@@ -46,4 +46,25 @@ describe("ThreadMetadataMcpUpdateInput", () => {
       );
     }
   });
+
+  it("takes an icon only with set_icon", () => {
+    assert.deepEqual(
+      decodeUpdate({
+        action: "set_icon",
+        icon: { kind: "lucide", name: "flask-conical", color: "teal" },
+      }).icon,
+      { kind: "lucide", name: "flask-conical", color: "teal" },
+    );
+    assert.deepEqual(decodeUpdate({ action: "clear_icon" }).action, "clear_icon");
+    assert.throws(() => decodeUpdate({ action: "set_icon" }), /set_icon requires icon/);
+    assert.throws(
+      () => decodeUpdate({ action: "clear_icon", icon: { kind: "emoji", emoji: "x" } }),
+      /clear_icon does not accept icon/,
+    );
+    assert.throws(
+      () => decodeUpdate({ action: "rename", title: "Docs", icon: { kind: "emoji", emoji: "x" } }),
+      /rename does not accept icon/,
+    );
+    assert.throws(() => decodeUpdate({ action: "rename" }), /rename requires title/);
+  });
 });

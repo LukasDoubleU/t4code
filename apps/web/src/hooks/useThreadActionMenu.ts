@@ -4,6 +4,7 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
+import { requestThreadIcon } from "../components/ThreadIconDialog";
 import {
   type AtomCommandResult,
   isAtomCommandInterrupted,
@@ -43,6 +44,8 @@ import {
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsSettlement,
   readEnvironmentSupportsSnooze,
+  readEnvironmentSupportsThreadIcons,
+  readEnvironmentSupportsThreadTopics,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShell,
   readThreadShells,
@@ -69,7 +72,8 @@ import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
-import { useDismissThreadAttention, useThreadActions } from "./useThreadActions";
+import { useStartThreadTopic } from "./useStartThreadTopic";
+import { useDismissThreadAttention, useSetThreadIcon, useThreadActions } from "./useThreadActions";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -113,6 +117,8 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const dismissAttention = useDismissThreadAttention();
+  const setThreadIcon = useSetThreadIcon();
+  const startThreadTopic = useStartThreadTopic();
   const handleNewThread = useNewThreadHandler();
   const openThreadMemory = useOpenThreadMemory();
   const freshStartThread = useFreshStartThread();
@@ -158,6 +164,7 @@ export function useThreadActionMenu(input: {
         pinning: readEnvironmentSupportsPinning(threadRef.environmentId),
         titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
         freshStart: readEnvironmentSupportsFreshStart(threadRef.environmentId),
+        icons: readEnvironmentSupportsThreadIcons(threadRef.environmentId),
       };
       const isRegeneratingTitle = thread.titleRegeneration != null;
       const snoozePresets = resolveSnoozePresets(now, timestampFormat);
@@ -198,6 +205,10 @@ export function useThreadActionMenu(input: {
         branch: thread.branch ?? null,
         projectFilter: null,
         isPinned,
+        canStartTopic:
+          readEnvironmentSupportsThreadTopics(threadRef.environmentId) &&
+          isUserPinnedThread(thread),
+        hasOwnIcon: thread.icon != null,
         needsYou: thread.attention != null,
         hasMemory: memoryPath !== null,
         continuedIn: thread.source.continuedIn !== undefined,
@@ -338,6 +349,24 @@ export function useThreadActionMenu(input: {
         case "rename":
           onStartRename();
           return;
+        case "change-icon": {
+          const icon = await requestThreadIcon({
+            current: thread.icon ?? null,
+            threadTitle: thread.title,
+          });
+          if (icon) setThreadIcon(threadRef, icon);
+          return;
+        }
+        case "use-project-icon":
+          setThreadIcon(threadRef, null);
+          return;
+        case "start-topic": {
+          const result = await settlePromise(() => startThreadTopic(threadRef));
+          if (result._tag === "Failure") {
+            failureToast("Could not start a topic", squashAtomCommandFailure(result));
+          }
+          return;
+        }
         case "regenerate-title":
           if (isRegeneratingTitle) return;
           await reportFailure("Failed to regenerate thread title", () =>

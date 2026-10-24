@@ -26,7 +26,12 @@ import {
   formatWorkingDurationLabel,
   resolveThreadWorkingStartedAt,
 } from "@t3tools/client-runtime/state/models";
-import { AuthOrchestrationOperateScope, type EnvironmentMachineKind } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  isUserPinnedThread,
+  type EnvironmentMachineKind,
+  type ProjectIconOverride,
+} from "@t3tools/contracts";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import type { MenuAction } from "@react-native-menu/menu";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
@@ -43,6 +48,7 @@ import { ProviderIcon, ProviderInstanceIcon } from "../../components/ProviderIco
 import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { emojiIconInput, threadIconSource } from "../../lib/projectIcon";
 import { useEnvironmentScope } from "../../state/session";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import {
@@ -578,6 +584,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly pinningSupported: boolean;
   readonly autoSettleOptOutSupported: boolean;
   readonly titleRegenerationSupported: boolean;
+  /** The server files a user-started topic under an expert. */
+  readonly topicsSupported?: boolean;
+  /** The server keeps a thread's own icon. */
+  readonly iconsSupported?: boolean;
+  readonly onStartTopic?: (thread: EnvironmentThreadShell) => void;
   readonly reorderSupported?: boolean;
   readonly onMoveThread?: (
     thread: EnvironmentThreadShell,
@@ -611,6 +622,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     onUnpinThread,
     onSetThreadAutoSettle,
     onMoveThread,
+    onStartTopic,
   } = props;
   const snoozedRow = props.snoozed === true;
   const pinnedRow = props.pinned === true;
@@ -659,6 +671,35 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const timeLabel = props.timeLabel;
 
   const visitThread = useAtomCommand(threadEnvironment.visit, { reportFailure: false });
+  const setIcon = useAtomCommand(threadEnvironment.setIcon, { reportFailure: false });
+  const setThreadIcon = useCallback(
+    (icon: ProjectIconOverride | null) => {
+      void setIcon({
+        environmentId: thread.environmentId,
+        input: { threadId: thread.id, icon },
+      }).then((result) => {
+        if (result._tag === "Success") return;
+        Dialog.alert("Could not change icon", "The thread's icon could not be changed.");
+      });
+    },
+    [setIcon, thread.environmentId, thread.id],
+  );
+  const handleChangeIcon = useCallback(() => {
+    Dialog.prompt({
+      title: "Change icon",
+      message: "Type or paste an emoji.",
+      initialValue: thread.icon?.kind === "emoji" ? thread.icon.emoji : "",
+      confirmText: "Save",
+      onConfirm: (value) => {
+        const emoji = emojiIconInput(value);
+        if (emoji === null) {
+          Dialog.alert("Could not change icon", "Type or paste an emoji.");
+          return;
+        }
+        setThreadIcon({ kind: "emoji", emoji });
+      },
+    });
+  }, [setThreadIcon, thread.icon]);
   const handleAcknowledgeWoke = useCallback(() => {
     if (props.wokeAt === null) return;
     void visitThread({
@@ -814,12 +855,20 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const titleMenuItems = useMemo<MenuAction[]>(
     () => [
       { id: "rename", title: "Rename", image: "square.and.pencil" },
+      ...(props.iconsSupported === true
+        ? [
+            { id: "change-icon", title: "Change icon…", image: "face.smiling" },
+            ...(thread.icon == null
+              ? []
+              : [{ id: "use-project-icon", title: "Use project icon", image: "folder" }]),
+          ]
+        : []),
       ...buildThreadTitleRegenerationMenuItems({
         supported: props.titleRegenerationSupported,
         isRegenerating: thread.titleRegeneration != null,
       }),
     ],
-    [props.titleRegenerationSupported, thread.titleRegeneration],
+    [props.iconsSupported, props.titleRegenerationSupported, thread.icon, thread.titleRegeneration],
   );
   const snoozableCardMenuActions = useMemo<MenuAction[]>(
     () => [
@@ -884,6 +933,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const handleMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
       if (nativeEvent.event === "new-thread-on-branch") onNewThreadOnBranch(thread);
+      if (nativeEvent.event === "start-topic") onStartTopic?.(thread);
+      if (nativeEvent.event === "change-icon") handleChangeIcon();
+      if (nativeEvent.event === "use-project-icon") setThreadIcon(null);
       if (nativeEvent.event === "settle") handleSettle();
       if (nativeEvent.event === "unsettle") handleUnsettle();
       if (nativeEvent.event === "unsnooze") handleUnsnooze();
@@ -921,6 +973,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     },
     [
       onNewThreadOnBranch,
+      onStartTopic,
+      handleChangeIcon,
+      setThreadIcon,
       thread,
       handleArchive,
       handleDelete,
@@ -1007,9 +1062,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           <ProjectFavicon
             environmentId={thread.environmentId}
             faviconPath={props.project.faviconPath}
-            projectIcon={props.project.projectIcon}
+            {...threadIconSource(props.project, thread)}
             size={15}
-            projectTitle={props.project.title}
             workspaceRoot={props.project.workspaceRoot}
           />
         ) : null}
@@ -1334,9 +1388,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               <ProjectFavicon
                 environmentId={thread.environmentId}
                 faviconPath={props.project.faviconPath}
-                projectIcon={props.project.projectIcon}
+                {...threadIconSource(props.project, thread)}
                 size={15}
-                projectTitle={props.project.title}
                 workspaceRoot={props.project.workspaceRoot}
               />
             </View>
@@ -1417,6 +1470,17 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                       id: "new-thread-on-branch",
                       title: getThreadListV2NewBranchMenuTitle(thread.branch),
                       image: "square.and.pencil",
+                    },
+                  ]
+                : []),
+              ...(props.topicsSupported === true &&
+              onStartTopic !== undefined &&
+              isUserPinnedThread(thread)
+                ? [
+                    {
+                      id: "start-topic",
+                      title: "Start new topic",
+                      image: "bubble.left.and.bubble.right",
                     },
                   ]
                 : []),

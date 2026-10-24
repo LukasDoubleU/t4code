@@ -14,6 +14,7 @@ import {
   type OrchestrationV2ThreadShell,
   type PlanId,
   type ProjectId,
+  type ProjectIconOverride,
   type ProviderInstanceId,
   type RunId,
   type ThreadId,
@@ -199,6 +200,8 @@ export interface EnvironmentThreadShell {
   readonly titleRegeneration?: { readonly requestId: string; readonly startedAt: string } | null;
   /** The thread's agent asked for the user, with its one-line reason. */
   readonly attention?: { readonly reason: string; readonly requestedAt: string } | null;
+  /** The thread's own icon, shown instead of its project's. */
+  readonly icon?: ProjectIconOverride | null;
   readonly deletedAt: string | null;
   readonly source: OrchestrationV2ThreadShell;
 }
@@ -382,6 +385,7 @@ export function presentThreadShell(
       thread.attention == null
         ? null
         : { reason: thread.attention.reason, requestedAt: iso(thread.attention.requestedAt) },
+    icon: thread.icon ?? null,
     deletedAt: nullableIso(thread.deletedAt),
     source: thread,
   };

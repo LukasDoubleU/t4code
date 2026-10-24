@@ -1,7 +1,7 @@
 import { uuidv4 } from "../../lib/uuid";
 import { useNavigation } from "@react-navigation/native";
 import type { EnvironmentThreadSearchMatch } from "@t3tools/client-runtime/state/thread-search";
-import { THREAD_JUMP_KEYBINDING_COMMANDS } from "@t3tools/contracts";
+import { isUserPinnedThread, THREAD_JUMP_KEYBINDING_COMMANDS } from "@t3tools/contracts";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -27,7 +27,12 @@ import { deriveBottomControlInsets } from "../../lib/reserved-regions";
 import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import { useNativeLayoutMetrics } from "../../native/native-layout-metrics";
 import { T3KeyboardCommands } from "../../native/T3KeyboardCommands";
-import { useProjects, useThreadShell, useThreadShells } from "../../state/entities";
+import {
+  useEnvironmentServerConfig,
+  useProjects,
+  useThreadShell,
+  useThreadShells,
+} from "../../state/entities";
 import { useThreadSearch } from "../../state/queries";
 import { useWorkspaceEnvironments } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
@@ -149,6 +154,9 @@ export function CommandPalette(props: {
   const threads = useThreadShells();
   const activeThreadRef = useMemo(() => parseActiveThreadPath(props.pathname), [props.pathname]);
   const activeThread = useThreadShell(activeThreadRef);
+  const activeThreadTopicsSupported =
+    useEnvironmentServerConfig(activeThread?.environmentId ?? null)?.environment.capabilities
+      .threadTopics === true;
   const environments = useWorkspaceEnvironments();
   const { savedConnectionsById } = useSavedRemoteConnections();
   const [query, setQuery] = useState("");
@@ -290,6 +298,23 @@ export function CommandPalette(props: {
           }),
       });
     }
+    if (activeThread && activeThreadTopicsSupported && isUserPinnedThread(activeThread)) {
+      actions.unshift({
+        key: "newTopic",
+        kind: "action",
+        title: `New topic of ${activeThread.title}`,
+        searchTerms: ["new topic", "topic", "expert"],
+        run: () =>
+          selectThreadRoute({
+            draft: {
+              requestId: uuidv4(),
+              environmentId: activeThread.environmentId,
+              projectId: activeThread.projectId,
+              topicOf: activeThread.id,
+            },
+          }),
+      });
+    }
     if (activeThreadRef) {
       const threadActions = [
         ["files", "Go to file", ["open", "files", "browse", "search"]],
@@ -352,6 +377,7 @@ export function CommandPalette(props: {
   }, [
     activeThread,
     activeThreadRef,
+    activeThreadTopicsSupported,
     navigation,
     projects,
     runCommand,

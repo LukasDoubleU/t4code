@@ -83,6 +83,31 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     },
     { tag: "path", attrs: { d: "m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10" } },
   ],
+  ellipsis: [
+    { tag: "circle", attrs: { cx: "12", cy: "12", r: "1" } },
+    { tag: "circle", attrs: { cx: "19", cy: "12", r: "1" } },
+    { tag: "circle", attrs: { cx: "5", cy: "12", r: "1" } },
+  ],
+  smile: [
+    { tag: "circle", attrs: { cx: "12", cy: "12", r: "10" } },
+    { tag: "path", attrs: { d: "M8 14s1.5 2 4 2 4-2 4-2" } },
+    { tag: "line", attrs: { x1: "9", x2: "9.01", y1: "9", y2: "9" } },
+    { tag: "line", attrs: { x1: "15", x2: "15.01", y1: "9", y2: "9" } },
+  ],
+  "messages-square": [
+    {
+      tag: "path",
+      attrs: {
+        d: "M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z",
+      },
+    },
+    {
+      tag: "path",
+      attrs: {
+        d: "M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1",
+      },
+    },
+  ],
   "message-square-plus": [
     {
       tag: "path",

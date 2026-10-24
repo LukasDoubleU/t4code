@@ -120,6 +120,12 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
     let releasedComposer = false;
     let canRestoreDraft = () => false;
     let startedCount = 0;
+    const draftTopicOf =
+      draftId === null
+        ? null
+        : (useComposerDraftStore.getState().getDraftSession(draftId)?.topicOf ?? null);
+    const topicOf =
+      draftTopicOf?.environmentId === environmentId ? draftTopicOf.threadId : undefined;
     // Anything thrown here (an attachment the server can no longer take)
     // fails every selection; the draft restore below still runs.
     const sendResult = await settlePromise(async () => {
@@ -190,6 +196,7 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
                       branch,
                       worktreePath: null,
                       createdAt: createdAt,
+                      ...(topicOf === undefined ? {} : { topicOf }),
                     },
                     prepareWorktree: {
                       projectCwd: project.workspaceRoot,

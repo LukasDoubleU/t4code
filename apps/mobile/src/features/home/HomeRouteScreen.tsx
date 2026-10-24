@@ -81,6 +81,19 @@ export function HomeRouteScreen() {
     },
     [selectThreadRoute],
   );
+  const handleStartTopic = useCallback(
+    (thread: EnvironmentThreadShell) => {
+      selectThreadRoute({
+        draft: {
+          requestId: uuidv4(),
+          environmentId: String(thread.environmentId),
+          projectId: String(thread.projectId),
+          topicOf: String(thread.id),
+        },
+      });
+    },
+    [selectThreadRoute],
+  );
 
   useEffect(() => {
     void checkForAppUpdateOnLaunch();
@@ -285,6 +298,7 @@ export function HomeRouteScreen() {
           onSelectPendingTask={openPendingTask}
           onDeletePendingTask={confirmDeletePendingTask}
           onNewThreadOnBranch={handleNewThreadOnBranch}
+          onStartTopic={handleStartTopic}
           onNewThreadInProject={(project) => {
             selectThreadRoute({
               draft: {

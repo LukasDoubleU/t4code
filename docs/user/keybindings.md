@@ -52,8 +52,8 @@ Both shortcuts can be changed in Settings. Search for “Copy Link or Thread ID�
 or “Copy Number”. They copy the selected PR and leave terminal input alone.
 
 **Thread: Copy ID** copies the thread's own ID, also for a thread with a pull
-request. It is in the command palette and the thread menu under **Copy**, and has
-no default shortcut.
+request. It is in the command palette and the thread menu as **Copy thread ID**, and
+has no default shortcut.
 
 ## Find in a diff
 

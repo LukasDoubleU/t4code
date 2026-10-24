@@ -320,6 +320,14 @@ const PersistedDraftThreadState = Schema.Struct({
   worktreePath: Schema.NullOr(Schema.String),
   envMode: DraftThreadEnvModeSchema,
   startFromOrigin: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  topicOf: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        environmentId: Schema.String,
+        threadId: Schema.String,
+      }),
+    ),
+  ),
   promotedTo: Schema.optionalKey(
     Schema.NullOr(
       Schema.Struct({
@@ -413,6 +421,8 @@ export interface DraftSessionState {
   worktreePath: string | null;
   envMode: DraftThreadEnvMode;
   startFromOrigin: boolean;
+  /** The expert this draft becomes a topic of once it is sent. */
+  topicOf?: ScopedThreadRef | null;
   promotedTo?: ScopedThreadRef | null;
 }
 
@@ -458,6 +468,7 @@ interface ComposerDraftStoreState {
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
+      topicOf?: ScopedThreadRef | null;
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
       environmentSelection?: "auto" | "manual";
@@ -474,6 +485,7 @@ interface ComposerDraftStoreState {
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
+      topicOf?: ScopedThreadRef | null;
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
       environmentSelection?: "auto" | "manual";
@@ -489,6 +501,7 @@ interface ComposerDraftStoreState {
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
+      topicOf?: ScopedThreadRef | null;
       runtimeMode?: RuntimeMode;
       interactionMode?: ProviderInteractionMode;
       environmentSelection?: "auto" | "manual";
@@ -1431,6 +1444,7 @@ function createDraftThreadState(
     createdAt?: string;
     envMode?: DraftThreadEnvMode;
     startFromOrigin?: boolean;
+    topicOf?: ScopedThreadRef | null;
     runtimeMode?: RuntimeMode;
     interactionMode?: ProviderInteractionMode;
     environmentSelection?: "auto" | "manual";
@@ -1462,6 +1476,13 @@ function createDraftThreadState(
       : options.startFromOrigin;
   const environmentSelection =
     options?.environmentSelection ?? existingThread?.environmentSelection;
+  // An expert lives in one project, so another project's draft is no topic of it.
+  const topicOf =
+    options?.topicOf === undefined
+      ? projectChanged
+        ? null
+        : (existingThread?.topicOf ?? null)
+      : options.topicOf;
   return {
     threadId,
     environmentId: projectRef.environmentId,
@@ -1486,6 +1507,7 @@ function createDraftThreadState(
     envMode:
       options?.envMode ?? (nextWorktreePath ? "worktree" : (existingThread?.envMode ?? "local")),
     startFromOrigin: nextStartFromOrigin,
+    ...(topicOf === null ? {} : { topicOf }),
     promotedTo: null,
   };
 }
@@ -1520,6 +1542,7 @@ function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThrea
     left.worktreePath === right.worktreePath &&
     left.envMode === right.envMode &&
     left.startFromOrigin === right.startFromOrigin &&
+    scopedThreadRefsEqual(left.topicOf ?? null, right.topicOf ?? null) &&
     scopedThreadRefsEqual(left.promotedTo, right.promotedTo)
   );
 }
@@ -1637,6 +1660,18 @@ function normalizePersistedDraftThreads(
               promotedToRecord.threadId as ThreadId,
             )
           : null;
+      const topicOfRecord =
+        candidateDraftThread.topicOf && typeof candidateDraftThread.topicOf === "object"
+          ? (candidateDraftThread.topicOf as Record<string, unknown>)
+          : null;
+      const topicOf =
+        topicOfRecord &&
+        typeof topicOfRecord.environmentId === "string" &&
+        topicOfRecord.environmentId.length > 0 &&
+        typeof topicOfRecord.threadId === "string" &&
+        topicOfRecord.threadId.length > 0
+          ? { environmentId: topicOfRecord.environmentId, threadId: topicOfRecord.threadId }
+          : null;
       if (typeof projectId !== "string" || projectId.length === 0 || environmentId === undefined) {
         continue;
       }
@@ -1668,6 +1703,7 @@ function normalizePersistedDraftThreads(
         worktreePath: normalizedWorktreePath,
         envMode: normalizeDraftThreadEnvMode(candidateDraftThread.envMode, normalizedWorktreePath),
         startFromOrigin,
+        ...(topicOf === null ? {} : { topicOf }),
         ...(candidateDraftThread.environmentSelection === "manual" ||
         candidateDraftThread.environmentSelection === "auto"
           ? { environmentSelection: candidateDraftThread.environmentSelection }
@@ -2419,6 +2455,14 @@ function toHydratedDraftThreadState(
     worktreePath: persistedDraftThread.worktreePath,
     envMode: persistedDraftThread.envMode,
     startFromOrigin: persistedDraftThread.startFromOrigin,
+    ...(persistedDraftThread.topicOf
+      ? {
+          topicOf: scopeThreadRef(
+            persistedDraftThread.topicOf.environmentId as EnvironmentId,
+            persistedDraftThread.topicOf.threadId as ThreadId,
+          ),
+        }
+      : {}),
     ...(persistedDraftThread.environmentSelection
       ? { environmentSelection: persistedDraftThread.environmentSelection }
       : {}),
@@ -2686,6 +2730,12 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               options.startFromOrigin === undefined
                 ? existing.startFromOrigin
                 : options.startFromOrigin;
+            const nextTopicOf =
+              options.topicOf === undefined
+                ? projectChanged
+                  ? null
+                  : (existing.topicOf ?? null)
+                : options.topicOf;
             const environmentSelection =
               options.environmentSelection ??
               (options.branch != null || options.worktreePath != null
@@ -2714,6 +2764,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               envMode:
                 options.envMode ?? (nextWorktreePath ? "worktree" : (existing.envMode ?? "local")),
               startFromOrigin: nextStartFromOrigin,
+              ...(nextTopicOf === null ? {} : { topicOf: nextTopicOf }),
               promotedTo: existing.promotedTo ?? null,
             };
             const isUnchanged =
@@ -2729,6 +2780,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftThread.worktreePath === existing.worktreePath &&
               nextDraftThread.envMode === existing.envMode &&
               nextDraftThread.startFromOrigin === existing.startFromOrigin &&
+              scopedThreadRefsEqual(nextDraftThread.topicOf ?? null, existing.topicOf ?? null) &&
               scopedThreadRefsEqual(nextDraftThread.promotedTo, existing.promotedTo);
             if (isUnchanged) {
               return state;

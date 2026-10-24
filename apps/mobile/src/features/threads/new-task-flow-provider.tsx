@@ -974,6 +974,11 @@ export function NewTaskFlowProvider(
           startFromOrigin: message.creation.startFromOrigin ?? false,
           pullRequestReference: message.creation.pullRequestReference,
         },
+        ...(message.creation.topicOf === undefined
+          ? {}
+          : {
+              topicOf: { environmentId: message.environmentId, threadId: message.creation.topicOf },
+            }),
       });
     }
     setSelectedEnvironmentId(message.environmentId);
@@ -1069,6 +1074,10 @@ export function NewTaskFlowProvider(
         worktreePath: mode === "worktree" ? null : (workspaceSelection?.worktreePath ?? null),
         ...((workspaceSelection?.startFromOrigin ?? startFromOrigin)
           ? { startFromOrigin: true }
+          : {}),
+        // A draft sent to another environment than its expert's is no topic.
+        ...(draft.topicOf?.environmentId === selectedProject.environmentId
+          ? { topicOf: draft.topicOf.threadId }
           : {}),
       },
       createdAt: metadata.createdAt,

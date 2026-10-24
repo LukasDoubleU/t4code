@@ -128,6 +128,11 @@ export type MarkThreadUnreadInput = ThreadCommandInput;
 
 export type DismissThreadAttentionInput = ThreadCommandInput;
 
+export interface SetThreadIconInput extends ThreadCommandInput {
+  /** null shows the project's icon again. */
+  readonly icon: ProjectIconOverride | null;
+}
+
 export interface SetMessageReactionInput extends ThreadCommandInput {
   readonly itemId: TurnItemId;
   readonly emoji: OrchestrationV2MessageReactionEmoji;
@@ -165,6 +170,8 @@ interface StartThreadBootstrap {
     readonly branch: string | null;
     readonly worktreePath: string | null;
     readonly createdAt: string;
+    /** A thread in the same environment the new one is filed under as a topic. */
+    readonly topicOf?: ThreadId;
   };
   readonly prepareWorktree?: {
     readonly requireWorktree?: boolean;
@@ -612,6 +619,17 @@ export const dismissThreadAttention = Effect.fn("EnvironmentCommands.dismissThre
   },
 );
 
+export const setThreadIcon = Effect.fn("EnvironmentCommands.setThreadIcon")(function* (
+  input: SetThreadIconInput,
+) {
+  return yield* dispatch({
+    type: "thread.metadata.update",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    icon: input.icon,
+  });
+});
+
 export const setMessageReaction = Effect.fn("EnvironmentCommands.setMessageReaction")(function* (
   input: SetMessageReactionInput,
 ) {
@@ -748,6 +766,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
       runtimeMode: input.runtimeMode,
       interactionMode: input.interactionMode,
       workspaceStrategy,
+      ...(bootstrap?.topicOf === undefined ? {} : { topicOf: bootstrap.topicOf }),
       initialMessage: {
         messageId: input.message.messageId,
         text: input.message.text,

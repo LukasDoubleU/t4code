@@ -12,6 +12,13 @@ import {
 const threadId = ThreadId.make("thread:1");
 const directory = "/home/me/.t3/userdata/memory";
 
+// More nests some of the entries.
+function menuItems(
+  items: ReturnType<typeof buildThreadActionMenuItems>,
+): ReturnType<typeof buildThreadActionMenuItems> {
+  return items.flatMap((item) => [item, ...menuItems(item.children ?? [])]);
+}
+
 const menuState: Parameters<typeof buildThreadActionMenuItems>[0] = {
   canOperate: false,
   branch: null,
@@ -81,7 +88,8 @@ describe("thread memory indicator", () => {
   });
 
   it("offers Open memory in the thread menu only while the memory is active", () => {
-    const menuIds = (hasMemory: boolean) => buildThreadActionMenuItems({ ...menuState, hasMemory });
+    const menuIds = (hasMemory: boolean) =>
+      menuItems(buildThreadActionMenuItems({ ...menuState, hasMemory }));
     const openMemory = menuIds(true).find((item) => item.id === "open-memory");
     // Reading the memory needs no permission to change threads.
     expect(openMemory).toMatchObject({ label: "Open memory" });
@@ -91,18 +99,20 @@ describe("thread memory indicator", () => {
 
   it("offers Fresh start for a pinned thread, and links the two threads it joins", () => {
     const ids = (state: Partial<Parameters<typeof buildThreadActionMenuItems>[0]>) =>
-      buildThreadActionMenuItems({ ...menuState, ...state }).map((item) => item.id);
+      menuItems(buildThreadActionMenuItems({ ...menuState, ...state })).map((item) => item.id);
     const freshStart = { ...menuState.supports, freshStart: true };
     expect(ids({ supports: freshStart })).toContain("fresh-start");
     expect(ids({ supports: freshStart, isPinned: false })).not.toContain("fresh-start");
     // A server without fresh starts.
     expect(ids({})).not.toContain("fresh-start");
     // Fresh start changes threads; following a link only navigates.
-    const items = buildThreadActionMenuItems({
-      ...menuState,
-      supports: freshStart,
-      continuedIn: true,
-    });
+    const items = menuItems(
+      buildThreadActionMenuItems({
+        ...menuState,
+        supports: freshStart,
+        continuedIn: true,
+      }),
+    );
     expect(items.find((item) => item.id === "fresh-start")?.disabled).toBe(true);
     expect(items.find((item) => item.id === "open-continued-in")).toMatchObject({
       label: "Continued in new thread",

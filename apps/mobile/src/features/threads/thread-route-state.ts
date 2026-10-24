@@ -9,6 +9,8 @@ export type NewTaskDraftRouteParams = {
   readonly pendingTaskId?: string | string[];
   readonly draftId?: string | string[];
   readonly incomingShareId?: string | string[];
+  /** The expert thread, in the draft's environment, the new thread becomes a topic of. */
+  readonly topicOf?: string | string[];
 };
 
 export function isDraftThreadRoute(
@@ -39,5 +41,6 @@ export function draftRouteIdentity(draft: NewTaskDraftRouteParams): string {
     draft.branch ?? null,
     draft.worktreePath ?? null,
     first(draft.incomingShareId),
+    first(draft.topicOf),
   ]);
 }

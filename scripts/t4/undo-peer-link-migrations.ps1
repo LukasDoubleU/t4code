@@ -1,14 +1,15 @@
 #Requires -Version 7.4
 <#
 .SYNOPSIS
-  Undoes the peer-link stack's migrations 068-070 before a switch to an
-  official release that uses those ids for other migrations.
+  Undoes the peer-link stack's migrations before a switch to an official
+  release that uses their ids for other migrations.
 
 .DESCRIPTION
   Drops the table peer_environment_links and the index
-  orchestration_v2_projection_turn_items_waiting_link_idx, deletes migrations
-  68-70 from effect_sql_migrations and removes the link tokens from the secret
-  store. Link the machines again after the switch.
+  orchestration_v2_projection_turn_items_waiting_link_idx, deletes the stack's
+  migrations from effect_sql_migrations, found by name whatever their ids, and
+  removes the link tokens from the secret store. Link the machines again after
+  the switch.
 
   Only needed when rehearse-switch.ps1 fails because the database "would skip
   required schema migrations". Without -Apply it only reports what it would
@@ -32,7 +33,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$stackMigrations = @{ 68 = 'PeerLinks'; 69 = 'PeerLinkFence'; 70 = 'WaitingLinkRequestIndex' }
+# Keep in step with forkMigrationNames in apps/server/src/persistence/reconcileForkMigrations.ts.
+$stackMigrations = @('PeerLinks', 'PeerLinkFence', 'WaitingLinkRequestIndex') -join ','
 $userdata = Join-Path $T3Home 'userdata'
 $database = Join-Path $userdata 'statev2.sqlite'
 $secrets = Join-Path $userdata 'secrets'
@@ -52,13 +54,21 @@ function Get-StackState {
   $state = Invoke-Node @'
 const { DatabaseSync } = require("node:sqlite");
 const db = new DatabaseSync(process.argv[1], { readOnly: true });
+const stack = process.argv[2].split(",");
+const inStack = `name IN (${stack.map(() => "?").join(", ")})`;
 const exists = (type, name) =>
   db.prepare("SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?").get(type, name) !== undefined;
 const table = exists("table", "peer_environment_links");
 console.log(JSON.stringify({
   migrations: db.prepare(
-    "SELECT migration_id AS id, name FROM effect_sql_migrations WHERE migration_id >= 68 ORDER BY migration_id",
-  ).all(),
+    `SELECT migration_id AS id, name FROM effect_sql_migrations WHERE ${inStack} ORDER BY migration_id`,
+  ).all(...stack),
+  later: db.prepare(
+    `SELECT migration_id AS id, name FROM effect_sql_migrations
+     WHERE NOT ${inStack}
+       AND migration_id > (SELECT min(migration_id) FROM effect_sql_migrations WHERE ${inStack})
+     ORDER BY migration_id`,
+  ).all(...stack, ...stack),
   table,
   index: exists("index", "orchestration_v2_projection_turn_items_waiting_link_idx"),
   links: table
@@ -71,7 +81,7 @@ console.log(JSON.stringify({
     : 0,
 }));
 db.close();
-'@ $database | ConvertFrom-Json
+'@ @($database, $stackMigrations) | ConvertFrom-Json
   # Each link names its token; tokens of links that failed halfway have no row.
   $tokens = @(foreach ($link in $state.links) { Join-Path $secrets "$($link.secretName).bin" }) +
     @(Get-ChildItem -Path $secrets -Filter 'peer-link-*.bin' -File -ErrorAction SilentlyContinue).FullName
@@ -89,11 +99,11 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Fail 'needs Node 24
 if (-not (Test-Path -LiteralPath $database)) { Fail "no T3 Code database at $database" }
 
 $state = Get-StackState
-# A database that moved past the stack, for example to an official release
-# that reuses these ids, must not lose those migrations.
-$foreign = @($state.migrations | Where-Object { $stackMigrations[[int]$_.id] -ne $_.name })
+# Without the stack's rows, a build would skip the ids below a later migration,
+# so a database that moved past the stack keeps them.
+$foreign = @($state.later)
 if ($foreign) {
-  Fail ('migrations above 67 are not the peer-link stack''s: ' + (($foreign | ForEach-Object { "$($_.id)_$($_.name)" }) -join ', '))
+  Fail ('migrations after the peer-link stack''s are not the stack''s: ' + (($foreign | ForEach-Object { "$($_.id)_$($_.name)" }) -join ', '))
 }
 if (-not $state.migrations -and -not $state.table -and -not $state.index -and -not $state.tokens) {
   Write-Host "Nothing to undo: $database has none of the peer-link stack's migrations."
@@ -130,20 +140,23 @@ if (-not $SkipBackup) {
 Invoke-Node @'
 const { DatabaseSync } = require("node:sqlite");
 const db = new DatabaseSync(process.argv[1]);
+const stack = process.argv[2].split(",");
 db.exec("BEGIN IMMEDIATE");
 try {
   db.exec("DROP INDEX IF EXISTS orchestration_v2_projection_turn_items_waiting_link_idx");
   db.exec("DROP TABLE IF EXISTS peer_environment_links");
-  db.exec("DELETE FROM effect_sql_migrations WHERE migration_id IN (68, 69, 70)");
+  db.prepare(
+    `DELETE FROM effect_sql_migrations WHERE name IN (${stack.map(() => "?").join(", ")})`,
+  ).run(...stack);
   db.exec("COMMIT");
 } catch (error) {
   db.exec("ROLLBACK");
   throw error;
 }
 db.close();
-'@ $database | Out-Null
+'@ @($database, $stackMigrations) | Out-Null
 foreach ($token in $state.tokens) { Remove-Item -LiteralPath $token -Force }
 
 $after = Get-StackState
 if ($after.migrations -or $after.table -or $after.index -or $after.tokens) { Fail 'the peer-link stack is still partly there; restore the backup' }
-Write-Host 'Undid migrations 68-70 and removed the link tokens. Link the machines again after the switch.'
+Write-Host 'Undid the peer-link stack''s migrations and removed the link tokens. Link the machines again after the switch.'

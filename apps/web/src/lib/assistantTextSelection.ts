@@ -124,7 +124,7 @@ export function findAssistantCitationText(
   return match ?? (quoteCount === 1 ? onlyQuote : null);
 }
 
-/** A text node, or a whole rendered formula standing for its TeX. */
+/** A text node, or a whole rendered formula or emoji standing for its source. */
 type TextChunk = { node: Text | Element; start: number; end: number };
 
 const isText = (node: Node): node is Text => node.nodeType === 3;
@@ -157,7 +157,7 @@ function readAssistantText(root: HTMLElement) {
     if (element.matches(EXCLUDED_SELECTOR)) return;
     const block = element.matches(BLOCK_SELECTOR);
     if (block || element.tagName === "BR") separator = true;
-    if (element.matches("[data-markdown-math]")) {
+    if (element.matches("[data-markdown-math], [data-markdown-emoticon]")) {
       append(element, element.getAttribute("data-markdown-copy")?.trim() ?? "");
     } else {
       for (const child of element.childNodes) visit(child);

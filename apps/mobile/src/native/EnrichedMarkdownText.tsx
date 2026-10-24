@@ -5,6 +5,7 @@ import {
   formatComposerContextReference,
 } from "@t3tools/shared/composerContextReferences";
 import {
+  markdownWithEmoticons,
   markdownWithHtml,
   markdownWithInlineFileLinks,
   markdownWithTableBreaks,
@@ -154,16 +155,15 @@ function enrichedStyle(
 export function MobileEnrichedMarkdownText(props: SelectableMarkdownTextProps) {
   const { renderImage, resolveImageSource } = props;
   const { themeAppearance, mathRenderingEnabled } = useAppearancePreferences();
-  const markdown = useMemo(
-    () =>
-      markdownWithTableBreaks(
-        markdownWithInlineFileLinks(
-          markdownWithHtml(props.markdown),
-          ENRICHED_INLINE_FILE_LINK_REGEX,
-        ),
+  const markdown = useMemo(() => {
+    const markdown = markdownWithTableBreaks(
+      markdownWithInlineFileLinks(
+        markdownWithHtml(props.markdown),
+        ENRICHED_INLINE_FILE_LINK_REGEX,
       ),
-    [props.markdown],
-  );
+    );
+    return props.emoticons ? markdownWithEmoticons(markdown) : markdown;
+  }, [props.markdown, props.emoticons]);
   const [documentAssets, setDocumentAssets] = useState<DocumentAssetsEvent["assets"]>([]);
   const onDocumentAssets = useCallback(({ assets }: DocumentAssetsEvent) => {
     setDocumentAssets((previous) =>

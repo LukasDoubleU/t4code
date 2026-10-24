@@ -270,6 +270,7 @@ function scheduledTaskSummary(task: ScheduledTask, mayRun: boolean): Orchestrato
     nextRunAt: task.nextRunAt,
     lastRunStatus: task.lastRunStatus,
     ...(task.webhook?.url == null || !mayRun ? {} : { webhookUrl: task.webhook.url }),
+    ...(task.webhook === undefined || !mayRun ? {} : { webhookPath: task.webhook.path }),
     ...(task.webhook === undefined
       ? {}
       : { webhookSignature: task.webhook.hasSecret ? "set" : "none" }),

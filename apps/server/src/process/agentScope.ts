@@ -5,6 +5,7 @@ import * as NodeOS from "node:os";
 import {
   AgentScope,
   agentScopeCommand,
+  type AgentMemoryPressure,
   type AgentScopeShape,
   type AgentSystemdScope,
 } from "@t3tools/shared/AgentScope";
@@ -83,6 +84,11 @@ function parseKeyValues(text: string): Map<string, string> {
 
 function parseCgroupCounter(text: string, key: string): number | undefined {
   const match = new RegExp(`^${key} (\\d+)$`, "m").exec(text);
+  return match === null ? undefined : Number(match[1]);
+}
+
+function parseFullPressure(text: string): number | undefined {
+  const match = /^full avg10=(\d+(?:\.\d+)?)/m.exec(text);
   return match === null ? undefined : Number(match[1]);
 }
 
@@ -336,6 +342,33 @@ export const make = Effect.gen(function* () {
     if (scope !== undefined) yield* track(scope.systemctl, threadId, undefined);
   });
 
+  // MemoryHigh is set on the shared slice, so its counters cover every agent.
+  let agentSliceGroup: string | undefined;
+  const memoryPressure: Effect.Effect<AgentMemoryPressure | undefined> = Effect.gen(function* () {
+    const scope = yield* systemd;
+    if (scope === undefined) return undefined;
+    if (agentSliceGroup === undefined) {
+      const shown = yield* run(scope.systemctl, [
+        "--user",
+        "show",
+        AGENT_SLICE,
+        "--property=ControlGroup",
+      ]);
+      const controlGroup =
+        shown._tag === "Some" ? parseKeyValues(shown.value.stdout).get("ControlGroup") : undefined;
+      if (!controlGroup) return undefined;
+      agentSliceGroup = controlGroup;
+    }
+    const highEvents = parseCgroupCounter(
+      yield* readCgroupFile(agentSliceGroup, "memory.events"),
+      "high",
+    );
+    const fullAvg10 = parseFullPressure(yield* readCgroupFile(agentSliceGroup, "memory.pressure"));
+    return highEvents === undefined || fullAvg10 === undefined
+      ? undefined
+      : { highEvents, fullAvg10 };
+  }).pipe(Effect.withSpan("AgentScope.memoryPressure"));
+
   return {
     wrap: Effect.fn("AgentScope.wrap")(function* ({
       command,
@@ -376,6 +409,7 @@ export const make = Effect.gen(function* () {
     oomKilled,
     stop,
     clear,
+    memoryPressure,
   } satisfies AgentScopeShape;
 });
 

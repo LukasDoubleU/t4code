@@ -850,6 +850,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   readonly onUseArtifactTemplate?: ((template: CodexArtifactTemplate) => void) | undefined;
   readonly renderImage: MarkdownImageRenderer;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill> | undefined;
+  readonly emoticons?: boolean;
 }) {
   const liveMarkdown = useLiveThreadLinkLabels(props.markdown, props.environmentId);
   const segments = useMemo(() => splitCodexArtifactTemplateMarkdown(liveMarkdown), [liveMarkdown]);
@@ -872,6 +873,7 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
         key={`markdown:${segment.sourceOffset}`}
         markdown={markdown}
         skills={props.skills}
+        emoticons={props.emoticons}
         textStyle={props.markdownStyles.nativeTextStyle}
         {...props.linkHandlers}
         renderImage={props.renderImage}
@@ -1689,6 +1691,7 @@ function renderFeedEntry(
               onUseArtifactTemplate={props.onUseArtifactTemplate}
               renderImage={props.renderMarkdownImage}
               skills={props.skills}
+              emoticons
             />
           </MarkdownImageAvailableWidthContext>
         ) : null}
@@ -1932,6 +1935,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
         skills={props.skills}
         textStyle={props.markdownStyles.nativeTextStyle}
         preserveSoftBreaks
+        emoticons
         {...props.linkHandlers}
         renderImage={props.renderImage}
       />
@@ -1964,6 +1968,7 @@ function UserMessageMarkdownContent(props: UserMessageContentProps) {
             skills={props.skills}
             textStyle={props.markdownStyles.nativeTextStyle}
             preserveSoftBreaks
+            emoticons
             {...props.linkHandlers}
             renderImage={props.renderImage}
           />

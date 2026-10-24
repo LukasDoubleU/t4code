@@ -2,6 +2,7 @@ import {
   matchComposerEnvironmentItems,
   matchComposerThreadItems,
 } from "@t3tools/client-runtime/composerThreadItems";
+import { useState } from "react";
 import type {
   EnvironmentId,
   ProjectId,
@@ -80,6 +81,8 @@ export function useComposerMenuItems({
   readonly showSkillsInSlashMenu: boolean;
   readonly answeringQuestion: boolean;
 }) {
+  // Thread mentions rank by recency as of when the composer mounted.
+  const [now] = useState(() => Date.now());
   const composerTriggerKind = composerTrigger?.kind ?? null;
   const pathTriggerQuery = composerTrigger?.kind === "path" ? composerTrigger.query : "";
   const pullRequestTriggerQuery =
@@ -175,6 +178,7 @@ export function useComposerMenuItems({
           environmentId,
           excludeThreadId: activeThreadId,
           query: composerTrigger.query,
+          now,
         }),
         // An answer to an agent's question carries thread links, not machines.
         ...(answeringQuestion

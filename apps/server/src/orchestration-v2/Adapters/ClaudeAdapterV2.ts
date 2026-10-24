@@ -134,6 +134,13 @@ import {
   type CompiledClaudeModelSelection,
 } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
+import {
+  AGENT_MEMORY_LIMIT_NOTICE,
+  AgentMemoryLimitError,
+  agentMemoryPressure,
+  atAgentMemoryLimit,
+  retryWhileAgentsAtMemoryLimit,
+} from "../../process/agentMemoryLimit.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { spawnAndCollect } from "@t3tools/provider-core/server/snapshotProbe";
@@ -958,6 +965,7 @@ export const layerQueryRunner: Layer.Layer<
             ? undefined
             : (spawnOptions: ClaudeSpawnOptions) =>
                 spawnClaudeProcessGroup(spawnOptions, stopScope));
+        const memoryBefore = yield* agentMemoryPressure(agentScope);
         const queryRuntime = yield* Effect.uninterruptibleMask((restore) =>
           Effect.try({
             try: () =>
@@ -984,10 +992,16 @@ export const layerQueryRunner: Layer.Layer<
                       Effect.timeoutOrElse({
                         duration: CLAUDE_MCP_REGISTRATION_TIMEOUT,
                         orElse: () =>
-                          Effect.fail(
-                            queryRunnerError(
-                              "Claude Code did not answer the MCP server registration.",
-                              "setMcpServers",
+                          agentMemoryPressure(agentScope).pipe(
+                            Effect.flatMap((memoryAfter) =>
+                              Effect.fail(
+                                queryRunnerError(
+                                  atAgentMemoryLimit(memoryBefore, memoryAfter)
+                                    ? new AgentMemoryLimitError()
+                                    : "Claude Code did not answer the MCP server registration.",
+                                  "setMcpServers",
+                                ),
+                              ),
                             ),
                           ),
                       }),
@@ -3949,6 +3963,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
 ) {
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
   const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
+  const agentScope = yield* AgentScope;
   const { attachmentsDir, fileSystem, path, crypto, idAllocator, queryRunner } = adapterOptions;
   const subagentModelCatalog = scopeClaudeModelCatalog(
     BUNDLED_CLAUDE_MODEL_CATALOG,
@@ -9209,6 +9224,43 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           return false;
         });
 
+        // A completed line, not a running item: Stop before the start would leave a spinner.
+        const noticeAgentMemoryLimit = Effect.fn("ClaudeAdapterV2.noticeAgentMemoryLimit")(
+          function* (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) {
+            yield* Effect.logWarning("orchestration-v2.claude-start-waits-for-agent-memory", {
+              threadId: turnInput.threadId,
+              runId: turnInput.runId,
+            });
+            const now = yield* DateTime.now;
+            yield* emitProviderEvent({
+              type: "turn_item.updated",
+              driver: CLAUDE_PROVIDER,
+              turnItem: {
+                id: idAllocator.derive.turnItemFromProviderItem({
+                  driver: CLAUDE_PROVIDER,
+                  nativeItemId: `agent-memory-limit:${turnInput.attemptId}`,
+                }),
+                threadId: turnInput.threadId,
+                runId: turnInput.runId,
+                nodeId: turnInput.rootNodeId,
+                providerThreadId: turnInput.providerThread.id,
+                providerTurnId: null,
+                nativeItemRef: null,
+                parentItemId: null,
+                // The event sink places the line after the run's existing items.
+                ordinal: 0,
+                status: "completed",
+                title: null,
+                startedAt: now,
+                completedAt: now,
+                updatedAt: now,
+                type: "system_notice",
+                message: AGENT_MEMORY_LIMIT_NOTICE,
+              },
+            });
+          },
+        );
+
         const openQuery = Effect.fnUntraced(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
           nativeThreadId: string,
@@ -9369,24 +9421,26 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   },
                 }),
           });
-          const querySession = yield* queryRunner
-            .open({
+          const querySession = yield* retryWhileAgentsAtMemoryLimit({
+            start: queryRunner.open({
               threadId: turnInput.threadId,
               providerSessionId: input.providerSessionId,
               options: queryOptions,
-            })
-            .pipe(
-              Effect.onError(() =>
-                closedExistingNativeThreadId === nativeThreadId
-                  ? Effect.gen(function* () {
-                      yield* clearWakeStateForNativeThread(nativeThreadId);
-                      yield* resetBackgroundTaskStateForNativeThreadProcess(nativeThreadId, {
-                        status: "idle",
-                      });
-                    })
-                  : Effect.void,
-              ),
-            );
+            }),
+            readPressure: agentMemoryPressure(agentScope),
+            onWait: noticeAgentMemoryLimit(turnInput),
+          }).pipe(
+            Effect.onError(() =>
+              closedExistingNativeThreadId === nativeThreadId
+                ? Effect.gen(function* () {
+                    yield* clearWakeStateForNativeThread(nativeThreadId);
+                    yield* resetBackgroundTaskStateForNativeThreadProcess(nativeThreadId, {
+                      status: "idle",
+                    });
+                  })
+                : Effect.void,
+            ),
+          );
           // Marked only after a successful open: a failed create must not
           // leave the runtime believing the native session exists, or the
           // retry would resume a session that was never created.

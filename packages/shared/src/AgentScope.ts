@@ -32,6 +32,18 @@ export interface AgentScopeShape {
    * it, even when the next session runs without one (Cursor, OpenCode).
    */
   readonly clear: (threadId: string) => Effect.Effect<void>;
+  /**
+   * Where agents share a memory limit (a systemd slice on Linux), how close
+   * they are to it. Absent, or `undefined`, where they share none.
+   */
+  readonly memoryPressure?: Effect.Effect<AgentMemoryPressure | undefined>;
+}
+
+export interface AgentMemoryPressure {
+  /** `high` in the slice's `memory.events`: how often agents were throttled at the limit. */
+  readonly highEvents: number;
+  /** `full avg10` in `memory.pressure`: percent of the last 10 s all agents stalled on memory. */
+  readonly fullAvg10: number;
 }
 
 export interface AgentScopeCommand {

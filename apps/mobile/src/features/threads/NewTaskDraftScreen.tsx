@@ -56,6 +56,7 @@ import {
   getComposerDraftSnapshot,
   mergeComposerDraftContent,
   restoreComposerDraftSnapshot,
+  setComposerDraftTopic,
   updateComposerDraftSettings,
   scheduleUnusedComposerAttachmentCleanup,
   type ComposerDraft,
@@ -93,6 +94,7 @@ import { useIncomingShare } from "../sharing/IncomingShareProvider";
 import { selectIncomingShareAttachmentsForServer } from "../sharing/incoming-share-model";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { serverEnvironment } from "../../state/server";
+import { environmentThreadShells } from "../../state/threads";
 
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 
@@ -148,6 +150,7 @@ export function NewTaskDraftScreen(props: {
     readonly branch?: string | null;
     readonly worktreePath?: string | null;
     readonly cloning?: boolean;
+    readonly topicOf?: string;
   };
   readonly pendingTaskId?: string;
   readonly draftId?: string;
@@ -529,6 +532,32 @@ export function NewTaskDraftScreen(props: {
     selectedProjectKey,
     setProject,
   ]);
+
+  // A route that names a project files the draft under the expert it names, or under none.
+  const appliedTopicRouteRef = useRef<typeof props.initialProjectRef>(undefined);
+  useEffect(() => {
+    const route = props.initialProjectRef;
+    if (props.pendingTaskId || props.draftId || !route?.environmentId || !route.projectId) return;
+    if (
+      !flow.draftKey ||
+      selectedProject?.environmentId !== route.environmentId ||
+      selectedProject.id !== route.projectId ||
+      appliedTopicRouteRef.current === route
+    ) {
+      return;
+    }
+    appliedTopicRouteRef.current = route;
+    if (route.topicOf === undefined) {
+      setComposerDraftTopic(flow.draftKey, null);
+      return;
+    }
+    const ref = {
+      environmentId: selectedProject.environmentId,
+      threadId: ThreadId.make(route.topicOf),
+    };
+    const expert = appAtomRegistry.get(environmentThreadShells.threadShellAtom(ref));
+    setComposerDraftTopic(flow.draftKey, expert === null ? null : { ref, title: expert.title });
+  }, [flow.draftKey, props.draftId, props.initialProjectRef, props.pendingTaskId, selectedProject]);
 
   useEffect(() => {
     if (!selectedProject) {

@@ -12,6 +12,7 @@ import {
   ProviderInteractionMode as ProviderInteractionModeSchema,
   ProviderOptionSelection as ProviderOptionSelectionSchema,
   RuntimeMode as RuntimeModeSchema,
+  ThreadId as ThreadIdSchema,
   type EnvironmentId,
   type ModelSelection,
   type ProjectId,
@@ -32,7 +33,11 @@ import type {
 import { draftModelPickMatchesThread } from "@t3tools/shared/model";
 
 import { writeFileAtomically } from "../lib/atomic-file";
-import { createComposerContextHistory, referencedComposerContext } from "../lib/composerContext";
+import {
+  createComposerContextHistory,
+  referencedComposerContext,
+  threadComposerContext,
+} from "../lib/composerContext";
 import { isQueuedEditDraftKey } from "./queued-edit-draft-key";
 import {
   collectComposerContextReferences,
@@ -341,6 +346,8 @@ export interface ComposerDraft {
   readonly interactionMode?: ProviderInteractionMode;
   readonly workspaceSelection?: ComposerDraftWorkspaceSelection;
   readonly project?: ComposerDraftProject;
+  /** The expert a new thread from this draft becomes a topic of; cleared with the text. */
+  readonly topicOf?: ScopedThreadRef;
 }
 
 export interface ComposerDraftProject {
@@ -366,7 +373,12 @@ export interface ComposerDraftWorkspaceSelection {
 
 export type ComposerDraftSettingsUpdate = Pick<
   ComposerDraft,
-  "modelSelection" | "runtimeMode" | "interactionMode" | "workspaceSelection" | "project"
+  | "modelSelection"
+  | "runtimeMode"
+  | "interactionMode"
+  | "workspaceSelection"
+  | "project"
+  | "topicOf"
 >;
 
 const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
@@ -400,6 +412,9 @@ const ComposerDraftSchema = Schema.Struct({
   interactionMode: Schema.optional(ProviderInteractionModeSchema),
   workspaceSelection: Schema.optional(ComposerDraftWorkspaceSelectionSchema),
   project: Schema.optional(ComposerDraftProjectSchema),
+  topicOf: Schema.optional(
+    Schema.Struct({ environmentId: EnvironmentIdSchema, threadId: ThreadIdSchema }),
+  ),
 });
 
 const PersistedComposerDraftsSchema = Schema.Struct({
@@ -1455,6 +1470,34 @@ export function setComposerDraftAttachmentUpload(
   return previous !== undefined;
 }
 
+/**
+ * Files a new-thread draft as an expert's topic, or as nobody's with null. The draft starts with
+ * a link to the expert, so the topic's agent can read the expert's context.
+ */
+export function setComposerDraftTopic(
+  draftKey: string,
+  expert: { readonly ref: ScopedThreadRef; readonly title: string } | null,
+): void {
+  updateComposerDrafts((current) => {
+    const { topicOf: _previous, ...draft } = normalizeDraft(current[draftKey]);
+    return withComposerDraft(
+      current,
+      draftKey,
+      expert === null ? draft : { ...draft, topicOf: expert.ref },
+    );
+  });
+  if (expert === null) return;
+  const record = threadComposerContext(expert.ref, expert.title);
+  const linked = getComposerDraftSnapshot(draftKey).context?.records.some(
+    (existing) => existing.contextId === record.contextId,
+  );
+  if (linked) return;
+  insertComposerDraftContext(draftKey, {
+    text: `${formatComposerContextReference(record)} `,
+    context: { version: 1, records: [record] },
+  });
+}
+
 export function updateComposerDraftSettings(
   draftKey: string,
   settings: Partial<ComposerDraftSettingsUpdate>,
@@ -1551,6 +1594,7 @@ export function clearComposerDraftContentState(
     modelSelection,
     workspaceSelection,
     project: _project,
+    topicOf: _topicOf,
     ...retained
   } = existing;
   const draft = {
@@ -1742,7 +1786,8 @@ export function sameComposerDraftState(a: ComposerDraft, b: ComposerDraft): bool
     a.modelSelection === b.modelSelection &&
     a.runtimeMode === b.runtimeMode &&
     a.interactionMode === b.interactionMode &&
-    a.workspaceSelection === b.workspaceSelection
+    a.workspaceSelection === b.workspaceSelection &&
+    a.topicOf === b.topicOf
   );
 }
 

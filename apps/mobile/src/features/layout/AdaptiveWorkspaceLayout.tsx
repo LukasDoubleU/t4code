@@ -610,6 +610,17 @@ function AdaptiveWorkspaceLayoutContent(
     });
   };
 
+  const handleStartTopic = (thread: EnvironmentThreadShell) => {
+    handleSelectThreadRoute({
+      draft: {
+        requestId: uuidv4(),
+        environmentId: String(thread.environmentId),
+        projectId: String(thread.projectId),
+        topicOf: String(thread.id),
+      },
+    });
+  };
+
   const handleNewThreadInProject = (project: EnvironmentProject) => {
     handleSelectThreadRoute({
       draft: {
@@ -880,6 +891,7 @@ function AdaptiveWorkspaceLayoutContent(
                           onOpenEnvironmentSettings={handleOpenEnvironmentSettings}
                           onNewThreadInProject={handleNewThreadInProject}
                           onNewThreadOnBranch={handleNewThreadOnBranch}
+                          onStartTopic={handleStartTopic}
                           onOpenPendingTask={handleOpenPendingTask}
                           onSelectThread={handleSelectThread}
                           onOpenThreadPullRequests={handleOpenThreadPullRequests}

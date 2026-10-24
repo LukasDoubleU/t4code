@@ -70,3 +70,33 @@ describe("project thread title", () => {
     expect(relaunched.message.attachments).toEqual(uploadedAttachments);
   });
 });
+
+describe("a project thread filed as a topic", () => {
+  it("names the expert in the launch only when the draft is one's topic", () => {
+    const spec = {
+      projectId: ProjectId.make("project"),
+      projectCwd: "/workspace",
+      threadId: "topic-thread",
+      commandId: "topic-command",
+      messageId: "topic-message",
+      createdAt: "2026-10-24T00:00:00Z",
+      text: "Look at the release notes",
+      uploadedAttachments: [],
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.6-sol" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      workspaceMode: "local",
+      branch: null,
+      worktreePath: null,
+      startFromOrigin: false,
+      worktreeBranchName: "unused",
+    } satisfies ProjectThreadStartTurnSpec;
+    expect(buildProjectThreadStartTurnInput(spec).bootstrap.createThread).not.toHaveProperty(
+      "topicOf",
+    );
+    expect(
+      buildProjectThreadStartTurnInput({ ...spec, topicOf: "thread-expert" }).bootstrap.createThread
+        .topicOf,
+    ).toBe("thread-expert");
+  });
+});

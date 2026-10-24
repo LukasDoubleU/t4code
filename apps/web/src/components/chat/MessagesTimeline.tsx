@@ -18,7 +18,10 @@ import {
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
-import { sinceLastVisitIndex } from "@t3tools/client-runtime/state/thread-catch-up";
+import {
+  isUserAuthoredMessage,
+  sinceLastVisitIndex,
+} from "@t3tools/client-runtime/state/thread-catch-up";
 import { observeResize } from "~/lib/observeResize";
 import { useStableCallback } from "~/hooks/useStableCallback";
 
@@ -253,6 +256,8 @@ interface MessagesTimelineProps {
   onAnchorSizeChanged: (messageId: MessageId, size: number) => void;
   contentInsetEndAdjustment: number;
   onIsAtEndChange: (isAtEnd: boolean) => void;
+  /** Whether the user's latest loaded message is on screen, as the view scrolls. */
+  onMyLastMessageInViewChange?: (inView: boolean) => void;
   /**
    * Off while the user is reading history; LegendList's own maintainScrollAtEnd
    * would otherwise re-pin regardless of ChatView's scroll-mode refs whenever
@@ -356,6 +361,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   onAnchorSizeChanged,
   contentInsetEndAdjustment,
   onIsAtEndChange,
+  onMyLastMessageInViewChange,
   onContentOverflowChange,
   liveFollowEnabled,
   onToolOutputCollapsedAtEnd,
@@ -782,13 +788,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Added or removed rows change the content height.
   }, [cancelContentOverflowFrame, measureContentOverflow, onContentOverflowChange, rows.length]);
 
-  const refreshMinimap = useStableCallback(() => {
+  const currentVisibleRange = () => {
     const state = listRef.current?.getState?.();
-    if (restoringThreadPosition || state?.data !== rows) return;
-    if (!state || minimapItems.length === 0) {
-      return;
-    }
-
+    if (restoringThreadPosition || !state || state.data !== rows) return null;
     const firstBufferedIndex = state.startBuffered;
     const firstBufferedRow: HTMLElement | undefined =
       firstBufferedIndex == null ? undefined : state.elementAtIndex(firstBufferedIndex);
@@ -802,7 +804,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
           viewport.getBoundingClientRect().top -
           firstBufferedRow.getBoundingClientRect().top
         : state.scroll;
-    const visibleRange = resolveTimelineMinimapVisibleRange({ ...state, scroll });
+    return resolveTimelineMinimapVisibleRange({ ...state, scroll });
+  };
+
+  const refreshMinimap = useStableCallback(() => {
+    if (minimapItems.length === 0) return;
+    const visibleRange = currentVisibleRange();
+    if (visibleRange === null) return;
     for (const mark of minimapMarks) {
       const strip = minimapStripMap.get(mark.id);
       const inView = isTimelineMinimapRangeVisible(
@@ -827,6 +835,19 @@ const ConversationTimeline = memo(function ConversationTimeline({
     );
   });
 
+  const refreshMyLastMessageInView = () => {
+    if (!onMyLastMessageInViewChange) return;
+    const visibleRange = currentVisibleRange();
+    if (visibleRange === null) return;
+    const index = rows.findLastIndex(
+      (row) => row.kind === "message" && isUserAuthoredMessage(row.message),
+    );
+    onMyLastMessageInViewChange(
+      index >= 0 &&
+        isTimelineMinimapRangeVisible(index, index, visibleRange.start, visibleRange.end),
+    );
+  };
+
   const minimapRefreshFrameRef = useRef<number | null>(null);
   const scheduleMinimapRefresh = () => {
     if (minimapRefreshFrameRef.current !== null) return;
@@ -834,6 +855,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     minimapRefreshFrameRef.current = requestAnimationFrame(() => {
       minimapRefreshFrameRef.current = null;
       refreshMinimap();
+      refreshMyLastMessageInView();
     });
   };
 

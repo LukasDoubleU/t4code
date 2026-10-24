@@ -1,4 +1,9 @@
-import { ScrollToEndButton, WorkspaceFileDropOverlay } from "./chat/TimelineOverlays";
+import {
+  MyLastMessageButton,
+  ScrollToEndButton,
+  TimelineFloatingButtons,
+  WorkspaceFileDropOverlay,
+} from "./chat/TimelineOverlays";
 import { usePasteToFocusComposer } from "./chat/usePasteToFocusComposer";
 import {
   deriveAvailableRevertTurnCounts,
@@ -721,6 +726,7 @@ export default function ChatView(props: ChatViewProps) {
   const composerRestingRef = useRef(false);
   const composerMountedRef = useRef(true);
   const [scrollToEndClearance, setScrollToEndClearance] = useState(0);
+  const [myLastMessageInView, setMyLastMessageInView] = useState(true);
   const [timelineOverflows, setTimelineOverflows] = useState(false);
   const fanoutSelectionsAtom = draftFanoutSelectionsAtom(routeThreadKey);
   const { sendInFlight: sendInFlightRef } = draftSendState(routeThreadKey);
@@ -1610,6 +1616,14 @@ export default function ChatView(props: ChatViewProps) {
     displayedTimeline.displayThreadKey,
     activeThreadKey,
   );
+  // Older servers only report the latest user-role message, which wakes and other agents send too.
+  const threadHasMyMessage =
+    serverThreadShell !== null &&
+    (serverThreadShell.latestUserAuthoredMessageAt === undefined
+      ? serverThreadShell.latestUserMessageAt !== null
+      : serverThreadShell.latestUserAuthoredMessageAt !== null);
+  const showMyLastMessageButton =
+    isServerThread && !paintOnlyDisplayedTimeline && threadHasMyMessage && !myLastMessageInView;
   const displayedThreadRef = parseScopedThreadKey(displayedTimelineKey);
   const {
     worktreeSetup,
@@ -3508,6 +3522,9 @@ export default function ChatView(props: ChatViewProps) {
                 contentInsetEndAdjustment={composerTimelineInset}
                 liveFollowEnabled={!paintOnlyDisplayedTimeline && timelineLiveFollowEnabled}
                 onIsAtEndChange={onIsAtEndChangeStable}
+                {...(paintOnlyDisplayedTimeline
+                  ? {}
+                  : { onMyLastMessageInViewChange: setMyLastMessageInView })}
                 onContentOverflowChange={setTimelineOverflows}
                 onToolOutputCollapsedAtEnd={onToolOutputCollapsedAtEndStable}
                 onManualNavigation={cancelTimelineLiveFollowForUserNavigationStable}
@@ -3520,14 +3537,24 @@ export default function ChatView(props: ChatViewProps) {
                   : { historyControls: threadHistoryControls })}
               />
 
-              {showScrollToBottom && !isThreadFindActive && (
-                <ScrollToEndButton
-                  bottom={scrollToEndClearance + 4}
-                  onScrollToEnd={() => {
-                    composerRef.current?.restoreAfterTimelineReachedEnd();
-                    scrollToEnd(true);
-                  }}
-                />
+              {(showScrollToBottom || showMyLastMessageButton) && !isThreadFindActive && (
+                <TimelineFloatingButtons bottom={scrollToEndClearance + 4}>
+                  {showMyLastMessageButton ? (
+                    <MyLastMessageButton
+                      onJump={() =>
+                        requestThreadCatchUpAction("jump-to-my-last-message", routeThreadKey)
+                      }
+                    />
+                  ) : null}
+                  {showScrollToBottom ? (
+                    <ScrollToEndButton
+                      onScrollToEnd={() => {
+                        composerRef.current?.restoreAfterTimelineReachedEnd();
+                        scrollToEnd(true);
+                      }}
+                    />
+                  ) : null}
+                </TimelineFloatingButtons>
               )}
             </div>
 

@@ -1,4 +1,5 @@
-import { ChevronDownIcon, PaperclipIcon } from "lucide-react";
+import { ChevronDownIcon, CornerLeftUpIcon, PaperclipIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Button } from "../ui/button";
 
@@ -19,27 +20,58 @@ export function WorkspaceFileDropOverlay() {
   );
 }
 
-/** Sits `bottom` pixels up, clear of the composer and its attached banners. */
-export function ScrollToEndButton(props: {
+/** Floating buttons over the timeline, `bottom` pixels up, clear of the composer and its banners. */
+export function TimelineFloatingButtons(props: {
   readonly bottom: number;
-  readonly onScrollToEnd: () => void;
+  readonly children: ReactNode;
 }) {
   return (
     <div
-      className="chat-scroll-to-bottom pointer-events-none absolute z-30 flex justify-center py-1.5"
+      className="chat-scroll-to-bottom pointer-events-none absolute z-30 flex justify-center gap-1.5 py-1.5"
       style={{ bottom: props.bottom }}
     >
-      <Button
-        aria-label="Scroll to end"
-        onPointerDown={(event) => event.preventDefault()}
-        onClick={props.onScrollToEnd}
-        className="pointer-events-auto"
-        size="xs"
-        variant="glass"
-      >
-        <ChevronDownIcon className="size-3.5" />
-        Scroll to end
-      </Button>
+      {props.children}
     </div>
+  );
+}
+
+function TimelineFloatingButton(props: {
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly onClick: () => void;
+}) {
+  return (
+    <Button
+      aria-label={props.label}
+      // Keeps focus, and so the caret, in the composer.
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={props.onClick}
+      className="pointer-events-auto"
+      size="xs"
+      variant="glass"
+    >
+      {props.icon}
+      {props.label}
+    </Button>
+  );
+}
+
+export function ScrollToEndButton(props: { readonly onScrollToEnd: () => void }) {
+  return (
+    <TimelineFloatingButton
+      label="Scroll to end"
+      icon={<ChevronDownIcon className="size-3.5" />}
+      onClick={props.onScrollToEnd}
+    />
+  );
+}
+
+export function MyLastMessageButton(props: { readonly onJump: () => void }) {
+  return (
+    <TimelineFloatingButton
+      label="My last message"
+      icon={<CornerLeftUpIcon className="size-3.5" />}
+      onClick={props.onJump}
+    />
   );
 }

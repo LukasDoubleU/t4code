@@ -50,7 +50,7 @@ const ACTIVE_RUN_STATUSES: ReadonlySet<OrchestrationV2Run["status"]> = new Set([
 ]);
 
 /** Mirrors the shell's `latestUserAuthoredMessageAt`: wakes and agent messages also use the user role. */
-export function isUserAuthoredMessage(message: Pick<CatchUpMessage, "role" | "createdBy">) {
+function isUserAuthoredMessage(message: Pick<CatchUpMessage, "role" | "createdBy">) {
   return message.role === "user" && message.createdBy === "user";
 }
 
@@ -197,12 +197,8 @@ export function catchUpItemsText(input: {
     const first = lines[0]!;
     // The oldest item is usually the user's own ask, which frames everything after it.
     const omitted = firstKept - 1;
-    kept.unshift(
-      ...[
-        `${first.label}: ${clip(oneLine(first.body), CONDENSED_ITEM_CHARS)}`,
-        ...(omitted > 0 ? [`[${omitted} more item${omitted === 1 ? "" : "s"} left out]`] : []),
-      ],
-    );
+    if (omitted > 0) kept.unshift(`[${omitted} more item${omitted === 1 ? "" : "s"} left out]`);
+    kept.unshift(`${first.label}: ${clip(oneLine(first.body), CONDENSED_ITEM_CHARS)}`);
   }
   if (files.length > 0) {
     const listed = files.slice(0, MAX_LISTED_FILES).join(", ");

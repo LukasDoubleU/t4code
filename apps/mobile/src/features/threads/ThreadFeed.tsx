@@ -2651,53 +2651,53 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const sinceLastVisitRowId =
     presentedFeed[sinceLastVisitIndex(presentedFeed, nextVisitMarker.at)]?.id ?? null;
   const jumpPagesRef = useRef<Set<string> | null>(null);
-  const tryJumpToMyLastMessage = useEffectEvent(() => {
-    const requestedPages = jumpPagesRef.current;
-    if (requestedPages === null) return;
-    const history = props.historyControls;
-    const step = nextJumpToMyLastMessageStep({
-      index: presentedFeed.findLastIndex(
-        (entry) => entry.type === "message" && isUserAuthoredMessage(entry.message),
-      ),
-      oldestItemId: presentedFeed[0]?.id,
-      history,
-      requestedPages,
-    });
-    if (step.type === "wait") return;
-    if (step.type === "load") {
-      requestedPages.add(step.cursor);
-      history?.onLoadEarlier();
-      return;
-    }
-    jumpPagesRef.current = null;
-    if (step.type === "scroll") {
-      clearUserScrollSettle();
-      cancelReflow();
-      setEndFollow(false);
-      void listRef.current?.scrollToIndex({
-        index: step.index,
-        viewPosition: 0,
-        viewOffset: anchorTopInset + 8,
-        animated: true,
+  const tryJumpToMyLastMessage = useEffectEvent(
+    (feed: typeof presentedFeed, history: ThreadFeedHistoryControls | undefined) => {
+      const requestedPages = jumpPagesRef.current;
+      if (requestedPages === null) return;
+      const step = nextJumpToMyLastMessageStep({
+        index: feed.findLastIndex(
+          (entry) => entry.type === "message" && isUserAuthoredMessage(entry.message),
+        ),
+        oldestItemId: feed[0]?.id,
+        history,
+        requestedPages,
       });
-    } else if (step.type === "failed") {
-      Dialog.alert("Could not load earlier activity", step.error);
-    } else {
-      Dialog.alert(
-        "No message from you here",
-        "You have not written in this thread yet, or it is too far back.",
-      );
-    }
+      if (step.type === "wait") return;
+      if (step.type === "load") {
+        requestedPages.add(step.cursor);
+        history?.onLoadEarlier();
+        return;
+      }
+      jumpPagesRef.current = null;
+      if (step.type === "scroll") {
+        clearUserScrollSettle();
+        cancelReflow();
+        setEndFollow(false);
+        void listRef.current?.scrollToIndex({
+          index: step.index,
+          viewPosition: 0,
+          viewOffset: anchorTopInset + 8,
+          animated: true,
+        });
+      } else if (step.type === "failed") {
+        Dialog.alert("Could not load earlier activity", step.error);
+      } else {
+        Dialog.alert(
+          "No message from you here",
+          "You have not written in this thread yet, or it is too far back.",
+        );
+      }
+    },
+  );
+  const onJumpToMyLastMessage = useEffectEvent(() => {
+    jumpPagesRef.current = new Set();
+    tryJumpToMyLastMessage(presentedFeed, props.historyControls);
   });
   const jumpThreadKey = threadRefKey(scopeThreadRef(props.environmentId, props.threadId));
   useEffect(() => {
-    const unsubscribe = subscribeThreadCatchUpAction(
-      "jump-to-my-last-message",
-      jumpThreadKey,
-      () => {
-        jumpPagesRef.current = new Set();
-        tryJumpToMyLastMessage();
-      },
+    const unsubscribe = subscribeThreadCatchUpAction("jump-to-my-last-message", jumpThreadKey, () =>
+      onJumpToMyLastMessage(),
     );
     return () => {
       unsubscribe();
@@ -2705,14 +2705,10 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     };
   }, [jumpThreadKey]);
   // Each loaded page re-renders the feed; keep going until the message is in it.
+  const jumpHistoryControls = props.historyControls;
   useEffect(() => {
-    if (jumpPagesRef.current !== null) tryJumpToMyLastMessage();
-  }, [
-    presentedFeed,
-    props.historyControls?.loading,
-    props.historyControls?.hasMoreHistory,
-    props.historyControls?.error,
-  ]);
+    if (jumpPagesRef.current !== null) tryJumpToMyLastMessage(presentedFeed, jumpHistoryControls);
+  }, [presentedFeed, jumpHistoryControls]);
   const setupAnchorIndex = presentedFeed.findIndex(
     (entry) => entry.type === "message" && entry.message.role === "user",
   );

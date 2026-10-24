@@ -147,8 +147,8 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
                     "Nothing new."
                   ) : (
                     <ul className="list-disc ps-4">
-                      {brief.happened.map((line, index) => (
-                        <li key={index}>{line}</li>
+                      {brief.happened.map((line) => (
+                        <li key={line}>{line}</li>
                       ))}
                     </ul>
                   )}

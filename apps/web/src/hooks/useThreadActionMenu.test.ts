@@ -47,6 +47,7 @@ vi.mock("../state/session", () => ({
     scope === AuthOrchestrationOperateScope && state.granted.has(environmentId),
 }));
 vi.mock("../state/entities", () => ({
+  readEnvironmentSupportsAccountFailover: () => false,
   readEnvironmentSupportsAutoSettleOptOut: () => true,
   readEnvironmentSupportsPinning: () => true,
   readEnvironmentSupportsSettlement: () => true,
@@ -63,10 +64,17 @@ vi.mock("../state/entities", () => ({
     latestRun: null,
     source: {},
   }),
+  readThreadShells: () => [],
   useDelegatedUnderParent: () => new Set(),
   useProjects: () => [{ id: "project", environmentId: "secondary" }],
 }));
 vi.mock("../components/Sidebar.viewOptions", () => ({ resolveSidebarStatusGroup: () => "idle" }));
+// Its imports reach the composer, whose tooltips need a real React.
+vi.mock("../components/Sidebar.logic", () => ({
+  resolveSidebarThreadSection: () => "recent",
+  resolveSidebarTopicOf: () => null,
+  sidebarTopicLinks: () => new Map(),
+}));
 vi.mock("../components/Sidebar.background", () => ({
   sidebarBackgroundMenuItem: () => ({ placement: "front", available: true }),
   useSidebarBackground: () => ({
@@ -139,6 +147,7 @@ vi.mock("./useSettings", () => ({
     }),
 }));
 vi.mock("./useThreadActions", () => ({
+  useDismissThreadAttention: () => () => recordEffect("dismiss-attention"),
   useThreadActions: () =>
     Object.fromEntries(
       [

@@ -54,6 +54,7 @@ import {
   AuthPreviewOperateScope,
   AuthTerminalOperateScope,
   type AssistantCitation,
+  type AssistantReplyReference,
   type ChatFileAttachment,
   isProviderNativeSubagentThread,
   type EnvironmentId,
@@ -637,6 +638,18 @@ export default function ChatView(props: ChatViewProps) {
     return inserted;
   };
   const citeAssistantTextStable = useStableCallback(citeAssistantText);
+  const replyToAssistant = (reference: AssistantReplyReference) => {
+    const inserted = composerRef.current?.replyToAssistant(reference) ?? false;
+    if (!inserted) {
+      toastManager.add({
+        type: "warning",
+        title: "The composer is not ready",
+        description: "Try replying after the connection or pending input is resolved.",
+      });
+    }
+    return inserted;
+  };
+  const replyToAssistantStable = useStableCallback(replyToAssistant);
   const [isWorkspaceFileDragActive, setIsWorkspaceFileDragActive] = useState(false);
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
   // Set by "Work locally": the draft whose restored message should be resent
@@ -3385,6 +3398,7 @@ export default function ChatView(props: ChatViewProps) {
                 {...(!paintOnlyDisplayedTimeline
                   ? {
                       onCiteAssistantText: citeAssistantTextStable,
+                      onReplyToAssistant: replyToAssistantStable,
                       ...(activeProject ? { onRunShellCommand: runShellCommandStable } : {}),
                     }
                   : {})}

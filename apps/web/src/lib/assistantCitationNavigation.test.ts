@@ -1,4 +1,10 @@
-import { EnvironmentId, MessageId, ThreadId, type AssistantCitation } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  MessageId,
+  ThreadId,
+  type AssistantCitation,
+  type AssistantReplyReference,
+} from "@t3tools/contracts";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -66,5 +72,20 @@ describe("assistant citation navigation", () => {
     );
     expect(router.history.length).toBe(3);
     expect(assistantCitationFromLocation(router.state.location.href)).toEqual(citation);
+  });
+
+  it("goes to the whole reply a sent message answers", async () => {
+    const reply: AssistantReplyReference = {
+      version: 1,
+      environmentId: citation.environmentId,
+      threadId: citation.threadId,
+      messageId: citation.messageId,
+      repliedAt: "2026-10-22T14:07:30.000Z",
+      excerpt: "first line (with a #hash & spaces) 🚀",
+    };
+    const router = createCitationRouter();
+    await router.navigate(assistantCitationNavigation(reply));
+
+    expect(assistantCitationFromLocation(router.state.location.href)).toEqual(reply);
   });
 });

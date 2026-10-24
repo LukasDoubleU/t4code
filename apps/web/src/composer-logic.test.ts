@@ -1,9 +1,17 @@
 import { filterComposerPullRequestMatches } from "@t3tools/shared/composerPullRequestMatches";
-import { EnvironmentId, MessageId, ThreadId, type AssistantCitation } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  MessageId,
+  ThreadId,
+  type AssistantCitation,
+  type AssistantReplyReference,
+} from "@t3tools/contracts";
 import {
   collectAssistantCitations,
+  collectAssistantReplyReferences,
   expandAssistantCitationsForProvider,
   serializeAssistantCitation,
+  serializeAssistantReplyReference,
 } from "@t3tools/shared/assistantCitations";
 import {
   DEFAULT_RESOLVED_KEYBINDINGS,
@@ -24,7 +32,10 @@ import {
   isCollapsedCursorAdjacentToInlineToken,
   isPathSuggestionCurrent,
   replaceTextRange,
+  replyReferenceEdit,
+  replyReferenceRemoval,
 } from "./composer-logic";
+import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { carryDisplacedCustomAnswerIntoPrompt } from "./pendingUserInput";
 import { formatTerminalContextReference } from "./lib/terminalContext";
 
@@ -513,6 +524,66 @@ describe("assistant citation cursor offsets", () => {
 
     expect(result).toEqual({ text: `(),${citationSource}!`, cursor: 1 });
     expect(collapseExpandedComposerCursor(result.text, result.text.length)).toBe("(),□!".length);
+  });
+});
+
+describe("reply reference chip", () => {
+  const reference = (messageId: string, excerpt: string): AssistantReplyReference => ({
+    version: 1,
+    environmentId: EnvironmentId.make("environment-1"),
+    threadId: ThreadId.make("thread-1"),
+    messageId: MessageId.make(messageId),
+    repliedAt: "2026-10-22T14:07:30.000Z",
+    excerpt,
+  });
+  const earlier = reference("message-1", "Here is the plan");
+  const later = reference("message-2", "Another agent wrote in");
+  const apply = (prompt: string, edit: { start: number; end: number; text: string } | null) =>
+    edit === null ? prompt : replaceTextRange(prompt, edit.start, edit.end, edit.text).text;
+
+  it("leads the draft with the chip and keeps what was typed", () => {
+    const source = serializeAssistantReplyReference(earlier);
+
+    expect(apply("", replyReferenceEdit("", earlier))).toBe(`${source} `);
+    expect(apply("Skip step 3.", replyReferenceEdit("Skip step 3.", earlier))).toBe(
+      `${source} Skip step 3.`,
+    );
+    expect(apply("\nSkip step 3.", replyReferenceEdit("\nSkip step 3.", earlier))).toBe(
+      `${source}\nSkip step 3.`,
+    );
+    expect(splitPromptIntoComposerSegments(`${source} Skip step 3.`)).toEqual([
+      { type: "reply", reference: earlier, source },
+      { type: "text", text: " Skip step 3." },
+    ]);
+  });
+
+  it("answers one reply: Reply on another one swaps the chip in place", () => {
+    const draft = `${serializeAssistantReplyReference(earlier)} Go with B. ${serializeAssistantCitation(citation)}`;
+    const next = apply(draft, replyReferenceEdit(draft, later));
+
+    expect(next).toBe(
+      `${serializeAssistantReplyReference(later)} Go with B. ${serializeAssistantCitation(citation)}`,
+    );
+    expect(collectAssistantReplyReferences(next).map((match) => match.reference)).toEqual([later]);
+    expect(collectAssistantCitations(next).map((match) => match.citation)).toEqual([citation]);
+  });
+
+  it("× removes the chip with the space after it and nothing else", () => {
+    const source = serializeAssistantReplyReference(earlier);
+    const draft = `${source} Go with B.`;
+
+    expect(apply(draft, replyReferenceRemoval(draft, source))).toBe("Go with B.");
+    expect(apply(`${source}`, replyReferenceRemoval(source, source))).toBe("");
+    expect(replyReferenceRemoval(draft, serializeAssistantReplyReference(later))).toBeNull();
+  });
+
+  it("counts the chip as one character for the cursor", () => {
+    const source = serializeAssistantReplyReference(earlier);
+    const text = `${source} Go`;
+
+    expect(expandCollapsedComposerCursor(text, 1)).toBe(source.length);
+    expect(collapseExpandedComposerCursor(text, text.length)).toBe(" Go".length + 1);
+    expect(isCollapsedCursorAdjacentToInlineToken(text, 1, "left")).toBe(true);
   });
 });
 

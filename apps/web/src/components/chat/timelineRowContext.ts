@@ -1,5 +1,6 @@
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import {
+  type AssistantReplyReference,
   type EnvironmentId,
   type MessageId,
   type OrchestrationV2TurnItem,
@@ -23,6 +24,8 @@ import { type TurnFoldReply } from "./MessageTime";
 
 export interface TimelineRowSharedState {
   citationRequest: AssistantCitationTarget | null;
+  /** Puts a reply reference in the composer; null where the timeline has no composer. */
+  onReplyToAssistant: ((reference: AssistantReplyReference) => boolean) | null;
   listRef: React.RefObject<LegendListRef | null>;
   timestampFormat: TimestampFormat;
   alwaysShowMessageTimes: boolean;

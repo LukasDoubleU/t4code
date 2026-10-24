@@ -1,5 +1,9 @@
 import type { LegendListRef } from "@legendapp/list/react";
 import type { AssistantCitation, MessageId, ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
+import {
+  isAssistantReplyReference,
+  type AssistantReference,
+} from "@t3tools/shared/assistantCitations";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import {
   resolveAssistantCitationRange,
@@ -84,7 +88,7 @@ export function observeAssistantCitationCommentSource({
 }
 
 export interface AssistantCitationRequest {
-  citation: AssistantCitation;
+  citation: AssistantReference;
   key: string;
 }
 
@@ -97,6 +101,13 @@ export interface AssistantCitationTarget extends AssistantCitationRequest {
     pulse?: { startedAt: number; reducedMotion: boolean };
   }>;
   onComplete: () => void;
+}
+
+/** A reply reference cites the whole reply, so all of it lights up. */
+function wholeReplyRange(root: HTMLElement): Range {
+  const range = root.ownerDocument.createRange();
+  range.selectNodeContents(root);
+  return range;
 }
 
 export function observeAssistantCitationSource({
@@ -163,7 +174,9 @@ export function observeAssistantCitationSource({
     const state = list.getState();
     const index = state.indexByKey(itemKey);
     if (index === undefined || !(state.sizeAtIndex(index) > 0)) return;
-    const range = resolveAssistantCitationRange(root, request.citation);
+    const range = isAssistantReplyReference(request.citation)
+      ? wholeReplyRange(root)
+      : resolveAssistantCitationRange(root, request.citation);
     const rect = (range ?? root).getBoundingClientRect();
     if (rect.height <= 0 || scrollNode.clientHeight <= 0) {
       clear();

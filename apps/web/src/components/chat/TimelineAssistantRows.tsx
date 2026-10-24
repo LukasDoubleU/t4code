@@ -23,7 +23,7 @@ import { TimelineRowCtx, TimelineRowActivityCtx, type TimelineRow } from "./time
 import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "./TimelineRowParts";
 import { AssistantPassageReactionChips } from "./AssistantPassageReactions";
 import { AssistantReactionActions, AssistantReactionChips } from "./AssistantReactions";
-import { reactableReply } from "./AssistantReactions.logic";
+import { reactableReply, replyReference } from "./AssistantReactions.logic";
 import { MessageTime } from "./MessageTime";
 
 const ASSISTANT_MESSAGE_META_REVEAL =
@@ -170,6 +170,7 @@ function AssistantMessageMeta({
   alwaysVisible?: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
+  const { onReplyToAssistant, threadRef } = ctx;
   // A reaction chip stays visible, so its footer does too; the buttons still wait for hover.
   const reacted = (message.reactions?.length ?? 0) > 0;
   const revealButtonsOnly = !alwaysVisible && (ctx.alwaysShowMessageTimes || reacted);
@@ -216,6 +217,11 @@ function AssistantMessageMeta({
             projectedItem={projectedItem}
             reactions={message.reactions}
             timestampFormat={ctx.timestampFormat}
+            onReply={
+              onReplyToAssistant && threadRef
+                ? () => onReplyToAssistant(replyReference(threadRef, message))
+                : undefined
+            }
           />
         )}
       </div>

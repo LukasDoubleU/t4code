@@ -6,6 +6,7 @@ import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { deriveTimelineMinimapItems, groupTimelineMinimapItems } from "./timelineMinimapItems";
 import {
   type AssistantCitation,
+  type AssistantReplyReference,
   type EnvironmentId,
   type MessageId,
   type OrchestrationV2TurnItem,
@@ -184,6 +185,7 @@ interface MessagesTimelineProps {
     citation: AssistantCitation,
     sourceAnchor: AssistantCitationSourceAnchor,
   ) => boolean;
+  onReplyToAssistant?: (reference: AssistantReplyReference) => boolean;
   isWorking: boolean;
   runlessWorkActive?: boolean;
   activeTurnInProgress: boolean;
@@ -297,6 +299,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   citationRequest = null,
   citationHistoryLoading = false,
   onCiteAssistantText,
+  onReplyToAssistant,
   isWorking,
   runlessWorkActive = false,
   activeTurnInProgress,
@@ -938,6 +941,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
 
   const sharedState: TimelineRowSharedState = {
     citationRequest: readyCitationRequest,
+    onReplyToAssistant: onReplyToAssistant ?? null,
     listRef,
     timestampFormat,
     alwaysShowMessageTimes,

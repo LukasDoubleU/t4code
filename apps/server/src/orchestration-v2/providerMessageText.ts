@@ -1,6 +1,7 @@
 import type { MessageId, OrchestrationV2ConversationMessage, ThreadId } from "@t3tools/contracts";
 import {
   collectAssistantCitations,
+  collectAssistantReplyReferences,
   expandAssistantCitationsForProvider,
 } from "@t3tools/shared/assistantCitations";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
@@ -16,25 +17,33 @@ import {
 } from "./messageReactions.ts";
 import type * as ProjectionStore from "./ProjectionStore.ts";
 
-/** The replies in `threadId` that `text` cites; the readable form shows their times. */
+/**
+ * The replies in `threadId` that `text` cites or answers; the readable form shows their times.
+ */
 export function citedReplyIds(text: string, threadId: ThreadId): ReadonlyArray<MessageId> {
   const ids = new Set<MessageId>();
   for (const { citation } of collectAssistantCitations(text)) {
     if (citation.threadId === threadId) ids.add(citation.messageId);
   }
+  for (const { reference } of collectAssistantReplyReferences(text)) {
+    if (reference.threadId === threadId) ids.add(reference.messageId);
+  }
   return [...ids];
 }
 
-/** `text` of a message in `threadId` with each citation as the quote and comment agents read. */
+/**
+ * `text` of a message in `threadId` with each citation as the quote and comment agents read, and
+ * each reply reference as the reply's time and first line.
+ */
 export function readableCitations(
   text: string,
   threadId: ThreadId,
   messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
 ): string {
-  return expandAssistantCitationsForProvider(text, (citation) => {
-    if (citation.threadId !== threadId) return undefined;
+  return expandAssistantCitationsForProvider(text, (reply) => {
+    if (reply.threadId !== threadId) return undefined;
     const source = messages.find(
-      (message) => message.id === citation.messageId && message.role === "assistant",
+      (message) => message.id === reply.messageId && message.role === "assistant",
     );
     return source?.createdAt;
   });

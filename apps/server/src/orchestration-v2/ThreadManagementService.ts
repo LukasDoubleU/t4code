@@ -95,7 +95,7 @@ export function withCreationProvenance(
   }
 }
 
-export function existingThreadIdsForCommand(
+function existingThreadIdsForCommand(
   command: OrchestrationV2ServerCommand,
 ): ReadonlyArray<ThreadId> {
   switch (command.type) {
@@ -1433,6 +1433,7 @@ const make = Effect.gen(function* () {
         type: "thread.stop",
         commandId: CommandId.make(`${input.commandId}:stop:${threadId}`),
         threadId,
+        stopDelegatedTasks: false,
         ...(input.reason === undefined ? {} : { reason: input.reason }),
       }).pipe(
         Effect.andThen(stopDelegatedTasks({ ...input, threadId })),

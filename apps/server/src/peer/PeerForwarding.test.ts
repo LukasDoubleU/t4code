@@ -17,6 +17,7 @@ import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -169,6 +170,8 @@ const boxLaunches = (seen: Ref.Ref<Seen>) =>
 const boxProjects = (seen: Ref.Ref<Seen>) =>
   Layer.merge(
     Layer.mock(ProjectService.ProjectService)({
+      // A launch with no calling thread reads the project's defaults.
+      getById: () => Effect.succeed(Option.none()),
       create: (input) =>
         Ref.update(seen, (current) => ({
           ...current,

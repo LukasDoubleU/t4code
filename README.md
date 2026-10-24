@@ -4,7 +4,7 @@
 
 T4 Code is a personal fork of [T3 Code](https://github.com/pingdotgg/t3code), the open-source GUI for Claude Code, Codex and other coding agents. It is built for running many agents across several machines and subscriptions: threads that reach across machines, an app that keeps running in the tray, a sidebar made for long-lived threads, and a hint which account to use next.
 
-It is based on upstream `v0.1.1` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
+It is based on upstream `v0.1.2` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
 
 > [!NOTE]
 > T4 Code is not affiliated with T3 Tools or the T3 Code team. Please don't report its problems upstream.
@@ -34,7 +34,7 @@ It is based on upstream `v0.1.1` and follows upstream releases. Releases have Wi
 - Every message shows its time, relative by default (`Worked for 26s · 10m ago`). A reply longer than the screen shows it at its end too.
 - **Readable citations.** Cite a passage of a reply and comment on it: the agent receives the quote in place with your comment after it, and your sent message shows the quote. [Quote an assistant response](./docs/user/composer.md#quote-an-assistant-response)
 - **Reactions.** React 👍 to a reply, or 👍 or 👎 to a passage you select in it, without starting a turn; the agent learns it with your next message. **Go ahead** approves the reply or the passage and starts a turn. [React to a response](./docs/user/composer.md#react-to-a-response)
-- **Your own messages stand out.** Automation prompts and messages from other agents fold into one line with the task or the sending thread's title. A message from an agent on a linked machine names that machine too. [Link another environment](./docs/user/remote-access.md#link-another-environment)
+- A message from an agent on a linked machine folds into one line that names the sending thread and its machine. [Link another environment](./docs/user/remote-access.md#link-another-environment)
 - The new-thread picker (<kbd>Ctrl</kbd>+<kbd>N</kbd>) lists projects by name.
 
 **Windows desktop**
@@ -54,7 +54,7 @@ It is based on upstream `v0.1.1` and follows upstream releases. Releases have Wi
 
 From a clone, `pwsh -File scripts/t4/install-t4.ps1` does the same in one step: it checks the download against `SHA256SUMS`, quits the app, backs up your data and installs. Each release also has the `t3` command-line tool as `t3-<version>-win32-x64.zip`.
 
-Versions read `0.1.2-t4.N`: the upstream patch after the base, plus the fork's build number.
+Versions read `0.1.3-t4.N`: the upstream patch after the base, plus the fork's build number.
 
 ### Linux server
 
@@ -62,20 +62,21 @@ Each release also has the server for Linux x64, `t3-<version>-linux-x64.tar.gz`,
 
 ### Back to T3 Code
 
-Install the official `v0.1.1` over T4 Code: everything stays, and it only warns about the three database migrations the fork adds. For a later official release, rehearse the switch first; [`scripts/t4/README.md`](./scripts/t4/README.md) explains how.
+Install the official `v0.1.2` over T4 Code: everything stays, and it only warns about the three database migrations the fork adds. For a later official release, rehearse the switch first; [`scripts/t4/README.md`](./scripts/t4/README.md) explains how.
 
 ## Following upstream
 
 T4 Code merges each upstream release rather than rebasing, and drops a change once upstream ships it. Until then it carries these upstream pull requests:
 
-| Change                       | Upstream                                                                       |
-| ---------------------------- | ------------------------------------------------------------------------------ |
-| Linked environments          | `#16653`, `#16654`, `#16655`, `#16684`, `#16695`, `#16698`, `#16719`, `#17130` |
-| Tray                         | `#19176`                                                                       |
-| Group threads by project     | `#21039`                                                                       |
-| Sort threads by last message | `#22032`                                                                       |
-| Folded automation prompts    | `#22638`                                                                       |
-| Folded agent messages        | `#23135`                                                                       |
+| Change                          | Upstream                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| Linked environments             | `#16653`, `#16654`, `#16655`, `#16684`, `#16695`, `#16698`, `#16719`, `#17130` |
+| Tray                            | `#19176`                                                                       |
+| Group threads by project        | `#21039`                                                                       |
+| Sort threads by last message    | `#22032`                                                                       |
+| Stop stops a thread's subagents | `#23886`, merged after `v0.1.2`                                                |
+| Browsers end with their agent   | `#21299`, merged after `v0.1.2`                                                |
+| Pinned patched packages         | `#23798`, merged after `v0.1.2`                                                |
 
 Everything else is a fork patch, tracked in this repository's issues. A daily workflow comments on the upkeep issue (#13) when upstream publishes a release or a carried pull request changes state.
 

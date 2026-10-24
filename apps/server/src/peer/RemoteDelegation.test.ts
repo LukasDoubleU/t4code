@@ -480,6 +480,8 @@ const boxToolkitLayer = (thread: BoxThread) => {
     Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
     Layer.provide(
       Layer.mock(ProjectService.ProjectService)({
+        // A launch with no calling thread reads the project's defaults.
+        getById: () => Effect.succeed(Option.none()),
         // More than a page, so finding the project with this repository pages.
         listPage: ({ cursor, limit }) =>
           Effect.succeed({

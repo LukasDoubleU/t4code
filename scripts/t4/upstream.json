@@ -54,6 +54,16 @@
       "name": "Settled threads with open PRs, picked from main",
       "issue": 13,
       "pulls": { "24617": "merged" }
+    },
+    {
+      "name": "Faster shell snapshots, picked from main",
+      "issue": 13,
+      "pulls": { "23751": "merged" }
+    },
+    {
+      "name": "Ranked thread search with indexed messages, picked from main",
+      "issue": 13,
+      "pulls": { "24032": "merged", "24343": "merged" }
     }
   ]
 }

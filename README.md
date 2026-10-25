@@ -68,7 +68,7 @@ Each release also has the server for Linux x64, `t3-<version>-linux-x64.tar.gz`,
 
 ### Back to T3 Code
 
-Install the official `v0.1.2` over T4 Code: everything stays, and it only warns about the three database migrations the fork adds. For a later official release, rehearse the switch first; [`scripts/t4/README.md`](./scripts/t4/README.md) explains how.
+Install the official `v0.1.2` over T4 Code: everything stays, and it only warns about the database migrations it doesn't know: the fork's three, and two from upstream changes T4 carries ahead of a release. For a later official release, rehearse the switch first; [`scripts/t4/README.md`](./scripts/t4/README.md) explains how.
 
 ## Following upstream
 
@@ -87,6 +87,8 @@ T4 Code merges each upstream release rather than rebasing, and drops a change on
 | Event writes retry on locks     | `#24571`, merged after `v0.1.2`                                                |
 | Scroll to end lands at the end  | `#24622`, merged after `v0.1.2`                                                |
 | Threads with open PRs settle    | `#24617`, merged after `v0.1.2`                                                |
+| Faster shell snapshots          | `#23751`, merged after `v0.1.2`                                                |
+| Ranked thread search            | `#24032`, `#24343`, merged after `v0.1.2`                                      |
 
 Everything else is a fork patch, tracked in this repository's issues. A daily workflow comments on the upkeep issue (#13) when upstream publishes a release or a carried pull request changes state.
 

@@ -1831,6 +1831,8 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
   resultId: string;
   searchMatch: EnvironmentThreadSearchMatch | null;
   searchQuery: string;
+  /** The query `searchMatch` was found for, which lags `searchQuery` while a search runs. */
+  searchMatchQuery?: string;
   onHighlight: () => void;
   onSelect: () => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
@@ -1969,8 +1971,9 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
               <ThreadSearchMatchExcerpt
                 match={{
                   source: props.searchMatch.source,
+                  sentBy: props.searchMatch.sentBy,
                   snippet: props.searchMatch.snippet,
-                  query: props.searchQuery,
+                  query: props.searchMatchQuery ?? props.searchQuery,
                 }}
               />
             ) : null}

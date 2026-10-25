@@ -8,7 +8,7 @@ import { runMigrations } from "../Migrations.ts";
 const layer = it.layer(NodeSqliteClient.layer({ filename: ":memory:" }));
 
 layer("069_ThreadMessageSearch", (it) => {
-  it.effect("backfills what users wrote and agents answered, then follows deletes", () =>
+  it.effect("backfills every author's user and assistant messages, then follows deletes", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* runMigrations({ toMigrationInclusive: 68 });
@@ -31,7 +31,8 @@ layer("069_ThreadMessageSearch", (it) => {
       yield* insert("assistant", "assistant", 0, "needle from the agent");
       yield* insert("streaming", "assistant", 1, "needle still streaming");
       yield* insert("system", "system", 0, "needle in a system prompt");
-      yield* insert("notice", "user", 0, "needle in a pull request update", "agent");
+      yield* insert("notice", "user", 0, "needle in a subagent result", "agent");
+      yield* insert("scheduled", "user", 0, "needle from a schedule", "system");
       // Older rows carry no author; they were the user's.
       yield* insert("legacy", "user", 0, "needle from before authors", undefined);
 
@@ -46,10 +47,10 @@ layer("069_ThreadMessageSearch", (it) => {
           WHERE orchestration_v2_message_search MATCH '"needle"'
           ORDER BY messages.message_id
         `.pipe(Effect.map((rows) => rows.map((row) => row.messageId)));
-      assert.deepEqual(yield* indexed(), ["assistant", "legacy", "user"]);
+      assert.deepEqual(yield* indexed(), ["assistant", "legacy", "notice", "scheduled", "user"]);
 
       yield* sql`DELETE FROM orchestration_v2_projection_messages WHERE message_id = 'user'`;
-      assert.deepEqual(yield* indexed(), ["assistant", "legacy"]);
+      assert.deepEqual(yield* indexed(), ["assistant", "legacy", "notice", "scheduled"]);
     }),
   );
 });

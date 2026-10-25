@@ -2,23 +2,20 @@ import * as Effect from "effect/Effect";
 import type * as SqlClient from "effect/sql/SqlClient";
 
 /**
- * The messages search indexes: finished, and either written by the user or
- * answered by an agent. User-role notices that agents or the system wrote
- * stay out. Subagent threads stay out too: search never shows them, and ACP
- * subagents rewrite their whole finished answer on every streamed chunk.
- * Migration 69's triggers, its backfill, the rebuild, and the scan all use
- * it; `row` names the message row (a table alias, or `new` in a trigger).
+ * The messages search indexes: finished user and assistant messages. That
+ * includes user-role messages an agent, a schedule, or the system wrote, such
+ * as briefs, messages from other threads, and subagent results: in threads
+ * that agents coordinate, most of what a thread holds arrives that way.
+ * Search marks those hits `sentBy: "agent"`. Subagent threads stay out: search
+ * never shows them, and ACP subagents rewrite their whole finished answer on
+ * every streamed chunk. Migration 69's triggers, its backfill, the rebuild,
+ * and the scan all use it; `row` names the message row (a table alias, or
+ * `new` in a trigger).
  */
 export const indexedMessageCondition = (sql: SqlClient.SqlClient, row = "messages") =>
   sql.literal(`
   ${row}.streaming = 0
-  AND (
-    ${row}.role = 'assistant'
-    OR (
-      ${row}.role = 'user'
-      AND COALESCE(json_extract(${row}.payload_json, '$.createdBy'), 'user') = 'user'
-    )
-  )
+  AND ${row}.role IN ('user', 'assistant')
   AND NOT EXISTS (
     SELECT 1 FROM orchestration_v2_projection_threads AS subagent_threads
     WHERE subagent_threads.thread_id = ${row}.thread_id

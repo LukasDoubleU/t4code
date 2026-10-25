@@ -43,6 +43,13 @@ export const OrchestrationThreadSearchMatch = Schema.Struct({
   hits: Schema.optionalKey(Schema.Int),
   /** The message the snippet is from. Older servers omit it. */
   messageId: Schema.optionalKey(MessageId),
+  /**
+   * Set when an agent, a schedule, or the system wrote this user-role
+   * message, so clients label it as an agent's rather than the user's. A
+   * separate field, not a `source` value, so older clients still decode the
+   * match.
+   */
+  sentBy: Schema.optionalKey(Schema.Literal("agent")),
 });
 export type OrchestrationThreadSearchMatch = typeof OrchestrationThreadSearchMatch.Type;
 

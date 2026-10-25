@@ -152,6 +152,7 @@ export function reduceCommandPaletteUiState(
 
 export interface CommandPaletteThreadContentMatch {
   readonly source: "user" | "assistant";
+  readonly sentBy?: "agent" | undefined;
   readonly snippet: string;
   readonly query: string;
 }

@@ -32,11 +32,12 @@ export function SearchMatchHintLine(props: { hint: SearchMatchHint }) {
 export function ThreadSearchMatchExcerpt(props: {
   match: {
     readonly source: "user" | "assistant";
+    readonly sentBy?: "agent" | undefined;
     readonly snippet: string;
     readonly query: string;
   };
 }) {
-  const isUser = props.match.source === "user";
+  const isUser = props.match.source === "user" && props.match.sentBy === undefined;
   return (
     <span className="truncate text-xs text-muted-foreground/85">
       <span className={isUser ? "text-info-foreground" : "text-success-foreground"}>

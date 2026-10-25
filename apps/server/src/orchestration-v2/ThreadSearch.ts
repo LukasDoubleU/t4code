@@ -71,6 +71,7 @@ const SearchRow = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
   source: OrchestrationThreadSearchSource,
+  sentBy: Schema.NullOr(Schema.Literal("agent")),
   text: Schema.String,
   messageCreatedAt: Schema.NullOr(IsoDateTime),
 });
@@ -162,7 +163,15 @@ export function buildSearchSnippet(text: string, matchStart: number): string {
 export const messageHitsQuery = (
   sql: SqlClient.SqlClient,
   { match, substrings, projectId, excludedThreadIds }: typeof SearchRequest.Encoded,
-) => sql`
+) => {
+  // A user-role message an agent, a schedule, or the system wrote reads as an
+  // agent's, not the user's.
+  const sentBy = sql`CASE
+    WHEN messages.role = 'user'
+      AND COALESCE(json_extract(messages.payload_json, '$.createdBy'), 'user') <> 'user'
+    THEN 'agent'
+  END`;
+  return sql`
     WITH eligible AS MATERIALIZED (
       SELECT threads.thread_id, threads.project_id
       FROM orchestration_v2_projection_threads AS threads
@@ -185,6 +194,7 @@ export const messageHitsQuery = (
             messages.thread_id AS "threadId",
             eligible.project_id AS "projectId",
             messages.role AS source,
+            ${sentBy} AS "sentBy",
             json_extract(messages.payload_json, '$.text') AS text,
             messages.created_at AS "messageCreatedAt"
           FROM orchestration_v2_projection_messages AS messages
@@ -202,6 +212,7 @@ export const messageHitsQuery = (
             messages.thread_id AS "threadId",
             eligible.project_id AS "projectId",
             messages.role AS source,
+            ${sentBy} AS "sentBy",
             json_extract(messages.payload_json, '$.text') AS text,
             messages.created_at AS "messageCreatedAt"
           FROM orchestration_v2_message_search
@@ -229,6 +240,7 @@ export const messageHitsQuery = (
     ORDER BY "messageRowid" DESC
     LIMIT ${MESSAGE_HIT_LIMIT}
   `;
+};
 
 const TitleCandidateRow = Schema.Struct({
   thread: Schema.fromJsonString(OrchestrationV2AppThreadJson),
@@ -241,6 +253,7 @@ export interface ThreadSearchHit {
   readonly projectId: ProjectId;
   readonly title: string;
   readonly source: "title" | OrchestrationThreadSearchSource;
+  readonly sentBy?: "agent";
   readonly snippet?: string;
   readonly messageCreatedAt?: string | null;
 }
@@ -328,9 +341,10 @@ export const make = Effect.gen(function* () {
       readonly picks?: boolean;
     },
   ) {
-    // One message per thread: the best word match, then what the user wrote,
-    // since that is what they remember asking, then the newest by when it was
-    // written. Row order is not age: imported histories arrive in one batch.
+    // One message per thread: the best word match, then a user-role message,
+    // since that is the question the thread was asked (by the user, or by an
+    // agent's brief), then the newest by when it was written. Row order is not
+    // age: imported histories arrive in one batch.
     // Text relevance (bm25) would cost a pass over every hit in history.
     type Hit = {
       readonly row: typeof SearchRow.Type;
@@ -413,6 +427,7 @@ export const make = Effect.gen(function* () {
         messageId: row.messageId,
         projectId: row.projectId,
         source: row.source,
+        ...(row.sentBy ? { sentBy: row.sentBy } : {}),
         snippet: buildSearchSnippet(text, offset),
         messageCreatedAt: row.messageCreatedAt,
         quality,

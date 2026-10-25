@@ -111,7 +111,7 @@ const message = (
   options: {
     readonly minute?: number;
     readonly streaming?: boolean;
-    readonly createdBy?: "user" | "agent";
+    readonly createdBy?: "user" | "agent" | "system";
   } = {},
 ): OrchestrationV2DomainEvent => ({
   id: EventId.make(`message:${id}`),
@@ -234,6 +234,66 @@ it.layer(layerTest)("ThreadSearch", (it) => {
       yield* projections.apply(message(threadId, "sync", "assistant", "edited reply"));
       assert.deepEqual(yield* threadIds("finished"), []);
       assert.deepEqual(yield* threadIds("edited"), [threadId]);
+    }),
+  );
+
+  it.effect("finds what agents and the system write in the user's role, marked as theirs", () =>
+    Effect.gen(function* () {
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const search = yield* ThreadSearch.ThreadSearch;
+      const project = ProjectId.make("project:search-sent");
+      const coordinator = ThreadId.make("thread:sent-coordinator");
+      const own = ThreadId.make("thread:sent-own");
+      const subagent = ThreadId.make("thread:sent-subagent");
+      yield* createProject(project);
+      // Written after migration 69, so its triggers index them.
+      yield* Effect.forEach(
+        [
+          thread(coordinator, project),
+          thread(own, project),
+          thread(subagent, project, { subagentOf: coordinator }),
+          message(coordinator, "sent-brief", "user", "a brief about the lighthouse", {
+            createdBy: "agent",
+          }),
+          message(coordinator, "sent-notice", "user", "subagent result: the harbour is clear", {
+            createdBy: "system",
+          }),
+          message(own, "sent-own", "user", "what about the lighthouse"),
+          message(subagent, "sent-subagent", "assistant", "the harbour report"),
+        ],
+        projections.apply,
+        { discard: true },
+      );
+      const matches = (query: string) =>
+        search
+          .search({ query })
+          .pipe(
+            Effect.map(({ matches }) =>
+              matches
+                .map((match) => [match.threadId, match.source, match.sentBy ?? null])
+                .toSorted(([left], [right]) => String(left).localeCompare(String(right))),
+            ),
+          );
+      assert.deepEqual(yield* matches("lighthouse"), [
+        [coordinator, "user", "agent"],
+        [own, "user", null],
+      ]);
+      assert.deepEqual(yield* matches("harbour"), [[coordinator, "user", "agent"]]);
+
+      // The update trigger follows an edit to such a message.
+      yield* projections.apply(
+        message(coordinator, "sent-brief", "user", "a brief about the beacon", {
+          createdBy: "agent",
+        }),
+      );
+      assert.deepEqual(yield* matches("lighthouse"), [[own, "user", null]]);
+      assert.deepEqual(yield* matches("beacon"), [[coordinator, "user", "agent"]]);
+
+      const agentSearch = yield* search.searchThreads({ query: "harbour" });
+      assert.deepEqual(
+        agentSearch.matches.map((match) => [match.threadId, match.source, match.sentBy]),
+        [[coordinator, "user", "agent"]],
+      );
     }),
   );
 
@@ -427,10 +487,6 @@ it.layer(layerTest)("ThreadSearch filters before it ranks", (it) => {
             message(older, `older-${index}`, "assistant", "pnpm 11 pnpm"),
           ),
           message(parent, "parent-needle", "user", "a needle in a long haystack of other words"),
-          // Agent-written notices in user messages are not indexed, so they never read as "You".
-          message(older, "older-notice", "user", "needle update from a watched pull request", {
-            createdBy: "agent",
-          }),
           message(parent, "parent-pnpm", "user", "moved the repo to pnpm 12 today"),
         ],
         projections.apply,

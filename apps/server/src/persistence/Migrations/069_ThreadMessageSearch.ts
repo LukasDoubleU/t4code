@@ -13,9 +13,8 @@ import {
  * identifiers inside code still match, without the full-table scan a
  * `LIKE '%q%'` needs.
  *
- * It holds what the user wrote and what agents answered. User-role messages
- * that agents or the system wrote (pull request updates, task notices) would
- * flood results and read as "You".
+ * It holds finished user and assistant messages, including user-role messages
+ * that agents, schedules, or the system wrote; see `indexedMessageCondition`.
  *
  * The index is contentless and keyed by the message rowid: search reads the
  * text back from the message row, so the text is not stored twice. `t3 doctor`
@@ -77,8 +76,6 @@ export default Effect.gen(function* () {
         old.streaming IS NOT new.streaming
         OR old.role IS NOT new.role
         OR json_extract(old.payload_json, '$.text') IS NOT json_extract(new.payload_json, '$.text')
-        OR json_extract(old.payload_json, '$.createdBy')
-          IS NOT json_extract(new.payload_json, '$.createdBy')
       )
     BEGIN
       DELETE FROM orchestration_v2_message_search WHERE rowid = old.rowid AND old.streaming = 0;

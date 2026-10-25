@@ -198,6 +198,7 @@ export function useCommandPaletteThreadItems(input: {
           : {}),
         threadContentMatch: {
           source: match.source,
+          sentBy: match.sentBy,
           snippet: match.snippet,
           query: messageSearch.query,
         },

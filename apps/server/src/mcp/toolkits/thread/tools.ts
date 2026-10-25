@@ -266,7 +266,7 @@ const ThreadTransfersTool = Tool.make("t3_thread_transfers", {
 const ThreadSearchTool = Tool.make("t3_thread_search", {
   ...commandTool,
   description:
-    'Search active threads the way the command palette does: title, branch, pull request, and project matches first (source "title", ranked by match quality and recent use, with one-typo tolerance), then threads whose messages contain every query word of three or more characters (source "user" or "assistant", with a snippet; up to a fifth of the limit is kept for these). Subagent threads are skipped. Limited to one project (projectId, else the calling thread\'s project); a caller outside a T3 thread that omits projectId searches every project. No pagination or exhaustive-result guarantee.',
+    'Search active threads the way the command palette does: title, branch, pull request, and project matches first (source "title", ranked by match quality and recent use, with one-typo tolerance), then threads whose messages contain every query word of three or more characters (source "user" or "assistant", with a snippet; sentBy "agent" marks a user-role message that an agent, a schedule, or the system wrote; up to a fifth of the limit is kept for these). Subagent threads are skipped. Limited to one project (projectId, else the calling thread\'s project); a caller outside a T3 thread that omits projectId searches every project. No pagination or exhaustive-result guarantee.',
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     ...OrchestrationSearchThreadsInput.fields,
@@ -279,6 +279,7 @@ const ThreadSearchTool = Tool.make("t3_thread_search", {
         projectId: OrchestrationThreadSearchMatch.fields.projectId,
         title: Schema.String,
         source: Schema.Literals(["title", "user", "assistant"]),
+        sentBy: OrchestrationThreadSearchMatch.fields.sentBy,
         snippet: Schema.optional(OrchestrationThreadSearchMatch.fields.snippet),
         messageCreatedAt: Schema.optional(OrchestrationThreadSearchMatch.fields.messageCreatedAt),
       }),

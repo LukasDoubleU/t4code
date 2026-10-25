@@ -1971,6 +1971,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
               <ThreadSearchMatchExcerpt
                 match={{
                   source: props.searchMatch.source,
+                  sentBy: props.searchMatch.sentBy,
                   snippet: props.searchMatch.snippet,
                   query: props.searchMatchQuery ?? props.searchQuery,
                 }}

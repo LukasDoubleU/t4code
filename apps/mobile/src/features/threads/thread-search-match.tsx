@@ -11,7 +11,7 @@ export function ThreadSearchMatchExcerpt(props: {
   readonly compact?: boolean;
   readonly sidebar?: boolean;
 }) {
-  const isUser = props.match.source === "user";
+  const isUser = props.match.source === "user" && props.match.sentBy === undefined;
   const parts = splitSearchText(
     props.match.snippet,
     findSearchTokenRanges(props.match.snippet, props.query),

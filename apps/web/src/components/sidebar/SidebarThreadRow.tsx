@@ -1,6 +1,6 @@
 import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { ThreadTerminalStatusButton } from "../ThreadStatusIndicators";
-import { ThreadMemoryIndicator, ThreadMemoryLastUpdate } from "../ThreadMemoryIndicator";
+import { ThreadMemoryLastUpdate } from "../ThreadMemoryLastUpdate";
 import { useThreadMemoryPath } from "../../threadMemory";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { requestCustomSnooze } from "../CustomSnoozeDialog";
@@ -592,7 +592,6 @@ type SidebarThreadRowProps = {
   variantAction: SidebarSweepAction;
   settlementSupported: boolean;
   snoozeSupported: boolean;
-  pinningSupported: boolean;
   isPinned: boolean;
   // An expert's topics nested under it, and whether they show.
   topicCount: number;
@@ -636,7 +635,6 @@ type SidebarThreadRowProps = {
   onUnsettle: (threadRef: ScopedThreadRef) => void;
   onSnooze: (threadRef: ScopedThreadRef, preset: Pick<SnoozePreset, "snoozedUntil">) => void;
   onUnsnooze: (threadRef: ScopedThreadRef) => void;
-  onUnpin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
   onDismissAttention: (threadRef: ScopedThreadRef) => void;
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
@@ -717,7 +715,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     onThreadClick,
     onUnsettle,
     onUnsnooze,
-    onUnpin,
     openPullRequestsInRightPanel,
     renamingTitle,
     thread,
@@ -1024,11 +1021,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     event.stopPropagation();
     onUnsnooze(threadRef);
   };
-  const handleUnpinClick = (event: ReactMouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onUnpin(threadRef);
-  };
   const handleToggleTopicsClick = (event: ReactMouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1238,44 +1230,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   ) : null;
   const showPin =
     props.isPinned && (!sortable?.isDragging || (props.dragOverPinned && props.dropVerb === null));
-  const pinIndicator = showPin ? (
-    props.pinningSupported && canOperateThread && !sortable?.isDragging ? (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label="Unpin thread"
-              onClick={handleUnpinClick}
-              className={cn(
-                "group/unpin inline-flex cursor-pointer items-center rounded-sm text-muted-foreground/65 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                // Every expert is pinned, so the pin says nothing there; it stays
-                // reachable as the unpin control on hover and keyboard focus.
-                variant === "expert" &&
-                  "hidden group-any-hover/sidebar-row:inline-flex group-focus-visible/sidebar-row:inline-flex group-has-[:focus-visible]/sidebar-row:inline-flex",
-              )}
-            />
-          }
-        >
-          <PinIcon
-            aria-hidden
-            className="size-3 shrink-0 group-hover/unpin:hidden group-focus-visible/unpin:hidden"
-          />
-          <PinOffIcon
-            aria-hidden
-            className="hidden size-3 shrink-0 group-hover/unpin:block group-focus-visible/unpin:block"
-          />
-        </TooltipTrigger>
-        <TooltipPopup>Unpin thread</TooltipPopup>
-      </Tooltip>
-    ) : variant === "expert" ? null : (
+  // Every expert is pinned, so the pin says nothing there.
+  const pinIndicator =
+    showPin && variant !== "expert" ? (
       <PinIcon
         aria-label="Pinned"
         role="img"
         className="size-3 shrink-0 text-muted-foreground/65"
       />
-    )
-  ) : null;
+    ) : null;
 
   // A card's top line and an expert's right edge: the status, or the last activity without one.
   const statusOrTime = topStatus ? (
@@ -1388,7 +1351,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             <span className="flex min-w-0 items-center gap-1.5 overflow-hidden empty:hidden">
               {topicsToggle}
               {pinIndicator}
-              {showPin ? <ThreadMemoryIndicator threadRef={threadRef} /> : null}
               {isRemote ? (
                 <EnvironmentMachineIcon
                   aria-hidden
@@ -1642,7 +1604,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {/* Left of the status slot, the pin would slide when hover swaps the
                 label for the wider row controls. */}
               {pinIndicator}
-              {showPin ? <ThreadMemoryIndicator threadRef={threadRef} /> : null}
               {props.projectDisplayName ? (
                 <span
                   className={cn(

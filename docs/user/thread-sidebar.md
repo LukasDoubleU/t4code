@@ -85,9 +85,9 @@ Collapsed, the section keeps only the thread you have open, and a thread dropped
 header is pinned as the menu's **Pin** would. Experts lists the pinned threads of every
 environment the app is connected to.
 
-Each expert takes one line: its project, title, status or last activity, a machine icon for a
-thread on another machine, and the memory icon. Hover the row to see its machine, branch, pull
-request, account, and memory.
+Each expert takes one line: its project, title, status or last activity, and a machine icon for a
+thread on another machine. Hover the row to see its machine, branch, pull request, account, and
+memory.
 
 Experts often work without you: another agent messages them, a scheduled task runs, or the agent
 wakes on its own, for example for a pull request it watches. A turn you did not start runs
@@ -205,8 +205,8 @@ start of a session and after every compaction, and keeps it current with the thr
 the current state, decisions and their reasons, your preferences, and open points. The history
 stays in the thread, and secrets stay out of the file.
 
-While the memory is active, the expert's row shows a brain icon. Hover it to see when the file last
-changed, or **No notes yet** before the agent has written it. Choose **Open memory** in the
+While the memory is active, hovering the expert's row shows when the file last changed, or
+**No notes yet** before the agent has written it. Choose **Open memory** in the
 thread's menu to open the file in your editor; for a thread on another machine, its path is
 copied instead. You can edit the file yourself.
 
@@ -230,7 +230,7 @@ the provider reports the size of its context window, as Claude, Codex, and OpenC
 At the end of each turn, a memory file that changed is copied to a `backups` folder next to it,
 keeping the last 20 versions of each thread's memory. To undo a bad edit, copy an earlier version
 back over the memory file. When a pinned thread has run 20 turns without changing its memory, the
-brain icon's tooltip and the expert's hover say so.
+expert's hover says so.
 
 ### Sort and group threads
 

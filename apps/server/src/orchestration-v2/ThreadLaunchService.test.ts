@@ -1498,6 +1498,27 @@ it.effect("files the user's launch as a topic of the thread it names", () => {
   }).pipe(Effect.provide(harness.layer));
 });
 
+it.effect("pins the launched thread only when the launch asks for it", () => {
+  const harness = makeHarness();
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const pinnedInput = {
+      ...launchInput({ command: "command:launch:pinned", thread: "thread:pinned", message: "Hi" }),
+      pin: true,
+    };
+    const pinned = yield* launches.launch(pinnedInput);
+    assert.isTrue(pinned.projection.thread.pinnedAt != null);
+    const retry = yield* launches.launch(pinnedInput);
+    assert.isTrue(retry.resumed);
+    assert.isTrue(retry.projection.thread.pinnedAt != null);
+
+    const plain = yield* launches.launch(
+      launchInput({ command: "command:launch:unpinned", thread: "thread:unpinned", message: "Hi" }),
+    );
+    assert.isFalse(plain.projection.thread.pinnedAt != null);
+  }).pipe(Effect.provide(harness.layer));
+});
+
 it.effect("rejects a server-allocated launch replay with a mismatching thread id", () => {
   const harness = makeHarness();
   return Effect.gen(function* () {

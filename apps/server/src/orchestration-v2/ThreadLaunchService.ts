@@ -111,6 +111,7 @@ export interface ThreadLaunchInput {
   readonly launchedBy?: OrchestrationV2LaunchedBy;
   /** A thread here the user files this one under as a topic, recorded as `launchedBy`. */
   readonly topicOf?: ThreadId;
+  readonly pin?: boolean;
 }
 
 type PreparationInput = Pick<
@@ -982,6 +983,16 @@ const make = Effect.gen(function* () {
             .threadId ?? candidateThreadId;
         if (project.id !== input.projectId) {
           return yield* mapError(input, "resolve-project", threadId)("Project identity changed.");
+        }
+        // Pinned before the first message, so its turn already runs as a pinned thread.
+        if (input.pin === true) {
+          yield* threads
+            .dispatch({
+              type: "thread.pin",
+              commandId: CommandId.make(`${input.commandId}:pin`),
+              threadId,
+            })
+            .pipe(Effect.mapError(mapError(input, "update-thread", threadId)));
         }
         let runId: RunId | null = null;
         let messageWasAlreadyAccepted = false;

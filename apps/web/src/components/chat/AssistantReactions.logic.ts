@@ -10,7 +10,10 @@ import type {
   TurnItemId,
 } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import { assistantReplyExcerpt } from "@t3tools/shared/assistantCitations";
+import {
+  assistantReplyExcerpt,
+  serializeAssistantReplyReference,
+} from "@t3tools/shared/assistantCitations";
 import * as DateTime from "effect/DateTime";
 
 import { formatDayAwareTimestamp } from "../../timestampFormat";
@@ -99,16 +102,34 @@ export function latestReplyItemId(
   );
 }
 
-/** What "Go ahead" sends. A reply other than the latest one is named by its time. */
-export function goAheadText(input: {
-  readonly latest: boolean;
-  readonly repliedAt: string;
-  readonly timestampFormat: TimestampFormat;
-  readonly nowMs?: number;
-}): string {
-  if (input.latest) return "👍 Go ahead.";
-  const time = formatDayAwareTimestamp(input.repliedAt, input.timestampFormat, input.nowMs);
-  return `👍 Go ahead with your reply from ${time}.`;
+/**
+ * The reply a Go ahead names, as Reply does: none for the thread's newest reply, which a plain
+ * "👍 Go ahead." approves.
+ */
+export function goAheadReplyReference(
+  turnItems: ReadonlyArray<OrchestrationV2TurnItem>,
+  threadRef: ScopedThreadRef,
+  reply: ReactableReply,
+): AssistantReplyReference | null {
+  if (latestReplyItemId(turnItems, threadRef.threadId) === reply.itemId) return null;
+  const item = turnItems.find(
+    (candidate): candidate is ReplyItem =>
+      candidate.id === reply.itemId && candidate.type === "assistant_message",
+  );
+  return item === undefined
+    ? null
+    : replyReference(threadRef, {
+        id: item.messageId,
+        text: item.text,
+        updatedAt: reply.repliedAt,
+      });
+}
+
+/** What "Go ahead" sends: the approval, after the reference to the reply it approves if any. */
+export function goAheadText(reference: AssistantReplyReference | null): string {
+  return reference === null
+    ? "👍 Go ahead."
+    : `${serializeAssistantReplyReference(reference)} 👍 Go ahead.`;
 }
 
 /** What Reply puts in the composer: the reply named by the time its footer shows and its first line. */

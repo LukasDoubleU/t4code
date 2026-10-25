@@ -13,7 +13,6 @@ import {
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
-import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { PlayIcon, ReplyIcon, ThumbsUpIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -28,8 +27,8 @@ import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { citationPassage, passageGoAheadText } from "./AssistantPassageReactions.logic";
 import {
+  goAheadReplyReference,
   goAheadText,
-  latestReplyItemId,
   reactableReply,
   thumbsUpAction,
   type ReactableReply,
@@ -123,13 +122,13 @@ export function useReplyReactions(environmentId: EnvironmentId | null) {
     );
   };
 
-  const goAhead = (reply: ReactableReply, timestampFormat: TimestampFormat) =>
+  const goAhead = (reply: ReactableReply) =>
     sendGoAhead(reply, undefined, (turnItems) =>
-      goAheadText({
-        latest: latestReplyItemId(turnItems, reply.threadId) === reply.itemId,
-        repliedAt: reply.repliedAt,
-        timestampFormat,
-      }),
+      goAheadText(
+        capabilities?.replyReferences === true && environmentId !== null
+          ? goAheadReplyReference(turnItems, scopeThreadRef(environmentId, reply.threadId), reply)
+          : null,
+      ),
     );
 
   /** Go ahead with a passage: its citation with the approval, so the agent reads the quote. */
@@ -152,7 +151,6 @@ export function AssistantReactionActions(props: {
   readonly environmentId: EnvironmentId;
   readonly projectedItem: OrchestrationV2ProjectedTurnItem | undefined;
   readonly reactions: ReadonlyArray<OrchestrationV2MessageReactionEmoji> | undefined;
-  readonly timestampFormat: TimestampFormat;
   /** Puts a reference to this reply in the composer; absent where there is no composer. */
   readonly onReply?: (() => void) | undefined;
 }) {
@@ -195,7 +193,7 @@ export function AssistantReactionActions(props: {
               variant="ghost"
               disabled={busy}
               aria-label={GO_AHEAD_LABEL}
-              onClick={() => run(() => goAhead(reply, props.timestampFormat))}
+              onClick={() => run(() => goAhead(reply))}
             />
           }
         >

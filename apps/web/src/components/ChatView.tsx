@@ -2864,7 +2864,7 @@ export default function ChatView(props: ChatViewProps) {
         const target =
           projection === undefined ? null : goAheadTarget(projection, projection.thread.id);
         if (target === null) return false;
-        if (!event.repeat) void replyReactions.goAhead(target, timestampFormat);
+        if (!event.repeat) void replyReactions.goAhead(target);
       },
       "composer.cycleHost": ({ event }) => {
         if (!canChangeEnvironment) return false;

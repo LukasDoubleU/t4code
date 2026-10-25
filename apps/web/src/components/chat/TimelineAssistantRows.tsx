@@ -216,7 +216,6 @@ function AssistantMessageMeta({
             environmentId={ctx.activeThreadEnvironmentId}
             projectedItem={projectedItem}
             reactions={message.reactions}
-            timestampFormat={ctx.timestampFormat}
             onReply={
               onReplyToAssistant && threadRef
                 ? () => onReplyToAssistant(replyReference(threadRef, message))

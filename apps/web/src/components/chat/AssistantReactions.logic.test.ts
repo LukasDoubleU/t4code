@@ -7,10 +7,12 @@ import {
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
+import { expandAssistantCitationsForProvider } from "@t3tools/shared/assistantCitations";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  goAheadReplyReference,
   goAheadTarget,
   goAheadText,
   latestReplyItemId,
@@ -95,23 +97,36 @@ describe("goAheadTarget", () => {
   });
 });
 
-describe("goAheadText", () => {
-  it("names a reply that is not the latest by its time", () => {
-    const nowMs = Date.parse(NOW);
-    expect(goAheadText({ latest: true, repliedAt: NOW, timestampFormat: "24-hour", nowMs })).toBe(
-      "👍 Go ahead.",
-    );
-    expect(
-      goAheadText({ latest: false, repliedAt: NOW, timestampFormat: "24-hour", nowMs }),
-    ).toMatch(/^👍 Go ahead with your reply from \d{1,2}:\d{2}\.$/);
-    expect(
-      goAheadText({
-        latest: false,
-        repliedAt: "2026-10-21T12:00:00.000Z",
-        timestampFormat: "24-hour",
-        nowMs,
+describe("goAhead", () => {
+  const threadRef = { environmentId: EnvironmentId.make("environment-1"), threadId };
+  const target = (id: string) => ({ threadId, itemId: TurnItemId.make(id), repliedAt: NOW });
+
+  it("sends a plain approval for the latest reply and answers an earlier one like Reply", () => {
+    const earlier = { ...reply("item-plan"), text: "## Two options\nA or B." };
+    const turnItems = [earlier, reply("item-latest")];
+
+    expect(goAheadReplyReference(turnItems, threadRef, target("item-latest"))).toBeNull();
+    expect(goAheadText(null)).toBe("👍 Go ahead.");
+
+    const reference = goAheadReplyReference(turnItems, threadRef, target("item-plan"));
+    expect(reference).toStrictEqual(
+      replyReference(threadRef, {
+        id: MessageId.make("item-plan"),
+        text: earlier.text,
+        updatedAt: NOW,
       }),
-    ).toMatch(/^👍 Go ahead with your reply from yesterday at \d{1,2}:\d{2}\.$/);
+    );
+    expect(expandAssistantCitationsForProvider(goAheadText(reference))).toBe(
+      'Reply to your message from 2026-10-22 12:00 UTC ("## Two options"):\n\n👍 Go ahead.',
+    );
+  });
+
+  it("counts a reply still streaming as the latest", () => {
+    const turnItems = [reply("item-done"), reply("item-streaming", { streaming: true })];
+
+    expect(goAheadReplyReference(turnItems, threadRef, target("item-done"))?.messageId).toBe(
+      "item-done",
+    );
   });
 });
 

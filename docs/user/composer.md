@@ -146,8 +146,8 @@ On web and desktop, hover over the final response of a turn to find three button
 - The thumbs-up button adds 👍 without sending anything, so no turn starts. The 👍 stays
   under the response; click it to remove it.
 - The green play button, **Go ahead**, adds 👍 and sends "👍 Go ahead." When the response
-  is not the thread's latest one, the message names it by its time, for example "👍 Go ahead
-  with your reply from 15:20." Like any message, it starts a turn now or waits in the queue
+  is not the thread's latest one, the message answers it like **Reply** does, with a
+  "Replying to 15:20 · …" chip. Like any message, it starts a turn now or waits in the queue
   while the agent is working.
 - **Reply** answers that response even after newer turns, such as messages from other agents.
   Your draft starts with a "Replying to 15:20 · …" chip; its × removes it. The sent message

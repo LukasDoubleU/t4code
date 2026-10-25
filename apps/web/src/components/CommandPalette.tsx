@@ -1424,7 +1424,7 @@ function OpenCommandPaletteDialog(props: {
       searchTerms: ["go ahead", "approve", "thumbs up", "react", "reply", "continue"],
       icon: <PlayIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "chat.goAhead",
-      run: () => replyReactions.goAhead(goAheadReply, clientSettings.timestampFormat),
+      run: () => replyReactions.goAhead(goAheadReply),
     });
   }
 

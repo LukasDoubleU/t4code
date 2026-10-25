@@ -58,7 +58,6 @@ export const selectCommandPaletteClientSettings = (settings: ClientSettings) => 
   sidebarProjectGroupingOverrides: settings.sidebarProjectGroupingOverrides,
   sidebarProjectSortOrder: settings.sidebarProjectSortOrder,
   sidebarThreadSortOrder: settings.sidebarThreadSortOrder,
-  timestampFormat: settings.timestampFormat,
 });
 
 export function useSortedProjectGroups(environmentLabelById: ReadonlyMap<EnvironmentId, string>) {

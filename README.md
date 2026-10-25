@@ -83,6 +83,10 @@ T4 Code merges each upstream release rather than rebasing, and drops a change on
 | Stop stops a thread's subagents | `#23886`, merged after `v0.1.2`                                                |
 | Browsers end with their agent   | `#21299`, merged after `v0.1.2`                                                |
 | Pinned patched packages         | `#23798`, merged after `v0.1.2`                                                |
+| Long turns open in pages        | `#24589`, merged after `v0.1.2`                                                |
+| Event writes retry on locks     | `#24571`, merged after `v0.1.2`                                                |
+| Scroll to end lands at the end  | `#24622`, merged after `v0.1.2`                                                |
+| Threads with open PRs settle    | `#24617`, merged after `v0.1.2`                                                |
 
 Everything else is a fork patch, tracked in this repository's issues. A daily workflow comments on the upkeep issue (#13) when upstream publishes a release or a carried pull request changes state.
 

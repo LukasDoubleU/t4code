@@ -34,6 +34,26 @@
       "name": "Pinned patched packages, picked from main",
       "issue": 13,
       "pulls": { "23798": "merged" }
+    },
+    {
+      "name": "Paged long turns, picked from main",
+      "issue": 13,
+      "pulls": { "24589": "merged" }
+    },
+    {
+      "name": "Retried provider event writes, picked from main",
+      "issue": 13,
+      "pulls": { "24571": "merged" }
+    },
+    {
+      "name": "Scroll to the real end, picked from main",
+      "issue": 13,
+      "pulls": { "24622": "merged" }
+    },
+    {
+      "name": "Settled threads with open PRs, picked from main",
+      "issue": 13,
+      "pulls": { "24617": "merged" }
     }
   ]
 }

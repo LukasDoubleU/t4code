@@ -3612,10 +3612,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               serverConfigs.get(thread.environmentId)?.environment.capabilities
                                 .threadSnooze === true
                             }
-                            pinningSupported={
-                              serverConfigs.get(thread.environmentId)?.environment.capabilities
-                                .threadPinning === true
-                            }
                             isPinned={thread.pinnedAt != null}
                             topicCount={
                               section === "pinned"
@@ -3685,7 +3681,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             onUnsettle={attemptUnsettle}
                             onSnooze={attemptSnooze}
                             onUnsnooze={attemptUnsnooze}
-                            onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onDismissAttention={dismissAttention}
                             onFileDropThreads={handleThreadFileDrop}

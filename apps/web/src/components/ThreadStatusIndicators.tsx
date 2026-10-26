@@ -925,7 +925,14 @@ export function ThreadRowLeadingStatus({
   );
 }
 
-export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSummary }) {
+export function ThreadRowTrailingStatus({
+  thread,
+  severalEnvironments,
+}: {
+  thread: SidebarThreadSummary;
+  // Local threads show their machine too once several environments are linked.
+  severalEnvironments: boolean;
+}) {
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: thread.environmentId,
     threadId: thread.id,
@@ -933,12 +940,12 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
   const environment = useEnvironment(thread.environmentId);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const isRemoteThread = thread.environmentId !== primaryEnvironmentId;
-  const remoteEnvLabel = environment?.label ?? null;
-  const threadEnvironmentLabel = isRemoteThread ? (remoteEnvLabel ?? "Remote") : null;
-  const remoteMachine = resolveEnvironmentMachineKind(environment?.serverConfig ?? null);
+  const showsMachine = isRemoteThread || severalEnvironments;
+  const threadEnvironmentLabel = environment?.label ?? (isRemoteThread ? "Remote" : "Local");
+  const machine = resolveEnvironmentMachineKind(environment?.serverConfig ?? null);
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
 
-  if (!terminalStatus && !isRemoteThread) {
+  if (!terminalStatus && !showsMachine) {
     return null;
   }
 
@@ -963,20 +970,17 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
           <TooltipPopup side="top">{terminalStatus.label}</TooltipPopup>
         </Tooltip>
       ) : null}
-      {isRemoteThread ? (
+      {showsMachine ? (
         <Tooltip>
           <TooltipTrigger
             render={
               <span
-                aria-label={threadEnvironmentLabel ?? "Remote"}
+                aria-label={threadEnvironmentLabel}
                 className="inline-flex items-center justify-center"
               />
             }
           >
-            <EnvironmentMachineIcon
-              kind={remoteMachine}
-              className="size-3 text-muted-foreground/60"
-            />
+            <EnvironmentMachineIcon kind={machine} className="size-3 text-muted-foreground/60" />
           </TooltipTrigger>
           <TooltipPopup side="top">{threadEnvironmentLabel}</TooltipPopup>
         </Tooltip>

@@ -609,7 +609,8 @@ type SidebarThreadRowProps = {
   isRouteThread: boolean;
   openPullRequestsInRightPanel: boolean;
   jumpLabel: string | null;
-  currentEnvironmentId: string | null;
+  // Local threads show it too once several environments are linked.
+  showsMachine: boolean;
   environmentLabel: string | null;
   environmentMachine: EnvironmentMachineKind;
   scratchMachineLabel: string | null;
@@ -869,7 +870,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     ? getTriggerDisplayModelLabel(selectedModel)
     : thread.modelSelection.model;
 
-  const isRemote = thread.environmentId !== props.currentEnvironmentId;
   const showsScratchMachine = !thread.branch && props.scratchMachineLabel !== null;
 
   const detailsTooltip = (
@@ -1351,7 +1351,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             <span className="flex min-w-0 items-center gap-1.5 overflow-hidden empty:hidden">
               {topicsToggle}
               {pinIndicator}
-              {isRemote ? (
+              {props.showsMachine ? (
                 <EnvironmentMachineIcon
                   aria-hidden
                   kind={props.environmentMachine}
@@ -1748,7 +1748,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 aria-hidden
                 className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
               >
-                {isRemote && !showsScratchMachine ? (
+                {props.showsMachine && !showsScratchMachine ? (
                   <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
                     <EnvironmentMachineIcon
                       aria-hidden

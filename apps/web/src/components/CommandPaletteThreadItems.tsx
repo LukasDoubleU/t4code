@@ -113,7 +113,7 @@ export function useCommandPaletteThreadItems(input: {
           query={threadSearchQuery}
           settled={thread.settledOverride === "settled"}
         />
-        <ThreadRowTrailingStatus thread={thread} />
+        <ThreadRowTrailingStatus thread={thread} severalEnvironments={environments.length > 1} />
       </>
     ),
     renderDescription: (thread, { projectTitle }) => {

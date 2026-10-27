@@ -47,6 +47,8 @@ const desk = descriptorOf("environment-desk", "Desk");
 const agent = ThreadId.make("thread:laptop-agent");
 /** Work the desk's link started on this laptop. */
 const fromDesk = ThreadId.make("thread:laptop-from-desk");
+/** Work a full-access link from the desk started on this laptop. */
+const fromTrustedDesk = ThreadId.make("thread:laptop-from-trusted-desk");
 const run = RunId.make("run:lookup");
 
 const thread = (
@@ -214,6 +216,14 @@ const makeLaptop = (shells: ReadonlyArray<OrchestrationV2ThreadShell>) =>
                 ...liveThreadShell(fromDesk),
                 linkOrigin: { sessionId: "session:desk", label: "T3 Code · Desk" },
               },
+              {
+                ...liveThreadShell(fromTrustedDesk),
+                linkOrigin: {
+                  sessionId: "session:trusted-desk",
+                  label: "T3 Code · Desk",
+                  access: "full-access",
+                },
+              },
               ...shells,
             ],
             sends,
@@ -229,10 +239,26 @@ const makeLaptop = (shells: ReadonlyArray<OrchestrationV2ThreadShell>) =>
       ),
     );
     const server = Context.get(here, McpServer.McpServer);
-    const call = (caller: ThreadId, name: string, args: Record<string, unknown>) =>
+    const invoke = (
+      caller: Pick<
+        McpInvocationContext.McpInvocationScope,
+        "requestNamespace" | "thread" | "client"
+      >,
+      name: string,
+      args: Record<string, unknown>,
+    ) =>
       server.callTool({ name, arguments: args }).pipe(
         Effect.provideService(McpInvocationContext.McpInvocationContext, {
+          ...caller,
           environmentId: laptop.environmentId,
+          capabilities: new Set<McpInvocationContext.McpCapability>(["orchestration"]),
+          issuedAt: 1,
+        }),
+        Effect.provideService(McpSchema.McpServerClient, mcpClient),
+      );
+    const call = (caller: ThreadId, name: string, args: Record<string, unknown>) =>
+      invoke(
+        {
           requestNamespace: `provider-session:${caller}`,
           thread: {
             threadId: caller,
@@ -240,12 +266,27 @@ const makeLaptop = (shells: ReadonlyArray<OrchestrationV2ThreadShell>) =>
             providerInstanceId: ProviderInstanceId.make("codex"),
           },
           client: undefined,
-          capabilities: new Set<McpInvocationContext.McpCapability>(["orchestration"]),
-          issuedAt: 1,
-        }),
-        Effect.provideService(McpSchema.McpServerClient, mcpClient),
+        },
+        name,
+        args,
       );
-    return { links: Context.get(linking, PeerLinks.PeerLinks), call, sends };
+    /** A call another environment makes over its full-access link to this laptop. */
+    const callOverLink = (name: string, args: Record<string, unknown>) =>
+      invoke(
+        {
+          requestNamespace: "client:session:desk-link",
+          thread: undefined,
+          client: {
+            sessionId: "session:desk-link",
+            label: "T3 Code · Desk",
+            access: "full-access",
+            linked: true,
+          },
+        },
+        name,
+        args,
+      );
+    return { links: Context.get(linking, PeerLinks.PeerLinks), call, callOverLink, sends };
   });
 
 const failureOf = (result: McpSchema.CallToolResult) => {
@@ -321,7 +362,7 @@ it.effect("lists the pinned threads of every project, here and in each linked en
       expect(yield* inProject(true)).toEqual(["thread:laptop-expert"]);
       expect(yield* inProject(false)).toEqual(["thread:laptop-plain", "thread:laptop-task"]);
 
-      // Work a link started here lists only what is here, and asks no link.
+      // Work a fenced link started here lists only what is here, and asks no link.
       yield* Ref.set(b.bearers, []);
       const relayed = yield* a.call(fromDesk, "t3_thread_list", { pinned: true });
       expect(relayed.structuredContent).toMatchObject({
@@ -390,13 +431,58 @@ it.effect("finds a thread id without its environment wherever it is", () =>
       expect(failureOf(unanswered)).toMatchObject({ code: "thread_not_found" });
       expect(failureOf(unanswered).message).toContain("Desk did not answer.");
 
-      // Work a link started here never looks on this laptop's links.
+      // Work a fenced link started here never looks on this laptop's links.
       yield* Ref.set(b.bearers, []);
       const relayed = yield* a.call(fromDesk, "t3_thread_read", { threadId: "thread:box-only" });
       expect(failureOf(relayed)).toMatchObject({ code: "thread_not_found" });
       expect(yield* Ref.get(b.bearers)).toEqual([]);
     }),
   ),
+);
+
+it.effect(
+  "work a full-access link started looks on the links; fenced work and linked calls do not",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const b = yield* serveEnvironment(box, [
+          thread("thread:box-only", "project:box"),
+          thread("thread:box-expert", "project:box", { pinned: true }),
+        ]);
+        const a = yield* makeLaptop([]);
+        yield* linkTo(a.links, b, "full-access");
+
+        // A full-access link is not fenced, so neither is the work it started.
+        const trusted = yield* a.call(fromTrustedDesk, "t3_thread_read", {
+          threadId: "thread:box-only",
+        });
+        expect(trusted.structuredContent).toMatchObject({
+          thread: { threadId: "thread:box-only" },
+        });
+        const sent = yield* a.call(fromTrustedDesk, "t3_thread_send", {
+          threadId: "thread:box-only",
+          message: "From the desk's work.",
+        });
+        expect(sent.structuredContent).toMatchObject({ delivery: "started" });
+        expect(yield* Ref.get(b.sends)).toEqual(["thread:box-only"]);
+        const pinned = yield* a.call(fromTrustedDesk, "t3_thread_list", { pinned: true });
+        expect(pinned.structuredContent).toMatchObject({
+          threads: [{ threadId: "thread:box-expert", environmentId: box.environmentId }],
+        });
+
+        // Work a fenced link started stays inside its fence.
+        yield* Ref.set(b.bearers, []);
+        const fenced = yield* a.call(fromDesk, "t3_thread_read", { threadId: "thread:box-only" });
+        expect(failureOf(fenced)).toMatchObject({ code: "thread_not_found" });
+
+        // A call that arrives over a link never asks this laptop's links in turn.
+        const relayed = yield* a.callOverLink("t3_thread_read", { threadId: "thread:box-only" });
+        expect(failureOf(relayed)).toMatchObject({ code: "thread_not_found" });
+        const relayedList = yield* a.callOverLink("t3_thread_list", { pinned: true });
+        expect(relayedList.structuredContent).toMatchObject({ threads: [] });
+        expect(yield* Ref.get(b.bearers)).toEqual([]);
+      }),
+    ),
 );
 
 it.effect("names where an expert continues after a fresh start, here and over a link", () =>

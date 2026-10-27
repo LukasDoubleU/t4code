@@ -13,12 +13,33 @@ an existing worktree, use **New thread in this worktree** from the branch toolba
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
 
+### The new thread dialog
+
+On web and desktop, `mod+n` and the sidebar's new thread button open the new
+thread dialog. It opens on the machine of your current thread, or the one you
+picked last, with the current project highlighted, so Enter starts the thread
+there. Type to find another project. To use another machine, press Backspace in
+the empty search field or choose **Switch machine**. The same list adds projects:
+
+- **Open folder** suggests the folders your projects are in and the Git
+  repositories it finds there. Type a path to see matching folders; Tab completes
+  one. Enter on a Git repository, or on a typed folder that exists, adds it and
+  starts the thread. In the desktop app, **Browse…** opens the system folder picker
+  for this computer.
+- **Clone repository** takes `owner/repo` for GitHub, or an HTTPS or SSH clone URL.
+  See [Start, clone, or publish a project](./source-control.md#start-clone-or-publish-a-project).
+
+Typing a path or pasting a clone URL into the project search goes straight to the
+matching step. Shift+click the new thread button, or press `mod+shift+n`, to skip
+the dialog and start in the current project. With **Boring Sidebar** on, `mod+n`
+and the button do that too.
+
 ### Start without a project
 
 A thread does not need a project. To start one without a project, click **or
 start without a project** under a new thread's heading, pick **No project** from
-the project menu in that heading or from **New thread in...** in the command
-palette, or press `mod+alt+n`. On mobile, pick **No project** from the project
+the project menu in that heading or from the new thread dialog, or press
+`mod+alt+n`. On mobile, pick **No project** from the project
 list. It starts on your current machine; before sending, pick another machine
 from the machine menu to move it there. To move a draft into a project, pick the
 project in the heading.

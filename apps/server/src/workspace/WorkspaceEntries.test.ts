@@ -595,5 +595,27 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         });
       }),
     );
+
+    it.effect("marks folders that hold a git repository or worktree", () =>
+      Effect.gen(function* () {
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-browse-git-" });
+        yield* writeTextFile(cwd, "repo/.git/HEAD", "ref: refs/heads/main\n");
+        yield* writeTextFile(cwd, "worktree/.git", "gitdir: ../repo/.git/worktrees/w\n");
+        yield* writeTextFile(cwd, "plain/notes.md", "");
+
+        const result = yield* workspaceEntries.browse({
+          partialPath: yield* appendSeparator(cwd),
+        });
+
+        expect(
+          result.entries.map((entry) => [entry.name, entry.isGitRepo === true] as const),
+        ).toEqual([
+          ["plain", false],
+          ["repo", true],
+          ["worktree", true],
+        ]);
+      }),
+    );
   });
 });

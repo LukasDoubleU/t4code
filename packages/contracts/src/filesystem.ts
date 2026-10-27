@@ -40,6 +40,8 @@ export type FilesystemBrowseInput = typeof FilesystemBrowseInput.Type;
 export const FilesystemBrowseEntry = Schema.Struct({
   name: TrimmedNonEmptyString,
   fullPath: TrimmedNonEmptyString,
+  /** Set when the folder holds a `.git`; older servers never send it. */
+  isGitRepo: Schema.optionalKey(Schema.Boolean),
 });
 export type FilesystemBrowseEntry = typeof FilesystemBrowseEntry.Type;
 

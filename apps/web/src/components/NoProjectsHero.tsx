@@ -1,6 +1,6 @@
 import { MessageSquareDashedIcon, PlusIcon } from "lucide-react";
 
-import { openCommandPalette } from "../commandPaletteBus";
+import { openNewThreadDialog } from "./newThread/newThreadDialogStore";
 import { isElectron } from "../env";
 import { useScratchProject } from "../hooks/useScratchProject";
 import { usePrimaryEnvironmentId } from "../state/environments";
@@ -29,7 +29,7 @@ export function NoProjectsHero() {
                   : "Add a project, or start without one."}
               </EmptyDescription>
               <div className="mt-6 flex justify-center gap-2">
-                <Button size="sm" onClick={() => openCommandPalette({ open: "add-project" })}>
+                <Button size="sm" onClick={() => openNewThreadDialog({ intent: "add-project" })}>
                   <PlusIcon className="size-4" />
                   Add project
                 </Button>

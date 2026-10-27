@@ -130,13 +130,17 @@ like `pinball-stats` for "Pinball Stats". Turn on **Create private repository on
 publish it. If Git has no name or email on that machine, the project is created without the
 first commit.
 
-Use **Add Project** in the command palette (`Cmd/Ctrl+K`) to clone a repository. Choose a hosting
-provider or paste a Git URL, then choose where to save it. The project opens right away while the
+To clone a repository on web and desktop, choose **Clone repository** in the
+[new thread dialog](./thread-sidebar.md#the-new-thread-dialog) (`mod+n`, or **Add project** in the
+sidebar or command palette) and paste `owner/repo` for GitHub, or an HTTPS or SSH clone URL. Enter
+clones it next to your other projects; choose **Clone into another folder** to pick the folder. The
+project opens right away while the
 clone runs in the background: you can write your first prompt, and sending waits until the files
 are in place. A toast tracks progress and lets you cancel; if the clone fails, retry it from the
-toast or from the banner above the composer. When the host refuses the machine's SSH key, T3 Code
-clones over HTTPS with Git's credentials for that host instead, and the project's remote uses the
-HTTPS URL.
+toast or from the banner above the composer. When the host refuses the machine's login over SSH,
+T3 Code tries HTTPS once, and the other way round, and the project's remote uses the URL that
+worked. When both are refused, the error says what to set up on that machine: an SSH key for the
+host, or for GitHub, `gh auth setup-git`.
 
 For a local Git repository without a remote, **Publish Repository** creates a hosted repository,
 adds it as `origin`, and pushes your commits. If there are no commits yet, it creates the remote;

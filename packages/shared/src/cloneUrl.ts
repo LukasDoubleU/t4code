@@ -21,6 +21,10 @@ export function cloneUrlProtocol(url: string): CloneProtocol | null {
   return parseCloneUrl(url)?.protocol ?? null;
 }
 
+export function cloneUrlHost(url: string): string | null {
+  return parseCloneUrl(url)?.host ?? null;
+}
+
 /**
  * Rewrites a clone URL to the other protocol, because the target machine may
  * only have SSH keys or only an HTTPS credential helper. Returns null when the

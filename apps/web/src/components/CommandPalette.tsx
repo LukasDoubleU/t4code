@@ -127,6 +127,7 @@ import { sourceControlEnvironment } from "../state/sourceControl";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useScratchProject } from "../hooks/useScratchProject";
+import { openNewThreadDialog } from "./newThread/newThreadDialogStore";
 import { useNewProject } from "../hooks/useNewProject";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import {
@@ -1657,9 +1658,8 @@ function OpenCommandPaletteDialog(props: {
     ],
     title: "Add project",
     icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
-    keepOpen: true,
     run: async () => {
-      openAddProjectFlow();
+      openNewThreadDialog({ intent: "add-project" });
     },
   });
 

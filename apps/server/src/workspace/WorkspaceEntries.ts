@@ -9,6 +9,7 @@ import * as RcMap from "effect/RcMap";
 import * as Schema from "effect/Schema";
 
 import type {
+  FilesystemBrowseEntry,
   FilesystemBrowseInput,
   FilesystemBrowseResult,
   ProjectEntry,
@@ -116,6 +117,9 @@ const IGNORED_FILES_LIMIT = 200;
 
 /** Paths sent to one `git check-ignore` call when labelling a folder's children. */
 const IGNORE_CHECK_CHUNK_SIZE = 1000;
+
+/** Browsed folders checked for a `.git` marker. */
+const BROWSE_GIT_MARKER_LIMIT = 200;
 
 const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(function* (
   input: FilesystemBrowseInput,
@@ -226,7 +230,7 @@ export const make = Effect.gen(function* () {
 
       const showHidden = endsWithSeparator || prefix.startsWith(".");
       const lowerPrefix = prefix.toLowerCase();
-      const entries: Array<{ readonly name: string; readonly fullPath: string }> = [];
+      const entries: Array<FilesystemBrowseEntry> = [];
       for (const dirent of dirents) {
         if (
           dirent.isDirectory() &&
@@ -239,10 +243,25 @@ export const make = Effect.gen(function* () {
           });
         }
       }
+      // One stat per folder; a huge directory is not worth the wait just to
+      // mark its repositories.
+      const markedEntries =
+        entries.length > BROWSE_GIT_MARKER_LIMIT
+          ? entries
+          : yield* Effect.promise(() =>
+              Promise.all(
+                entries.map((entry) =>
+                  NodeFSP.access(path.join(entry.fullPath, ".git")).then(
+                    () => ({ ...entry, isGitRepo: true }),
+                    () => entry,
+                  ),
+                ),
+              ),
+            );
 
       return {
         parentPath,
-        entries: entries.toSorted((left, right) => left.name.localeCompare(right.name)),
+        entries: markedEntries.toSorted((left, right) => left.name.localeCompare(right.name)),
       };
     },
   );

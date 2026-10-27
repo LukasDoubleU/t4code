@@ -1,5 +1,6 @@
 import {
   type EnvironmentId,
+  linkOriginIsFenced,
   OrchestratorMcpFailure,
   type OrchestratorMcpEnvironmentLinksResult,
   OrchestratorMcpThreadInterruptInput,
@@ -357,11 +358,16 @@ const make = Effect.gen(function* () {
   /**
    * A call that came through a link never asks this environment's links in
    * turn, whatever the link's access: two environments linked to each other
-   * would ask each other forever.
+   * would ask each other forever. Work a link started here may ask them only
+   * when that link has full access; a fenced link keeps its work inside.
    */
   const asksLinks = (scope: Scope) =>
     readCaller().pipe(
-      Effect.map((caller) => callerLinkOrigin(caller) === undefined),
+      Effect.map((caller) => {
+        if (caller.scope.client?.linked === true) return false;
+        const origin = callerLinkOrigin(caller);
+        return origin === undefined || !linkOriginIsFenced(origin);
+      }),
       Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
       Effect.provideService(ThreadManagement.ThreadManagementService, threads),
     );

@@ -246,9 +246,9 @@ it.effect("reports clone progress from git's stderr and keeps its error text on 
   }).pipe(Effect.provide(NodeServices.layer)),
 );
 
-function rejectingSsh(
+function refusingLogins(
   urls: Array<string>,
-  httpsFails: boolean,
+  refused: ReadonlyArray<"ssh" | "https">,
   reason: GitCommandError["reason"] = "authentication_failed",
 ) {
   return {
@@ -256,7 +256,7 @@ function rejectingSsh(
       Effect.gen(function* () {
         const url = input.args.at(-2)!;
         urls.push(url);
-        if (url.startsWith("https://") && !httpsFails) return processOutput();
+        if (!refused.includes(url.startsWith("https://") ? "https" : "ssh")) return processOutput();
         yield* (
           input.progress?.onStderrLine?.(
             url.startsWith("https://")
@@ -297,7 +297,7 @@ const cloneInTemporaryDirectory = (
 it.effect("retries a clone over HTTPS when the SSH login is refused", () =>
   Effect.gen(function* () {
     const urls: Array<string> = [];
-    const result = yield* cloneInTemporaryDirectory(rejectingSsh(urls, false), {
+    const result = yield* cloneInTemporaryDirectory(refusingLogins(urls, ["ssh"]), {
       remoteUrl: CLONE_URLS.sshUrl,
     });
 
@@ -306,11 +306,74 @@ it.effect("retries a clone over HTTPS when the SSH login is refused", () =>
   }),
 );
 
-it.effect("reports both failures when the HTTPS retry fails too", () =>
+it.effect("retries a clone over SSH when the HTTPS login is refused", () =>
+  Effect.gen(function* () {
+    const urls: Array<string> = [];
+    const result = yield* cloneInTemporaryDirectory(refusingLogins(urls, ["https"]), {
+      remoteUrl: "https://github.com/octocat/t3code.git",
+    });
+
+    assert.deepStrictEqual(urls, [
+      "https://github.com/octocat/t3code.git",
+      "git@github.com:octocat/t3code.git",
+    ]);
+    assert.strictEqual(result.remoteUrl, "git@github.com:octocat/t3code.git");
+  }),
+);
+
+it.effect("explains a refused login in words when both protocols are refused", () =>
   Effect.gen(function* () {
     const urls: Array<string> = [];
     const error = yield* Effect.flip(
-      cloneInTemporaryDirectory(rejectingSsh(urls, true), { remoteUrl: CLONE_URLS.sshUrl }),
+      cloneInTemporaryDirectory(refusingLogins(urls, ["https", "ssh"]), {
+        remoteUrl: "https://github.com/octocat/t3code.git",
+      }),
+    );
+
+    assert.strictEqual(urls.length, 2);
+    assert.strictEqual(
+      error.detail,
+      'Git on this machine could not sign in to github.com over HTTPS or SSH. To fix it, add an SSH key for github.com, or run "gh auth setup-git" so Git can use your GitHub CLI login, then clone again.',
+    );
+  }),
+);
+
+it.effect("explains a refused HTTPS login without retrying when the caller asked for HTTPS", () =>
+  Effect.gen(function* () {
+    const urls: Array<string> = [];
+    const error = yield* Effect.flip(
+      cloneInTemporaryDirectory(refusingLogins(urls, ["https"]), {
+        remoteUrl: "https://gitlab.example.com/octocat/t3code.git",
+        protocol: "https",
+      }),
+    );
+
+    assert.deepStrictEqual(urls, ["https://gitlab.example.com/octocat/t3code.git"]);
+    assert.strictEqual(
+      error.detail,
+      "Git on this machine could not sign in to gitlab.example.com over HTTPS. To fix it, clone with the SSH URL instead, or set up a Git credential helper for gitlab.example.com, then clone again.",
+    );
+  }),
+);
+
+it.effect("reports both failures when the retry fails for another reason", () =>
+  Effect.gen(function* () {
+    const urls: Array<string> = [];
+    const error = yield* Effect.flip(
+      cloneInTemporaryDirectory(
+        {
+          execute: (input: GitVcsDriver.ExecuteGitInput) => {
+            const url = input.args.at(-2)!;
+            urls.push(url);
+            return refusingLogins(
+              [],
+              ["ssh", "https"],
+              url.startsWith("https://") ? "remote_unreachable" : "authentication_failed",
+            ).execute(input);
+          },
+        },
+        { remoteUrl: CLONE_URLS.sshUrl },
+      ),
     );
 
     assert.strictEqual(urls.length, 2);
@@ -328,7 +391,7 @@ it.effect.each([
   Effect.gen(function* () {
     const urls: Array<string> = [];
     yield* Effect.flip(
-      cloneInTemporaryDirectory(rejectingSsh(urls, false, reason), {
+      cloneInTemporaryDirectory(refusingLogins(urls, ["ssh"], reason), {
         remoteUrl: CLONE_URLS.sshUrl,
         ...(protocol === undefined ? {} : { protocol }),
       }),

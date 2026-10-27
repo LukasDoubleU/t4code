@@ -32,7 +32,12 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as BitbucketApi from "@t3tools/source-control-bitbucket/server/BitbucketApi";
 import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { cloneUrlForProtocol, cloneUrlProtocol } from "@t3tools/shared/cloneUrl";
+import {
+  type CloneProtocol,
+  cloneUrlForProtocol,
+  cloneUrlHost,
+  cloneUrlProtocol,
+} from "@t3tools/shared/cloneUrl";
 const isSourceControlRepositoryError = Schema.is(SourceControlRepositoryError);
 const isSourceControlProviderError = Schema.is(SourceControlProviderError);
 const isGitCommandError = Schema.is(GitCommandError);
@@ -173,25 +178,49 @@ function publishPushFailureDetail(input: {
 }
 
 /**
- * Adding a project clones over SSH for most hosts, and a machine with no SSH
- * key there would fail every time, while the host's HTTPS credential helper
- * may be set up. A clone whose SSH login was refused is retried once over
- * HTTPS, unless the caller asked for SSH. A looked-up repository has the
- * provider's own HTTPS URL; any other URL is rewritten, which is refused
- * where it would have to guess.
+ * A machine often has only SSH keys or only an HTTPS login for a host, so a
+ * clone whose login was refused is retried once over the other protocol,
+ * unless the caller asked for the one that failed. A looked-up repository has
+ * the provider's own URLs; any other URL is rewritten, which is refused where
+ * it would have to guess.
  */
-function httpsFallbackUrl(
+function fallbackCloneUrl(
   input: SourceControlCloneRepositoryInput,
   prepared: SourceControlPreparedClone,
 ): string | null {
-  if (input.protocol === "ssh" || cloneUrlProtocol(prepared.cloneUrl) !== "ssh") return null;
+  const protocol = cloneUrlProtocol(prepared.cloneUrl);
+  if (protocol === null || input.protocol === protocol) return null;
   if (prepared.repository?.sshUrl === prepared.cloneUrl) return prepared.repository.url;
-  return cloneUrlForProtocol(prepared.cloneUrl, "https");
+  return cloneUrlForProtocol(prepared.cloneUrl, protocol === "ssh" ? "https" : "ssh");
 }
 
-const isSshRejection = (error: SourceControlRepositoryError) =>
-  isGitCommandError(error.cause) &&
-  (error.cause.reason === "authentication_failed" || error.cause.reason === "host_key_unverified");
+const failureReason = (error: SourceControlRepositoryError) =>
+  isGitCommandError(error.cause) ? error.cause.reason : undefined;
+
+const isLoginRejection = (error: SourceControlRepositoryError) =>
+  failureReason(error) === "authentication_failed" ||
+  failureReason(error) === "host_key_unverified";
+
+const PROTOCOL_LABELS: Record<CloneProtocol, string> = { https: "HTTPS", ssh: "SSH" };
+
+/**
+ * Git's own words for a refused login ("could not read Username … terminal
+ * prompts disabled") do not say what to do. Built from fixed text and the
+ * host only, since git's stderr can carry credentials.
+ */
+function cloneLoginFailureDetail(cloneUrl: string, tried: ReadonlyArray<CloneProtocol>): string {
+  const host = cloneUrlHost(cloneUrl) ?? "the host";
+  const httpsLogin =
+    host === "github.com"
+      ? `run "gh auth setup-git" so Git can use your GitHub CLI login`
+      : `set up a Git credential helper for ${host}`;
+  const sshFix = tried.includes("ssh")
+    ? `add an SSH key for ${host}`
+    : "clone with the SSH URL instead";
+  const httpsFix = tried.includes("https") ? httpsLogin : "clone with the HTTPS URL instead";
+  const triedLabel = tried.map((protocol) => PROTOCOL_LABELS[protocol]).join(" or ");
+  return `Git on this machine could not sign in to ${host} over ${triedLabel}. To fix it, ${sshFix}, or ${httpsFix}, then clone again.`;
+}
 
 function selectRemoteUrl(
   urls: SourceControlRepositoryCloneUrls,
@@ -394,7 +423,9 @@ export const make = Effect.gen(function* () {
     options?: SourceControlCloneOptions,
   ) {
     const prepared = yield* prepareClone(input);
-    const httpsUrl = httpsFallbackUrl(input, prepared);
+    const firstProtocol = cloneUrlProtocol(prepared.cloneUrl);
+    const fallbackUrl = fallbackCloneUrl(input, prepared);
+    const fallbackProtocol = fallbackUrl === null ? null : cloneUrlProtocol(fallbackUrl);
     const remoteUrl = yield* runClone(
       input,
       prepared.destinationPath,
@@ -402,22 +433,37 @@ export const make = Effect.gen(function* () {
       options,
     ).pipe(
       Effect.as(prepared.remoteUrl),
-      Effect.catch((sshError) =>
-        httpsUrl === null || !isSshRejection(sshError)
-          ? Effect.fail(sshError)
-          : runClone(input, prepared.destinationPath, httpsUrl, options).pipe(
-              Effect.as(redactRemoteUrl(httpsUrl)),
-              Effect.mapError(
-                (httpsError) =>
-                  new SourceControlRepositoryError({
-                    operation: "cloneRepository",
-                    provider: sshError.provider,
-                    detail: `${sshError.detail} Cloning over HTTPS instead also failed: ${httpsError.detail}`,
-                    cause: httpsError.cause,
-                  }),
-              ),
-            ),
-      ),
+      Effect.catch((firstError) => {
+        if (fallbackUrl === null || fallbackProtocol === null || !isLoginRejection(firstError)) {
+          return Effect.fail(
+            firstProtocol !== null && failureReason(firstError) === "authentication_failed"
+              ? new SourceControlRepositoryError({
+                  operation: "cloneRepository",
+                  provider: firstError.provider,
+                  detail: cloneLoginFailureDetail(prepared.cloneUrl, [firstProtocol]),
+                  cause: firstError.cause,
+                })
+              : firstError,
+          );
+        }
+        return runClone(input, prepared.destinationPath, fallbackUrl, options).pipe(
+          Effect.as(redactRemoteUrl(fallbackUrl)),
+          Effect.mapError(
+            (secondError) =>
+              new SourceControlRepositoryError({
+                operation: "cloneRepository",
+                provider: firstError.provider,
+                detail:
+                  firstProtocol !== null &&
+                  failureReason(firstError) === "authentication_failed" &&
+                  failureReason(secondError) === "authentication_failed"
+                    ? cloneLoginFailureDetail(prepared.cloneUrl, [firstProtocol, fallbackProtocol])
+                    : `${firstError.detail} Cloning over ${PROTOCOL_LABELS[fallbackProtocol]} instead also failed: ${secondError.detail}`,
+                cause: secondError.cause,
+              }),
+          ),
+        );
+      }),
     );
 
     return {

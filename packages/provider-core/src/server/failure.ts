@@ -22,7 +22,7 @@ export class ContextHandoffBudgetError extends Schema.TaggedError<ContextHandoff
   {},
 ) {
   override get message() {
-    return "Insufficient context allowance for the provider handoff. Compact the target conversation or use a larger-context model; the current request has not been truncated.";
+    return "Insufficient context allowance for the provider handoff. Shorten the request or use a larger-context model; the current request has not been truncated.";
   }
 }
 

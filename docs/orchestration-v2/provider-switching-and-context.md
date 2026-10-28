@@ -8,7 +8,7 @@ This document describes the provider-switching specialization of the broader [Th
 
 When returning to a provider that was used earlier, default to resuming that provider's previous provider thread and inject a delta summary covering the runs that happened while the provider was inactive.
 
-Create a fresh provider thread with a full app-thread summary only when resuming the prior provider thread fails, settings are incompatible, or delta handoff is likely to produce poor context.
+Create a fresh provider thread with a full app-thread summary only when resuming the prior provider thread fails, the handoff no longer fits its remaining context, settings are incompatible, or delta handoff is likely to produce poor context.
 
 This gives the best default tradeoff:
 
@@ -126,7 +126,7 @@ Recommended strategy order:
 1. No handoff: target provider thread already has current app run coverage.
 2. Delta handoff into existing provider thread: target provider thread can resume and only missed a run range.
 3. Full thread handoff into existing provider thread: target provider can resume, but delta chain is too complex.
-4. Full thread handoff into new provider thread: target provider resume failed, settings are incompatible, or old context is stale.
+4. Full thread handoff into new provider thread: target provider resume failed, the handoff does not fit the old context, settings are incompatible, or old context is stale.
 5. Unsupported: provider cannot accept handoff context and no safe reconstruction path exists.
 
 ## Staleness Policy

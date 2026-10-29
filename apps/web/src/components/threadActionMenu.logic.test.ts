@@ -192,10 +192,11 @@ describe("buildThreadActionMenuItems", () => {
     expect(item?.disabled).toBe(true);
   });
 
-  it("disables archive while the thread is running", () => {
-    const archiveItem = flatten(buildThreadActionMenuItems({ ...baseState, isRunning: true })).find(
-      (item) => item.id === "archive",
+  it("disables archive and turning into a project while the thread is running", () => {
+    const items = flatten(
+      buildThreadActionMenuItems({ ...baseState, isRunning: true, canTurnIntoProject: true }),
     );
-    expect(archiveItem?.disabled).toBe(true);
+    expect(items.find((item) => item.id === "archive")?.disabled).toBe(true);
+    expect(items.find((item) => item.id === "turn-into-project")?.disabled).toBe(true);
   });
 });

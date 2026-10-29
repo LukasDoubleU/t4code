@@ -155,6 +155,7 @@ vi.mock("./useThreadActions", () => ({
   useDismissThreadAttention: () => () => recordEffect("dismiss-attention"),
   useSetThreadIcon: () => (_target: unknown, icon: unknown) =>
     recordEffect(icon === null ? "use-project-icon" : "change-icon"),
+  canTurnThreadIntoProject: () => false,
   useThreadActions: () =>
     Object.fromEntries(
       [

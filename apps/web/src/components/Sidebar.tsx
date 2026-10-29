@@ -125,6 +125,7 @@ import {
   useThreadSelectionStore,
 } from "../threadSelectionStore";
 import {
+  canTurnThreadIntoProject,
   useAcknowledgeThreadWoke,
   useDismissThreadAttention,
   useSetThreadIcon,
@@ -1106,6 +1107,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     confirmAndUnpinThread,
     setThreadAutoSettle,
     setThreadAccountFailover,
+    turnThreadIntoProject,
     reorderPinnedThread,
     reorderActiveThread,
     markThreadUnread,
@@ -2880,6 +2882,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               canShareWithGuest: appAtomRegistry.get(
                 canShareWithGuestAtom(threadRef.environmentId),
               ),
+              canTurnIntoProject: canTurnThreadIntoProject(threadRef),
               supports: {
                 settlement: configLoaded,
                 autoSettleOptOut: supportsAutoSettleOptOut,
@@ -2987,6 +2990,26 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 ? thread.source.continuedIn
                 : thread.source.continuedFrom;
             if (linked !== undefined) await openLinkedThread(thread.environmentId, linked);
+            return;
+          }
+          case "turn-into-project": {
+            const result = await turnThreadIntoProject(threadRef);
+            if (result._tag === "Success") {
+              toastManager.add({
+                type: "success",
+                title: "Project created",
+                description: thread.title,
+              });
+            } else if (!isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Could not turn thread into a project",
+                  description: error instanceof Error ? error.message : "An error occurred.",
+                }),
+              );
+            }
             return;
           }
           case "auto-settle:enabled":
@@ -3804,7 +3827,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 className="mt-auto"
                                 label="Working"
                                 count={workingThreads.length}
-                                hostsUndoNotice
                                 toggle={{
                                   expanded: workingShelfExpanded,
                                   onToggle: toggleWorkingShelf,
@@ -3820,7 +3842,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 className={cn(workingThreads.length === 0 && "mt-auto")}
                                 label="Background"
                                 count={backgroundThreads.length}
-                                hostsUndoNotice={workingThreads.length === 0}
                                 dragging={from === "active"}
                                 isDropTarget={dragTargetSection === "background"}
                                 toggle={{
@@ -3841,9 +3862,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 )}
                                 label="Snoozed"
                                 count={snoozedThreads.length}
-                                hostsUndoNotice={
-                                  workingThreads.length + backgroundThreads.length === 0
-                                }
                                 toggle={{
                                   expanded: snoozedShelfExpanded,
                                   onToggle: toggleSnoozedShelf,
@@ -3864,12 +3882,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 )}
                                 label="Settled"
                                 count={settledCount}
-                                hostsUndoNotice={
-                                  workingThreads.length +
-                                    backgroundThreads.length +
-                                    snoozedThreads.length ===
-                                  0
-                                }
                                 dragging={from !== null}
                                 isDropTarget={dragTargetSection === "settled"}
                                 toggle={{
@@ -3965,9 +3977,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           ) : null}
         </SidebarGroup>
       </SidebarContent>
-      <SidebarChromeFooter
-        showUndoNotice={isSearchingThreads || sidebarListItemsFresh.length === 0}
-      />
+      <SidebarChromeFooter />
     </>
   );
 }

@@ -27,7 +27,10 @@ const completed = (at: number): ThreadNotificationObservation => ({
   settled: true,
   completedAt: at,
 });
-const visible = { archived: false, quiet: false };
+const visible: { archived: boolean; quiet: boolean; background?: boolean } = {
+  archived: false,
+  quiet: false,
+};
 
 function harness() {
   const notify = vi.fn();
@@ -56,6 +59,19 @@ describe("createThreadNotificationGate", () => {
     observe(working);
     vi.advanceTimersByTime(WORKING_EXIT_GRACE_MS * 2);
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("keeps the user's completion when a turn they didn't start begins within the grace", () => {
+    const { notify, observe } = harness();
+    const background = { ...visible, quiet: true, background: true };
+    observe(working);
+    observe(completed(1));
+    vi.advanceTimersByTime(500);
+    observe(working, background);
+    vi.advanceTimersByTime(500);
+    observe(completed(2), background);
+    vi.advanceTimersByTime(WORKING_EXIT_GRACE_MS * 2);
+    expect(notify.mock.calls).toEqual([["thread", "completion"]]);
   });
 
   it("notifies a real completion once after the grace", () => {

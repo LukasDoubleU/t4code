@@ -220,6 +220,7 @@ export function startThreadNotifications(
       entry.gate.observe(state.thread.id, prior, state, {
         archived: state.thread.archivedAt !== null,
         quiet: state.quiet,
+        background: state.background,
       });
     }
   };

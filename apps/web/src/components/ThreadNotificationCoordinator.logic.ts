@@ -23,6 +23,8 @@ export interface ThreadNotificationState extends ThreadNotificationObservation {
   readonly needsYou: boolean;
   /** The run was stopped, or the user didn't start it: only its questions and failures notify. */
   readonly quiet: boolean;
+  /** The user didn't start the latest run. */
+  readonly background: boolean;
 }
 
 export function observeThreadNotification(thread: EnvironmentThreadShell): ThreadNotificationState {
@@ -35,6 +37,7 @@ export function observeThreadNotification(thread: EnvironmentThreadShell): Threa
     status === "failed" ||
     status === "limited";
   const asked = thread.attention ?? null;
+  const background = threadLatestRunIsBackground(thread);
   const completedAt = Date.parse(thread.latestRun?.completedAt ?? "");
   const settled = status === "ready" && thread.latestRun?.status === "completed";
   return {
@@ -47,7 +50,8 @@ export function observeThreadNotification(thread: EnvironmentThreadShell): Threa
     needsYou: !statusNeedsUser && asked !== null,
     settled,
     completedAt: settled && Number.isFinite(completedAt) ? completedAt : null,
-    quiet: thread.source.latestRunStopRequested === true || threadLatestRunIsBackground(thread),
+    quiet: thread.source.latestRunStopRequested === true || background,
+    background,
   };
 }
 
@@ -76,10 +80,17 @@ export function createThreadNotificationGate<Key>(
       key: Key,
       prior: ThreadNotificationObservation | undefined,
       next: ThreadNotificationObservation,
-      options: { readonly archived: boolean; readonly quiet: boolean },
+      options: {
+        readonly archived: boolean;
+        readonly quiet: boolean;
+        /** The user didn't start the latest run. */
+        readonly background?: boolean;
+      },
     ): void {
       if (next.settled && next.completedAt !== null) lastSettled.set(key, next.completedAt);
-      if (!next.settled || options.archived || options.quiet) cancel(key);
+      // A run the user didn't start never notifies, so it must not cancel their pending completion.
+      const keepsPending = options.background === true;
+      if (options.archived || (!keepsPending && (!next.settled || options.quiet))) cancel(key);
       // The first sighting, archived threads, and stopped or silent runs never notify completion.
       if (!prior || options.archived || options.quiet) skip(key, next.completedAt);
       if (!prior || options.archived) return;
@@ -98,7 +109,7 @@ export function createThreadNotificationGate<Key>(
         at,
         timer: setTimeout(() => {
           pending.delete(key);
-          handled.set(key, at);
+          skip(key, at);
           notify(key, "completion");
         }, WORKING_EXIT_GRACE_MS),
       });

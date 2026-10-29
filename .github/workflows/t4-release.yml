@@ -8,8 +8,8 @@
 # tags the selected commit. Two kinds of versions are accepted:
 #
 #   X.Y.Z-t4.N    A fork release, published as the latest release. X.Y.Z is the
-#                 patch after the upstream release the fork is based on (0.1.5
-#                 on v0.1.4), as upstream nightlies do, and N counts the fork
+#                 patch after the upstream release the fork is based on (0.1.6
+#                 on v0.1.5), as upstream nightlies do, and N counts the fork
 #                 builds on that base from 1. electron-updater compares versions
 #                 as semver, so each build sorts above the one before it, above
 #                 the upstream release it contains and below the next one.
@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, for example 0.1.5-t4.1. The selected commit is tagged t4-v<version>."
+        description: "Version to release, for example 0.1.6-t4.1. The selected commit is tagged t4-v<version>."
         required: true
         type: string
 

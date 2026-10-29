@@ -4,7 +4,7 @@
 
 T4 Code is a personal fork of [T3 Code](https://github.com/pingdotgg/t3code), the open-source GUI for Claude Code, Codex and other coding agents. It is built for running many agents across several machines and subscriptions: threads that reach across machines, an app that keeps running in the tray, a sidebar made for long-lived threads, and a hint which account to use next.
 
-It is based on upstream `v0.1.4` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
+It is based on upstream `v0.1.5` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
 
 > [!NOTE]
 > T4 Code is not affiliated with T3 Tools or the T3 Code team. Please don't report its problems upstream.
@@ -60,7 +60,7 @@ It is based on upstream `v0.1.4` and follows upstream releases. Releases have Wi
 
 From a clone, `pwsh -File scripts/t4/install-t4.ps1` does the same in one step: it checks the download against `SHA256SUMS`, quits the app, backs up your data and installs. Each release also has the `t3` command-line tool as `t3-<version>-win32-x64.zip`.
 
-Versions read `0.1.5-t4.N`: the upstream patch after the base, plus the fork's build number.
+Versions read `0.1.6-t4.N`: the upstream patch after the base, plus the fork's build number.
 
 ### Linux server
 

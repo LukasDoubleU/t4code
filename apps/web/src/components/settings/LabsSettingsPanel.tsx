@@ -128,8 +128,7 @@ function LinkedEnvironmentsRow() {
       settingKeys={["linkedEnvironmentsEnabled"]}
       description={
         <>
-          Let agents here work on your other machines, and theirs here. Turn it on for each machine,
-          then link them in{" "}
+          Let agents here work on your other machines, and theirs here. Link them in{" "}
           <Link to="/settings/connections" className="underline underline-offset-2">
             Connections
           </Link>

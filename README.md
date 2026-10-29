@@ -13,7 +13,7 @@ It is based on upstream `v0.1.4` and follows upstream releases. Releases have Wi
 
 **Across machines**
 
-- **Linked environments.** Link two machines in **Settings → Environments**, and agents on one launch, message, wait on and stop threads on the other; `delegate_task` runs a task there and reports back. Both machines need T4 Code. [Link another environment](./docs/user/remote-access.md#link-another-environment)
+- **Linked environments on by default.** Upstream's linked environments are a Beta that starts off; T4 Code turns it on, so links keep working on every machine after an update. **Settings → Labs** turns it off. Link two machines in **Settings → Environments**, and agents on one launch, message, wait on and stop threads on the other; `delegate_task` runs a task there and reports back. [Link another environment](./docs/user/remote-access.md#link-another-environment)
 - **Find threads by name.** Agents find pinned threads across projects and linked machines, and resolve a bare thread ID on whichever machine has it. **Copy thread ID** is in the thread menu and the command palette.
 
 **Long-lived threads**

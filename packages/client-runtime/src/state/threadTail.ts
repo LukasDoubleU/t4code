@@ -84,10 +84,11 @@ export const layer: Layer.Layer<ThreadTailLoader, never, HttpClient.HttpClient> 
       RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization,
     );
     return ThreadTailLoader.of({
-      load: (prepared, threadId) =>
+      load: Effect.fn("ThreadTailLoader.load")((prepared, threadId) =>
         fetchEnvironmentThreadTail({ prepared, threadId, signer, remoteAuthorization }).pipe(
           Effect.provideService(HttpClient.HttpClient, httpClient),
         ),
+      ),
     });
   }),
 );

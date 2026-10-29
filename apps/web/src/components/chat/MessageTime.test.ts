@@ -104,7 +104,6 @@ function replyRow(message: ChatMessage, showAssistantMeta = true): MessagesTimel
     id: message.id,
     createdAt: message.createdAt,
     message,
-    durationStart: message.createdAt,
     showAssistantMeta,
     showAssistantCopyButton: showAssistantMeta,
     assistantCopyStreaming: false,

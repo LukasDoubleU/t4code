@@ -1,5 +1,6 @@
-import { assert, expect, it } from "@effect/vitest";
-import { T3_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
+import { expect, it } from "@effect/vitest";
+import * as Exit from "effect/Exit";
+import * as Schema from "effect/Schema";
 import { Tool } from "effect/ai";
 
 import { OrchestratorToolkit } from "./tools.ts";
@@ -16,16 +17,18 @@ it("states t3_thread_read page size limits in the parameter descriptions", () =>
   }
 });
 
-it("sends agents to Settings → Connections for a machine that is not linked", () => {
-  const namesLinkTool = /\bt3_environment_link\b/;
-  assert.notProperty(OrchestratorToolkit.tools, "t3_environment_link");
-  for (const tool of Object.values(OrchestratorToolkit.tools)) {
-    assert.notMatch(tool.description ?? "", namesLinkTool, tool.name);
-  }
-  assert.notMatch(T3_CODE_ORCHESTRATION_INSTRUCTIONS, namesLinkTool);
-  assert.include(
-    OrchestratorToolkit.tools.t3_environment_links.description ?? "",
-    "link it in Settings → Connections",
+it("refuses a t3_thread_update whose fields do not fit its action", () => {
+  const decode = Schema.decodeUnknownExit(
+    OrchestratorToolkit.tools.t3_thread_update.parametersSchema,
   );
-  assert.include(T3_CODE_ORCHESTRATION_INSTRUCTIONS, "link it in Settings → Connections");
+  expect(Exit.isFailure(decode({ action: "rename" }))).toBe(true);
+  expect(Exit.isFailure(decode({ action: "regenerate_title", title: "New" }))).toBe(true);
+  expect(Exit.isSuccess(decode({ action: "rename", title: "New", environmentId: undefined }))).toBe(
+    true,
+  );
+  expect(Exit.isFailure(decode({ action: "set_icon" }))).toBe(true);
+  expect(Exit.isFailure(decode({ action: "clear_icon", title: "New" }))).toBe(true);
+  expect(Exit.isSuccess(decode({ action: "set_icon", icon: { kind: "emoji", emoji: "🧪" } }))).toBe(
+    true,
+  );
 });

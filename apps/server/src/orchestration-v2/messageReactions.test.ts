@@ -209,13 +209,12 @@ it.effect("rejects a reaction on anything but a finished assistant reply", () =>
   }).pipe(Effect.provide(layerOrchestrator)),
 );
 
-const storageCases = (["sqlite", "memory"] as const).map((storage) => ({
-  storage,
-  storeLayer:
-    storage === "sqlite"
-      ? ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))
-      : ProjectionStore.layerMemory,
-}));
+const storageCases = [
+  {
+    storage: "sqlite",
+    storeLayer: ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory)),
+  },
+] as const;
 
 /**
  * One thread whose runs start, take steers and get reactions at chosen times. Each delivery

@@ -81,11 +81,11 @@ function subagentRequest(thread: OrchestrationV2ThreadShell): PendingSubagentReq
 }
 
 /**
- * The threads to flag for a subagent's live question or approval, up its
+ * The threads to flag for a subagent's live approval, up its
  * subagent chain. `delegated` are tasks this environment's threads delegated
  * to linked environments, with what each one, or its own subagents, asks.
  */
-export function pendingSubagentRequestsByThread(
+function pendingSubagentRequestsByThread(
   threads: ReadonlyArray<OrchestrationV2ThreadShell>,
   delegated: ReadonlyArray<{
     readonly parentThreadId: ThreadId;
@@ -99,6 +99,8 @@ export function pendingSubagentRequestsByThread(
     request: PendingSubagentRequest,
     seen: Set<ThreadId>,
   ) => {
+    // The coordinator answers child questions; only approvals need user attention.
+    if (request === "user_input") return;
     byId ??= new Map(threads.map((thread) => [thread.id, thread] as const));
     let parentId = firstParentId;
     while (parentId !== null && !seen.has(parentId)) {
@@ -232,26 +234,61 @@ export function createEnvironmentThreadShellAtoms(input: {
     }).pipe(Atom.withLabel(`environment-local-subagent-requests:${environmentId}`));
   });
 
+  // Flags for environments whose threads delegated tasks, counting what each task
+  // or anything it delegated on asks. Each pass settles one more hop of a chain;
+  // flags only grow, so environments delegating to each other settle too.
+  const delegatedSubagentRequestsAtom = Atom.make((get) => {
+    const tasksByDelegator = new Map<
+      EnvironmentId,
+      Array<{
+        readonly runsIn: EnvironmentId;
+        readonly thread: OrchestrationV2ThreadShell;
+        readonly parentThreadId: ThreadId;
+      }>
+    >();
+    for (const runsIn of enabledEnvironmentIds(get(input.catalogValueAtom))) {
+      for (const thread of get(environmentThreadsAtom(runsIn))) {
+        const from = thread.delegatedFrom;
+        if (from === undefined || from.environmentId === runsIn) continue;
+        const task = { runsIn, thread, parentThreadId: from.threadId };
+        const tasks = tasksByDelegator.get(from.environmentId);
+        if (tasks === undefined) tasksByDelegator.set(from.environmentId, [task]);
+        else tasks.push(task);
+      }
+    }
+    let flags = new Map<EnvironmentId, ReadonlyMap<ThreadId, PendingSubagentRequest>>();
+    const requestsOf = (environmentId: EnvironmentId) =>
+      flags.get(environmentId) ?? get(localSubagentRequestsAtom(environmentId));
+    for (let changed = tasksByDelegator.size > 0; changed;) {
+      changed = false;
+      const next = new Map(flags);
+      for (const [environmentId, tasks] of tasksByDelegator) {
+        const delegated = tasks.flatMap(({ runsIn, thread, parentThreadId }) => {
+          const own = subagentRequest(thread);
+          const nested = requestsOf(runsIn).get(thread.id);
+          const request = own === "approval" ? own : (nested ?? own);
+          return request === null ? [] : [{ parentThreadId, request }];
+        });
+        if (delegated.length === 0) continue;
+        const requests = pendingSubagentRequestsByThread(
+          get(environmentThreadsAtom(environmentId)),
+          delegated,
+        );
+        if (sameRequests(requestsOf(environmentId), requests)) continue;
+        next.set(environmentId, requests);
+        changed = true;
+      }
+      flags = next;
+    }
+    return flags;
+  }).pipe(Atom.withLabel("environment-delegated-subagent-requests"));
+
   const pendingSubagentRequestsAtom = Atom.family((environmentId: EnvironmentId) => {
     let previous = EMPTY_SUBAGENT_REQUESTS;
     return Atom.make((get) => {
-      const delegated: Array<{ parentThreadId: ThreadId; request: PendingSubagentRequest }> = [];
-      for (const other of enabledEnvironmentIds(get(input.catalogValueAtom))) {
-        if (other === environmentId) continue;
-        for (const thread of get(environmentThreadsAtom(other))) {
-          if (thread.delegatedFrom?.environmentId !== environmentId) continue;
-          const own = subagentRequest(thread);
-          const nested = get(localSubagentRequestsAtom(other)).get(thread.id);
-          const request = own === "approval" ? own : (nested ?? own);
-          if (request !== null) {
-            delegated.push({ parentThreadId: thread.delegatedFrom.threadId, request });
-          }
-        }
-      }
       const next =
-        delegated.length === 0
-          ? get(localSubagentRequestsAtom(environmentId))
-          : pendingSubagentRequestsByThread(get(environmentThreadsAtom(environmentId)), delegated);
+        get(delegatedSubagentRequestsAtom).get(environmentId) ??
+        get(localSubagentRequestsAtom(environmentId));
       if (sameRequests(previous, next)) return previous;
       previous = next;
       return next;
@@ -498,6 +535,20 @@ export function createEnvironmentThreadShellAtoms(input: {
     return previousThreadShells;
   }).pipe(Atom.withLabel("environment-thread-shell-list"));
 
+  // Lists that arrange threads read this, so a running thread's streaming
+  // ticks reach only what reads its live shell.
+  let previousQuietThreadShells: ReadonlyArray<EnvironmentThreadShell> = [];
+  const quietThreadShellsAtom = Atom.make((get) => {
+    const next: EnvironmentThreadShell[] = [];
+    for (const ref of get(threadRefsAtom)) {
+      const shell = get(quietThreadShellAtomFamily(threadKey(ref)));
+      if (shell !== null) next.push(shell);
+    }
+    if (arrayElementsEqual(previousQuietThreadShells, next)) return previousQuietThreadShells;
+    previousQuietThreadShells = next;
+    return next;
+  }).pipe(Atom.withLabel("environment-quiet-thread-shell-list"));
+
   let previousDelegatedUnderParent: ReadonlySet<string> = new Set();
   const delegatedUnderParentAtom = Atom.make((get) => {
     const environmentIds = new Set(enabledEnvironmentIds(get(input.catalogValueAtom)));
@@ -508,7 +559,9 @@ export function createEnvironmentThreadShellAtoms(input: {
         if (
           parent !== undefined &&
           environmentIds.has(parent.environmentId) &&
-          get(environmentThreadIndexAtom(parent.environmentId)).has(parent.threadId)
+          // An archived parent leaves navigation; its task there stays listed on its own.
+          get(environmentThreadIndexAtom(parent.environmentId)).get(parent.threadId)?.archivedAt ===
+            null
         ) {
           next.add(threadKey({ environmentId, threadId: thread.id }));
         }
@@ -523,20 +576,6 @@ export function createEnvironmentThreadShellAtoms(input: {
     previousDelegatedUnderParent = next;
     return next;
   }).pipe(Atom.withLabel("environment-delegated-under-parent"));
-
-  // Lists that arrange threads read this, so a running thread's streaming
-  // ticks reach only what reads its live shell.
-  let previousQuietThreadShells: ReadonlyArray<EnvironmentThreadShell> = [];
-  const quietThreadShellsAtom = Atom.make((get) => {
-    const next: EnvironmentThreadShell[] = [];
-    for (const ref of get(threadRefsAtom)) {
-      const shell = get(quietThreadShellAtomFamily(threadKey(ref)));
-      if (shell !== null) next.push(shell);
-    }
-    if (arrayElementsEqual(previousQuietThreadShells, next)) return previousQuietThreadShells;
-    previousQuietThreadShells = next;
-    return next;
-  }).pipe(Atom.withLabel("environment-quiet-thread-shell-list"));
 
   let previousNavigationShells: ReadonlyArray<EnvironmentThreadShell> = [];
   const navigationThreadShellsAtom = Atom.make((get) => {

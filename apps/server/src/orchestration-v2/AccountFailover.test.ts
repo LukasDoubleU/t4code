@@ -223,9 +223,7 @@ const layerRuntime = (sessionUsed: number) =>
         createWorktree: () => Effect.succeed({} as never),
       }),
     ),
-    Layer.provide(
-      Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeed(Option.none()) }),
-    ),
+    Layer.provide(Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone })),
     Layer.provide(layerPlatformTest),
   );
 

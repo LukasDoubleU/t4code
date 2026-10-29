@@ -87,6 +87,7 @@ describe("buildThreadActionMenuItems", () => {
     expect(more?.children?.find((item) => item.id === "copy")?.children?.map((c) => c.id)).toEqual([
       "copy-path",
       "copy-branch",
+      "copy-thread",
     ]);
     expect(more?.children?.find((item) => item.id === "archive")?.separatorBefore).toBe(true);
   });

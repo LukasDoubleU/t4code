@@ -109,11 +109,9 @@ function defaultModel(entry: ProviderInstanceEntry): string | undefined {
 }
 
 /**
- * Moves a draft to the recommended account of its provider, with the same model and options, or
- * returns null to leave it. A draft moves only while its prompt is empty and the user has not
- * picked since opening it, so the account never changes under a prompt being written or right
- * after a pick. An instance without a reading, such as one that bills an API key, stays.
- * `explicit` carries over, so a model picked on an earlier visit stays picked.
+ * The draft on its provider's recommended account with the same model and options, or null to
+ * leave it: only while its prompt is empty and unpicked since opening, never for an instance
+ * without a reading (an API key). `explicit` carries over, so an earlier visit's pick stays.
  */
 export function recommendedDraftSelection(input: {
   readonly enabled: boolean;
@@ -151,7 +149,7 @@ export function recommendedDraftSelection(input: {
   };
 }
 
-export function useNextAccountRanks(
+function useNextAccountRanks(
   environmentId: EnvironmentId | null,
   entries: ReadonlyArray<ProviderInstanceEntry>,
 ): ReadonlyMap<ProviderInstanceId, NextInstanceRank> {
@@ -228,6 +226,7 @@ export function useStartOnRecommendedAccount(input: {
     openedKey: null,
   });
   // Before paint, so an opened draft never shows the account it is about to leave.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- moves the draft in the composer draft store, outside React, before paint.
   useLayoutEffect(() => {
     // A visit starts whenever the chat view shows a draft it was not showing.
     if (visit.current.draftId !== draftId) {

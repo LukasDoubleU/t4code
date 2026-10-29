@@ -32,7 +32,7 @@ export class DesktopTray extends Context.Service<
 
 const { logError } = makeComponentLogger("desktop-tray");
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const available = yield* Ref.make(false);
   return DesktopTray.of({

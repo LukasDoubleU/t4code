@@ -13,7 +13,6 @@ import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
@@ -41,7 +40,7 @@ export const modelSelection = {
   instanceId: ProviderInstanceId.make("codex"),
   model: "gpt-5.4",
 } satisfies ModelSelection;
-export const projectId = ProjectId.make("project:experts");
+const projectId = ProjectId.make("project:experts");
 
 const driver = ProviderDriverKind.make("codex");
 const providerInstance = {
@@ -101,9 +100,7 @@ const layerRuntime = Layer.mergeAll(
       createWorktree: () => Effect.succeed({} as never),
     }),
   ),
-  Layer.provide(
-    Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeed(Option.none()) }),
-  ),
+  Layer.provide(Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone })),
   Layer.provide(layerPlatform),
 );
 

@@ -10,6 +10,7 @@ import {
   type PersistedUiState,
   persistState,
   reorderProjects,
+  resolveProjectExpanded,
   setProjectExpanded,
   type UiState,
 } from "./uiStateStore";
@@ -18,7 +19,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     projectExpandedById: {},
     projectOrder: [],
-    sidebarProjectScopeKey: null,
+    sidebarProjectScopeKeys: [],
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
@@ -50,6 +51,20 @@ describe("uiStateStore pure functions", () => {
 
     expect(next.threadLastVisitedAtById[threadId]).toBe("2026-02-25T12:29:59.999Z");
     expect(markThreadUnread(next, threadId, null)).toBe(next);
+  });
+
+  it("resolves project expansion from logical, physical, and legacy preference keys", () => {
+    const physicalKey = "environment:/repo/project";
+    const legacyKey = legacyProjectCwdPreferenceKey("/repo/project");
+
+    expect(resolveProjectExpanded({ logical: false, [physicalKey]: true }, ["logical"])).toBe(
+      false,
+    );
+    expect(resolveProjectExpanded({ [physicalKey]: false }, ["new-logical", physicalKey])).toBe(
+      false,
+    );
+    expect(resolveProjectExpanded({ [legacyKey]: false }, ["new-logical", legacyKey])).toBe(false);
+    expect(resolveProjectExpanded({}, ["new-logical"])).toBe(true);
   });
 
   it("sets expansion for every stable key belonging to a logical project", () => {
@@ -110,7 +125,7 @@ describe("parsePersistedState", () => {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
-      sidebarProjectScopeKey: null,
+      sidebarProjectScopeKeys: [],
       pullRequestMergeMethod: "merge",
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -144,7 +159,9 @@ describe("parsePersistedState", () => {
     const projectBKey = legacyProjectCwdPreferenceKey("/repo/b");
 
     expect(parsed.projectOrder).toEqual([projectBKey, projectAKey]);
-    expect(parsed.projectExpandedById).toEqual({ [projectAKey]: true, [projectBKey]: false });
+    expect(resolveProjectExpanded(parsed.projectExpandedById, [projectAKey])).toBe(true);
+    expect(resolveProjectExpanded(parsed.projectExpandedById, [projectBKey])).toBe(false);
+    expect(resolveProjectExpanded(parsed.projectExpandedById, ["unknown"])).toBe(true);
   });
 });
 
@@ -213,6 +230,7 @@ describe("uiStateStore persistence", () => {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
+      sidebarProjectScopeKeys: [],
       sidebarProjectScopeKey: null,
       threadChangedFilesExpansionVersion: 2,
       threadChangedFilesExpandedById: {
@@ -229,14 +247,30 @@ describe("uiStateStore persistence", () => {
   });
 
   it("restores the sidebar project scope across reloads", () => {
-    persistState(makeUiState({ sidebarProjectScopeKey: "github.com/pingdotgg/t3code" }));
+    const keys = ["github.com/pingdotgg/t3code", "github.com/pingdotgg/uploadthing"];
+    persistState(makeUiState({ sidebarProjectScopeKeys: keys }));
 
     const persisted = JSON.parse(
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
 
-    expect(parsePersistedState(persisted).sidebarProjectScopeKey).toBe(
-      "github.com/pingdotgg/t3code",
-    );
+    expect(parsePersistedState(persisted).sidebarProjectScopeKeys).toEqual(keys);
+  });
+
+  it("keeps a single-project scope readable by older clients", () => {
+    persistState(makeUiState({ sidebarProjectScopeKeys: ["github.com/pingdotgg/t3code"] }));
+
+    const persisted = JSON.parse(
+      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+    ) as PersistedUiState;
+
+    expect(persisted.sidebarProjectScopeKey).toBe("github.com/pingdotgg/t3code");
+  });
+
+  it("restores a single-project scope saved before multi-project filtering", () => {
+    expect(
+      parsePersistedState({ sidebarProjectScopeKey: "github.com/pingdotgg/t3code" })
+        .sidebarProjectScopeKeys,
+    ).toEqual(["github.com/pingdotgg/t3code"]);
   });
 });

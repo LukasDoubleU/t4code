@@ -125,6 +125,7 @@ function PassageChips(props: {
     clearHighlight.current?.();
     clearHighlight.current = null;
   };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- removes the passage's DOM highlight when the reply unmounts.
   useEffect(() => () => clearHighlight.current?.(), []);
   const show = (passage: AssistantPassage) => {
     hide();

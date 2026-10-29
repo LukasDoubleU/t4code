@@ -14,7 +14,6 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import { McpSchema, McpServer } from "effect/ai";
 
@@ -28,6 +27,7 @@ import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.t
 import * as ThreadSearch from "../orchestration-v2/ThreadSearch.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
@@ -124,7 +124,7 @@ const environmentThreads = (
     }),
     Layer.mock(ProjectService.ProjectService)({
       getById: (projectId) =>
-        Effect.succeed(Option.some({ id: projectId, title: `${projectId} title` } as never)),
+        Effect.succeedSome({ id: projectId, title: `${projectId} title` } as never),
     }),
   );
 };
@@ -143,7 +143,7 @@ const commonLayers = Layer.mergeAll(
   Layer.mock(RemoteDelegation.RemoteDelegation)({}),
   Layer.mock(PeerLinkRequests.PeerLinkRequests)({}),
   NodeCrypto.layer,
-  NodeServices.layer,
+  DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer)),
 );
 
 const toolkits = Layer.mergeAll(

@@ -33,6 +33,7 @@ function finish(icon: ProjectIconOverride | null) {
 
 export function ThreadIconDialogHost() {
   const request = useRequest((state) => state.request);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- settles the pending icon request, a promise outside React, when the host unmounts.
   useEffect(() => () => finish(null), []);
   if (!request) return null;
   return (

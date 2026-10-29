@@ -32,9 +32,11 @@ export type ThreadActionMenuId =
   | "rename"
   | "regenerate-title"
   | "mark-unread"
+  | "share-guest"
   | "copy"
   | "copy-path"
   | "copy-branch"
+  | "copy-thread"
   | "copy-thread-id"
   | "archive"
   | "delete";
@@ -109,7 +111,7 @@ export interface ThreadActionMenuState {
     readonly available: boolean;
   } | null;
   readonly isRegeneratingTitle: boolean;
-  /** Archive rejects a thread with an attached provider, so disable it here rather than let the action fail. */
+  /** Archive rejects attached providers, so disable it while running. */
   readonly isRunning: boolean;
   readonly supports: {
     readonly settlement: boolean;
@@ -122,6 +124,8 @@ export interface ThreadActionMenuState {
     readonly icons?: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
+  /** Guest links need their own grant, so the caller checks it instead of `canOperate`. */
+  readonly canShareWithGuest?: boolean;
 }
 
 /**
@@ -139,9 +143,11 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "open-continued-from",
     "move-to-background",
     "bring-to-front",
+    "share-guest",
     "copy",
     "copy-path",
     "copy-branch",
+    "copy-thread",
     "copy-thread-id",
   ].includes(action);
 }
@@ -169,6 +175,9 @@ export function buildThreadActionMenuItems(
             disabled: state.isRegeneratingTitle,
           },
         ]
+      : []),
+    ...(state.canShareWithGuest
+      ? [{ id: "share-guest" as const, label: "Share with guest", icon: "user-plus" }]
       : []),
     ...(state.projectFilter
       ? [
@@ -232,6 +241,7 @@ export function buildThreadActionMenuItems(
         ...(state.branch
           ? [{ id: "copy-branch" as const, label: "Branch", icon: "git-branch" }]
           : []),
+        { id: "copy-thread", label: "Thread", icon: "message-square" },
       ],
     },
     { id: "project-settings", label: "Project settings", icon: "settings" },
@@ -320,7 +330,11 @@ export function buildThreadActionMenuItems(
                     id: `snooze:${preset.id}` as const,
                     label: `${preset.label} (${preset.whenLabel})`,
                   })),
-                  { id: "snooze:custom" as const, label: "Custom…", separatorBefore: true },
+                  {
+                    id: "snooze:custom" as const,
+                    label: "Custom…",
+                    separatorBefore: state.snoozePresets.length > 0,
+                  },
                 ],
               },
         ]

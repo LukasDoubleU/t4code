@@ -6,14 +6,14 @@ import {
   filterFilesystemBrowseEntries,
   getFilesystemBrowsePath,
 } from "@t3tools/client-runtime/state/filesystem";
-import type { EnvironmentId, FilesystemBrowseResult, ScopedProjectRef } from "@t3tools/contracts";
-
 import {
   ensureBrowseDirectoryPath,
   getBrowseDirectoryPath,
   hasTrailingPathSeparator,
-  normalizeProjectPathForComparison,
-} from "../../lib/projectPaths";
+} from "@t3tools/client-runtime/state/projects";
+import type { EnvironmentId, FilesystemBrowseResult, ScopedProjectRef } from "@t3tools/contracts";
+import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
+
 import { isWindowsPlatform } from "../../lib/utils";
 
 export type NewThreadDialogStep = "machine" | "project" | "folder" | "clone" | "new-project";

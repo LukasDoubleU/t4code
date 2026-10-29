@@ -17,7 +17,6 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
@@ -158,22 +157,20 @@ function makeHarness(input: {
         }),
         Layer.mock(ProjectStore.ProjectStoreV2)({
           get: () =>
-            Effect.succeed(
-              Option.some({
-                projectId,
-                title: "Project",
-                workspaceRoot: "/repo",
-                defaultModelSelection: titleModel,
-                defaultThreadEnvMode: null,
-                autoPull: false,
-                faviconPath: null,
-                projectIcon: null,
-                scripts: [],
-                createdAt: "2026-10-01T00:00:00.000Z",
-                updatedAt: "2026-10-01T00:00:00.000Z",
-                deletedAt: null,
-              }),
-            ),
+            Effect.succeedSome({
+              projectId,
+              title: "Project",
+              workspaceRoot: "/repo",
+              defaultModelSelection: titleModel,
+              defaultThreadEnvMode: null,
+              autoPull: false,
+              faviconPath: null,
+              projectIcon: null,
+              scripts: [],
+              createdAt: "2026-10-01T00:00:00.000Z",
+              updatedAt: "2026-10-01T00:00:00.000Z",
+              deletedAt: null,
+            }),
         }),
         Layer.mock(TextGeneration.TextGeneration)({ generateThreadCatchUp }),
         ServerSettings.layerTest({ textGenerationModelSelection: titleModel }),

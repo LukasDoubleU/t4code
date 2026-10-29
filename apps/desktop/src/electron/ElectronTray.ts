@@ -27,9 +27,9 @@ export class ElectronTray extends Context.Service<
   }
 >()("@t3tools/desktop/electron/ElectronTray") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = ElectronTray.of({
-  create: (options) =>
+  create: Effect.fn("ElectronTray.create")((options) =>
     Effect.acquireRelease(
       Effect.try({
         try: () => {
@@ -58,6 +58,7 @@ export const make = ElectronTray.of({
       }),
       (tray) => Effect.sync(() => tray.destroy()),
     ).pipe(Effect.asVoid),
+  ),
 });
 
 export const layer = Layer.succeed(ElectronTray, make);

@@ -26,20 +26,23 @@ import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/sh
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { AsyncResult } from "effect/reactivity";
-import { planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";
 import {
   effectiveSnoozed,
   type ThreadSnoozeShell,
 } from "@t3tools/client-runtime/state/thread-settled";
 import {
   getThreadSortTimestamp,
+  planPinnedReorder,
   sortThreads,
   toSortableTimestamp,
   type ThreadSortInput,
-} from "../lib/threadSort";
+} from "@t3tools/client-runtime/state/thread-sort";
 import type { SidebarThreadSummary, Thread } from "../types";
 import { normalizeSearchText } from "../lib/utils";
 import { isLatestRunSettled } from "../session-logic";
+import { observeIntersection } from "../lib/observeIntersection";
+import { deadlineAfter, deadlineStore } from "@t3tools/client-runtime/clock";
+import { useDeadlinePassed } from "../hooks/useDeadline";
 import { legacyProjectCwdPreferenceKey } from "../uiStateStore";
 
 export function shouldNavigateAfterThreadPark(input: {
@@ -72,41 +75,84 @@ export function resolveSidebarRowAccessibility(input: {
   };
 }
 
-// Each prewarmed thread holds a live, fully hydrated detail subscription (all
-// messages and activities, growing as agents work) for as long as the row stays
-// visible, so this limit is a direct renderer-heap and server-load multiplier —
-// keep it small; cold opens still render instantly from the cached snapshot.
+// Each prewarm retains growing thread detail and a live subscription, multiplying heap and server load.
 const SIDEBAR_ROW_SUBSCRIPTION_OVERSCAN_PX = 160;
 
 export function useSidebarRowSubscriptionLease(isActive: boolean): {
   readonly leaseLiveStatus: boolean;
-  readonly rowRef: React.Dispatch<React.SetStateAction<HTMLElement | null>>;
+  readonly rowRef: (row: HTMLElement | null) => (() => void) | undefined;
 } {
-  const [row, setRow] = React.useState<HTMLElement | null>(null);
   const [isNearViewport, setIsNearViewport] = React.useState(isActive);
-  // The active row stays leased after it deactivates until the observer reports.
   if (isActive && !isNearViewport) setIsNearViewport(true);
   const canObserve = typeof IntersectionObserver !== "undefined";
 
-  React.useEffect(() => {
-    if (isActive || row === null || !canObserve) return;
-
-    const scrollRoot = row.closest<HTMLElement>('[data-slot="scroll-area-viewport"]');
-    const observer = new IntersectionObserver(
-      ([entry]) => setIsNearViewport(entry?.isIntersecting === true),
-      {
-        root: scrollRoot,
-        rootMargin: `${SIDEBAR_ROW_SUBSCRIPTION_OVERSCAN_PX}px 0px`,
-      },
-    );
-    observer.observe(row);
-    return () => observer.disconnect();
-  }, [canObserve, isActive, row]);
-
   return {
     leaseLiveStatus: isActive || isNearViewport || !canObserve,
-    rowRef: setRow,
+    rowRef: (row) => {
+      if (row === null || isActive || !canObserve) return undefined;
+      // The overscan has to apply to the sidebar's own scroller; a viewport-rooted
+      // margin is still clipped by it.
+      return observeIntersection(row, (entry) => setIsNearViewport(entry.isIntersecting), {
+        root: row.closest('[data-slot="scroll-area-viewport"]'),
+        rootMargin: `${SIDEBAR_ROW_SUBSCRIPTION_OVERSCAN_PX}px 0px`,
+      });
+    },
   };
+}
+
+const fileDragClears = new Set<(active: false) => void>();
+function clearFileDrags() {
+  const clears = [...fileDragClears];
+  fileDragClears.clear();
+  for (const clear of clears) clear(false);
+}
+
+/**
+ * A file drag that ends outside every drop target (Escape, or a drop elsewhere)
+ * sends no dragleave to the row it last entered, so the window's dragend clears it.
+ */
+export function setFileDragActive(setActive: (active: boolean) => void, active: boolean) {
+  setActive(active);
+  if (typeof window === "undefined") return;
+  if (!active) {
+    if (fileDragClears.delete(setActive) && fileDragClears.size === 0) {
+      window.removeEventListener("dragend", clearFileDrags);
+    }
+    return;
+  }
+  if (fileDragClears.size === 0) window.addEventListener("dragend", clearFileDrags, { once: true });
+  fileDragClears.add(setActive);
+}
+
+/**
+ * A clock that advances exactly when a snooze wake time passes, so a woken
+ * thread leaves the shelf on time without a per-second clock.
+ */
+export function useSnoozeWakeClock(
+  threads: ReadonlyArray<{ readonly snoozedUntil?: string | null | undefined }>,
+): number {
+  const [clockMs, setClockMs] = React.useState(() => Date.now());
+  const wakeTimes: number[] = [];
+  let nextWakeAt: number | null = null;
+  for (const thread of threads) {
+    const wakeAt = thread.snoozedUntil == null ? Number.NaN : Date.parse(thread.snoozedUntil);
+    if (!(wakeAt > clockMs)) continue;
+    wakeTimes.push(wakeAt);
+    if (nextWakeAt === null || wakeAt < nextWakeAt) nextWakeAt = wakeAt;
+  }
+  const woke = useDeadlinePassed(nextWakeAt);
+  // Advancing to the latest wake that has passed skips every wake that elapsed
+  // meanwhile, e.g. across a laptop sleep. Stepping one wake at a time would
+  // re-render once per elapsed wake and hit React's limit.
+  if (woke && nextWakeAt !== null) {
+    let nextClockMs = nextWakeAt;
+    for (const wakeAt of wakeTimes) {
+      if (wakeAt > nextClockMs && deadlineStore(wakeAt).getSnapshot()) nextClockMs = wakeAt;
+    }
+    setClockMs(nextClockMs);
+    return nextClockMs;
+  }
+  return clockMs;
 }
 
 export function useRetainedValue<T>(key: string | null, value: T | null): T | null {
@@ -121,16 +167,12 @@ export function useRetainedValue<T>(key: string | null, value: T | null): T | nu
   return key !== null && retained?.key === key ? retained.value : null;
 }
 
-// Sidebar.motion handles ordinary section changes. Sortable transforms own
-// dragging; replaying their committed DOM order would animate the drop twice.
+// Sortable owns drag transforms; replaying committed order would animate drops twice.
 export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
   args.isSorting ? defaultAnimateLayoutChanges(args) : false;
 
-// Snoozed rows can leave the shelf, but dropping into it is not supported
-// because snoozing requires a wake time. The Working shelf (beta) follows live
-// status, so its rows only drag out as chat context, never between sidebar
-// sections. Background is this device's view of active threads, so only active
-// rows drop into it.
+// Snoozed rows cannot accept drops without a wake time. Working rows only drag out as chat context.
+// Background is this device's view of active threads, so only active rows drop into it.
 
 export type SidebarSection =
   | "pinned"
@@ -234,7 +276,7 @@ export function resolveSidebarExpertsSection<T>(input: {
   readonly keyOf: (thread: T) => string;
 }): {
   readonly rows: ReadonlyArray<{ readonly thread: T; readonly section: "pinned" | "topic" }>;
-  readonly label: string;
+  readonly count: number;
   readonly expanded: boolean;
 } {
   const { pinned, topicsByExpert, openTopicKeys, collapsed, routeThreadKey, keyOf } = input;
@@ -250,7 +292,7 @@ export function resolveSidebarExpertsSection<T>(input: {
     rows.push({ thread: expert, section: "pinned" });
     for (const topic of shownTopics) rows.push({ thread: topic, section: "topic" });
   }
-  return { rows, label: `Experts (${pinned.length})`, expanded: !collapsed };
+  return { rows, count: pinned.length, expanded: !collapsed };
 }
 
 const SIDEBAR_MARKER_PREFIX = "sidebar-marker-";
@@ -295,7 +337,7 @@ function sectionAtSidebarSlot(
   return section;
 }
 
-export type SidebarDropTarget = {
+type SidebarDropTarget = {
   readonly section: "pinned" | "active" | "background" | "settled";
   readonly pinnedOrder: readonly string[];
   readonly activeOrder: readonly string[];
@@ -333,7 +375,7 @@ export function resolveSidebarDropTarget(
   return { section, pinnedOrder, activeOrder };
 }
 
-export type SidebarThreadDropPlan =
+type SidebarThreadDropPlan =
   | { readonly kind: "none" }
   | {
       readonly kind: "reorder-pinned";
@@ -587,12 +629,9 @@ type LogicalSidebarProject = SidebarProject & {
   }[];
 };
 
-export type ThreadTraversalDirection = "previous" | "next";
+type ThreadTraversalDirection = "previous" | "next";
 
-/**
- * Shared-worktree checks must exclude only successful deletions, never the
- * whole batch.
- */
+/** Exclude only successful deletions from shared-worktree checks. */
 export async function deleteSelectedThreadEntries<
   TEntry extends { readonly threadKey: string },
 >(input: {
@@ -617,6 +656,38 @@ export async function deleteSelectedThreadEntries<
   }
 
   return { deletedThreadKeys, firstFailure };
+}
+
+export async function archiveSelectedThreadEntries<
+  TEntry extends { readonly threadKey: string },
+  TResult extends { readonly _tag: "Success" | "Failure" },
+>(input: {
+  entries: readonly TEntry[];
+  archive: (entry: TEntry, onArchived: () => void) => Promise<TResult>;
+}): Promise<{
+  archivedThreadKeys: readonly string[];
+  mutationFailure: Extract<TResult, { readonly _tag: "Failure" }> | null;
+  followupFailures: readonly Extract<TResult, { readonly _tag: "Failure" }>[];
+}> {
+  const archivedThreadKeys: string[] = [];
+  const followupFailures: Extract<TResult, { readonly _tag: "Failure" }>[] = [];
+
+  for (const entry of input.entries) {
+    let didArchive = false;
+    const result = await input.archive(entry, () => {
+      didArchive = true;
+    });
+    if (didArchive || result._tag === "Success") archivedThreadKeys.push(entry.threadKey);
+    if (result._tag === "Success") continue;
+    const failure = result as Extract<TResult, { readonly _tag: "Failure" }>;
+    if (didArchive) {
+      followupFailures.push(failure);
+      continue;
+    }
+    return { archivedThreadKeys, mutationFailure: failure, followupFailures };
+  }
+
+  return { archivedThreadKeys, mutationFailure: null, followupFailures };
 }
 
 export function isSidebarSubagentThread(thread: Pick<SidebarThreadSummary, "lineage">): boolean {
@@ -702,6 +773,7 @@ export interface ThreadStatusPill {
     | "Failed"
     | "Pending Approval"
     | "Awaiting Input"
+    | "Guest Request"
     | "Needs you"
     | "Waiting"
     | "Plan Ready";
@@ -710,12 +782,26 @@ export interface ThreadStatusPill {
   pulse: boolean;
 }
 
+const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
+  "Pending Approval": 5,
+  "Awaiting Input": 4,
+  "Guest Request": 3.75,
+  "Needs you": 3.7,
+  Failed: 3.5,
+  Working: 3,
+  Connecting: 3,
+  Waiting: 2.5,
+  "Plan Ready": 2,
+  Completed: 1,
+};
+
 type ThreadStatusInput = Pick<
   SidebarThreadSummary,
   | "hasActionableProposedPlan"
   | "hasPendingApprovals"
   | "hasPendingUserInput"
   | "pendingSubagentRequest"
+  | "pendingGuestMessageCount"
   | "interactionMode"
   | "latestRun"
   | "runtime"
@@ -727,98 +813,27 @@ type ThreadStatusInput = Pick<
   blockedOnThreadWait?: boolean | undefined;
 };
 
-export interface ThreadJumpHintVisibilityController {
-  sync: (shouldShow: boolean) => void;
-  dispose: () => void;
-}
-
-function createThreadJumpHintVisibilityController(input: {
-  delayMs: number;
-  onVisibilityChange: (visible: boolean) => void;
-  setTimeoutFn?: typeof globalThis.setTimeout;
-  clearTimeoutFn?: typeof globalThis.clearTimeout;
-}): ThreadJumpHintVisibilityController {
-  const setTimeoutFn = input.setTimeoutFn ?? globalThis.setTimeout;
-  const clearTimeoutFn = input.clearTimeoutFn ?? globalThis.clearTimeout;
-  let isVisible = false;
-  let timeoutId: NodeJS.Timeout | null = null;
-
-  const clearPendingShow = () => {
-    if (timeoutId === null) {
-      return;
-    }
-    clearTimeoutFn(timeoutId);
-    timeoutId = null;
-  };
-
-  return {
-    sync: (shouldShow) => {
-      if (!shouldShow) {
-        clearPendingShow();
-        if (isVisible) {
-          isVisible = false;
-          input.onVisibilityChange(false);
-        }
-        return;
-      }
-
-      if (isVisible || timeoutId !== null) {
-        return;
-      }
-
-      timeoutId = setTimeoutFn(() => {
-        timeoutId = null;
-        isVisible = true;
-        input.onVisibilityChange(true);
-      }, input.delayMs);
-    },
-    dispose: () => {
-      clearPendingShow();
-    },
-  };
-}
-
-export function useThreadJumpHintVisibility(): {
-  showThreadJumpHints: boolean;
-  updateThreadJumpHintsVisibility: (shouldShow: boolean) => void;
-} {
-  const [showThreadJumpHints, setShowThreadJumpHints] = React.useState(false);
-  const controllerRef = React.useRef<ThreadJumpHintVisibilityController | null>(null);
-
-  React.useEffect(() => {
-    const controller = createThreadJumpHintVisibilityController({
-      delayMs: THREAD_JUMP_HINT_SHOW_DELAY_MS,
-      onVisibilityChange: (visible) => {
-        setShowThreadJumpHints(visible);
-      },
-      setTimeoutFn: window.setTimeout.bind(window),
-      clearTimeoutFn: window.clearTimeout.bind(window),
-    });
-    controllerRef.current = controller;
-
-    return () => {
-      controller.dispose();
-      controllerRef.current = null;
-    };
-  }, []);
-
-  const updateThreadJumpHintsVisibility = (shouldShow: boolean) => {
-    controllerRef.current?.sync(shouldShow);
-  };
-
-  return {
-    showThreadJumpHints,
-    updateThreadJumpHintsVisibility,
-  };
+/**
+ * Thread jump hints appear once the jump modifier has been held for a moment,
+ * so a quick shortcut never flashes them, and hide as soon as it is released.
+ */
+export function useThreadJumpHintsVisible(shouldShow: boolean): boolean {
+  const [showAt, setShowAt] = React.useState<number | null>(null);
+  // The clock is read inside the updater: the compiler caches a bare clock read
+  // in render once per instance, so a second hold would reuse the first deadline.
+  // React discards this render and re-runs with the update.
+  if (shouldShow !== (showAt !== null)) {
+    setShowAt(shouldShow ? () => deadlineAfter(THREAD_JUMP_HINT_SHOW_DELAY_MS) : null);
+  }
+  return useDeadlinePassed(showAt);
 }
 
 export function resolveThreadLastVisitedAt(
   serverLastVisitedAt: string | null | undefined,
   localLastVisitedAt: string | undefined,
 ): string | undefined {
-  // When the server tracks visits it is authoritative — including explicit
-  // rewinds from mark-unread, which a newer browser-local watermark must not
-  // mask. The local value only carries servers without visited tracking.
+  // Server visits override local watermarks, including mark-unread rewinds; use local values only on older
+  // servers.
   if (serverLastVisitedAt === undefined) return localLastVisitedAt;
   return serverLastVisitedAt ?? undefined;
 }
@@ -835,11 +850,7 @@ export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
   return completedAt > lastVisitedAt;
 }
 
-/**
- * A failed latest run the person hasn't looked at since it ended. Unlike a
- * completion, a thread nobody has opened yet (an automation's, say) counts:
- * its failure still needs someone.
- */
+/** Unopened threads' failures still count as unseen, unlike completions. */
 function hasUnseenFailure(thread: ThreadStatusInput): boolean {
   if (thread.latestRun?.status !== "failed") return false;
   if (!thread.lastVisitedAt) return true;
@@ -849,11 +860,7 @@ function hasUnseenFailure(thread: ThreadStatusInput): boolean {
   return completedAt > lastVisitedAt;
 }
 
-// A double-click dispatches two `click` events before `dblclick`: the first has
-// `detail === 1`, the second `detail === 2`. The second click must not run the
-// row's single-click navigation, otherwise double-click-to-rename would also
-// navigate. `MouseEvent.detail` is 0 for synthetic/keyboard activations, which
-// still count as a normal single activation.
+// Suppress trailing double-click navigation; keyboard and synthetic clicks use detail 0.
 export function isTrailingDoubleClick(detail: number): boolean {
   return detail > 1;
 }
@@ -944,6 +951,7 @@ export function resolveAdjacentThreadId<T>(input: {
 export type SidebarThreadStatus =
   | "approval"
   | "input"
+  | "request"
   | "working"
   | "waiting"
   | "failed"
@@ -957,7 +965,14 @@ export function shouldRecedeSidebarThread(input: {
   isActive: boolean;
   isSelected: boolean;
 }): boolean {
-  if (input.isActive || input.isSelected || input.status === "input") return false;
+  if (
+    input.isActive ||
+    input.isSelected ||
+    input.status === "input" ||
+    input.status === "request"
+  ) {
+    return false;
+  }
   if (input.status === "working" || input.status === "waiting") return true;
   if (input.status === "ready" || input.status === "approval") {
     return !input.isUnread && !input.isWoke;
@@ -970,6 +985,7 @@ type SidebarThreadStatusInput = Pick<
   | "hasPendingApprovals"
   | "hasPendingUserInput"
   | "pendingSubagentRequest"
+  | "pendingGuestMessageCount"
   | "runtime"
   | "blockedOnThreadWait"
 >;
@@ -980,6 +996,10 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   }
   if (thread.hasPendingUserInput || thread.pendingSubagentRequest === "user_input") {
     return "input";
+  }
+  // A guest is waiting on the owner; the agent's own requests come first.
+  if ((thread.pendingGuestMessageCount ?? 0) > 0) {
+    return "request";
   }
   if (thread.runtime?.status === "running" && thread.blockedOnThreadWait === true) {
     return "waiting";
@@ -1010,6 +1030,7 @@ export function resolveSidebarFolderDot(
   if (
     statuses.has("input") ||
     statuses.has("approval") ||
+    statuses.has("request") ||
     statuses.has("limited") ||
     threads.some((thread) => thread.attention != null)
   ) {
@@ -1025,41 +1046,66 @@ export function resolveSidebarFolderDot(
   return null;
 }
 
+/**
+ * Keys the old per-project sidebar saved folder open state under, most
+ * specific first, for `resolveProjectExpanded`. Boring folders read and write
+ * the same keys, so a legacy user's closed folders stay closed after regrouping.
+ */
+export function sidebarFolderExpansionKeys(group: {
+  readonly projectKey: string;
+  readonly memberProjects: ReadonlyArray<{
+    readonly physicalProjectKey: string;
+    readonly workspaceRoot: string;
+  }>;
+}): string[] {
+  return [
+    group.projectKey,
+    ...group.memberProjects.map((member) => member.physicalProjectKey),
+    ...group.memberProjects.map((member) => legacyProjectCwdPreferenceKey(member.workspaceRoot)),
+  ];
+}
+
+/**
+ * Boring sidebar folders. Folders follow `groups` order and threads keep their
+ * input order. A project with no threads gets a folder only with `keepEmpty`.
+ * A thread whose project is in no group has no folder and is left out.
+ */
+export function groupSidebarThreadsByProject<
+  TGroup extends {
+    readonly memberProjectRefs: ReadonlyArray<{
+      readonly environmentId: EnvironmentId;
+      readonly projectId: string;
+    }>;
+  },
+  TThread extends Pick<SidebarThreadSummary, "environmentId" | "projectId">,
+>(
+  groups: readonly TGroup[],
+  threads: readonly TThread[],
+  keepEmpty: boolean,
+): Array<{ group: TGroup; threads: TThread[] }> {
+  const folders = groups.map((group) => ({ group, threads: [] as TThread[] }));
+  const folderByProject = new Map<string, (typeof folders)[number]>();
+  for (const folder of folders) {
+    for (const ref of folder.group.memberProjectRefs) {
+      folderByProject.set(`${ref.environmentId}:${ref.projectId}`, folder);
+    }
+  }
+  for (const thread of threads) {
+    folderByProject.get(`${thread.environmentId}:${thread.projectId}`)?.threads.push(thread);
+  }
+  return keepEmpty ? folders : folders.filter((folder) => folder.threads.length > 0);
+}
+
 export type SidebarV2TopStatusKind =
   | "approval"
   | "done"
   | "failed"
   | "limited"
   | "input"
+  | "request"
   | "waiting"
   | "woke"
   | "working";
-
-export function resolveSidebarV2TopStatus(input: {
-  readonly status: SidebarThreadStatus;
-  readonly isUnread: boolean;
-  readonly isWoke: boolean;
-}): SidebarV2TopStatusKind | null {
-  if (input.status === "working") {
-    return "working";
-  }
-  if (input.status === "waiting") {
-    return "waiting";
-  }
-  if (input.status === "approval") {
-    return "approval";
-  }
-  if (input.status === "input") {
-    return "input";
-  }
-  if (input.status === "failed" || input.status === "limited") {
-    return input.status;
-  }
-  if (input.isWoke) {
-    return "woke";
-  }
-  return input.isUnread ? "done" : null;
-}
 
 export function firstValidTimestampMs(
   ...candidates: ReadonlyArray<string | null | undefined>
@@ -1074,7 +1120,6 @@ export function firstValidTimestampMs(
 
 export { sortActiveThreads as sortThreadsForSidebar } from "@t3tools/client-runtime/state/thread-sort";
 export {
-  isThreadWorking as isSidebarThreadWorking,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
 } from "@t3tools/client-runtime/state/thread-inbox";
@@ -1143,12 +1188,12 @@ export function filterSidebarProjectScopeItems<TItem extends { readonly value: s
   return input.items.filter((item) => item.value !== "all" && input.matches(item, query));
 }
 
-export interface SidebarProjectScopeMenuState {
+interface SidebarProjectScopeMenuState {
   readonly open: boolean;
   readonly query: string;
 }
 
-export type SidebarProjectScopeMenuAction =
+type SidebarProjectScopeMenuAction =
   | { readonly type: "query-changed"; readonly query: string }
   | { readonly type: "open-changed"; readonly open: boolean }
   | { readonly type: "project-settings-opened" };
@@ -1192,6 +1237,15 @@ export function resolveThreadStatusPill(input: {
       label: "Awaiting Input",
       colorClass: "text-indigo-600 dark:text-indigo-300/90",
       dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
+      pulse: false,
+    };
+  }
+
+  if ((thread.pendingGuestMessageCount ?? 0) > 0) {
+    return {
+      label: "Guest Request",
+      colorClass: "text-guest-foreground",
+      dotClass: "bg-guest",
       pulse: false,
     };
   }
@@ -1285,6 +1339,24 @@ export function resolveThreadStatusPill(input: {
   return null;
 }
 
+export function resolveProjectStatusIndicator(
+  statuses: ReadonlyArray<ThreadStatusPill | null>,
+): ThreadStatusPill | null {
+  let highestPriorityStatus: ThreadStatusPill | null = null;
+
+  for (const status of statuses) {
+    if (status === null) continue;
+    if (
+      highestPriorityStatus === null ||
+      THREAD_STATUS_PRIORITY[status.label] > THREAD_STATUS_PRIORITY[highestPriorityStatus.label]
+    ) {
+      highestPriorityStatus = status;
+    }
+  }
+
+  return highestPriorityStatus;
+}
+
 export function getFallbackThreadIdAfterDelete<
   T extends Pick<Thread, "id" | "projectId" | "createdAt" | "updatedAt"> & ThreadSortInput,
 >(input: {
@@ -1339,8 +1411,7 @@ function sortProjectsByActivity<TProject extends SidebarProject>(
     return [...projects];
   }
 
-  // Each project's timestamp walks all of its threads, so compute it once
-  // per project instead of once per comparison.
+  // Project timestamps scan all threads; compute once per project instead of per comparison.
   return projects
     .map((project) => ({
       project,
@@ -1352,6 +1423,29 @@ function sortProjectsByActivity<TProject extends SidebarProject>(
       return byTimestamp || compareTies(left.project, right.project);
     })
     .map(({ project }) => project);
+}
+
+export function sortProjectsForSidebar<
+  TProject extends SidebarProject,
+  TThread extends Pick<Thread, "projectId" | "createdAt" | "updatedAt"> & ThreadSortInput,
+>(
+  projects: readonly TProject[],
+  threads: readonly TThread[],
+  sortOrder: SidebarProjectSortOrder,
+): TProject[] {
+  const threadsByProjectId = new Map<string, TThread[]>();
+  for (const thread of threads) {
+    const existing = threadsByProjectId.get(thread.projectId) ?? [];
+    existing.push(thread);
+    threadsByProjectId.set(thread.projectId, existing);
+  }
+
+  return sortProjectsByActivity(
+    projects,
+    sortOrder,
+    (project) => threadsByProjectId.get(project.id) ?? [],
+    (left, right) => left.title.localeCompare(right.title) || left.id.localeCompare(right.id),
+  );
 }
 
 export function sortLogicalProjectsForSidebar<
@@ -1407,71 +1501,6 @@ export function sortSidebarV2ProjectGroups<
     filterSidebarV2VisibleThreads(threads, null, delegatedUnderParent),
     sortOrder,
   );
-}
-
-/**
- * Keys the old per-project sidebar saved folder open state under, most
- * specific first. Boring folders read and write the same keys so a legacy
- * user's collapsed folders stay collapsed, even after regrouping.
- */
-export function sidebarFolderExpansionKeys(group: {
-  readonly projectKey: string;
-  readonly memberProjects: ReadonlyArray<{
-    readonly physicalProjectKey: string;
-    readonly workspaceRoot: string;
-  }>;
-}): string[] {
-  return [
-    group.projectKey,
-    ...group.memberProjects.map((member) => member.physicalProjectKey),
-    ...group.memberProjects.map((member) => legacyProjectCwdPreferenceKey(member.workspaceRoot)),
-  ];
-}
-
-export function isSidebarFolderCollapsed(
-  projectExpandedById: Readonly<Record<string, boolean>>,
-  keys: readonly string[],
-): boolean {
-  const saved = keys.find((key) => projectExpandedById[key] !== undefined);
-  return saved !== undefined && projectExpandedById[saved] === false;
-}
-
-/**
- * Boring sidebar folders. Folders follow `groups` order and include empty
- * projects so each one can start a thread. Threads keep their input order.
- * A thread whose project is in no group has no folder and is left out.
- */
-export function groupSidebarThreadsByProject<
-  TGroup extends {
-    readonly projectKey: string;
-    readonly memberProjectRefs: ReadonlyArray<{
-      readonly environmentId: EnvironmentId;
-      readonly projectId: string;
-    }>;
-  },
-  TThread extends Pick<SidebarThreadSummary, "environmentId" | "projectId">,
->(input: {
-  readonly groups: readonly TGroup[];
-  readonly inbox: readonly TThread[];
-  readonly settled: readonly TThread[];
-}): Array<{ group: TGroup; inbox: TThread[]; settled: TThread[] }> {
-  const folders = input.groups.map((group) => ({
-    group,
-    inbox: [] as TThread[],
-    settled: [] as TThread[],
-  }));
-  const folderByProject = new Map<string, (typeof folders)[number]>();
-  for (const folder of folders) {
-    for (const ref of folder.group.memberProjectRefs) {
-      folderByProject.set(`${ref.environmentId}:${ref.projectId}`, folder);
-    }
-  }
-  for (const list of ["inbox", "settled"] as const) {
-    for (const thread of input[list]) {
-      folderByProject.get(`${thread.environmentId}:${thread.projectId}`)?.[list].push(thread);
-    }
-  }
-  return folders;
 }
 
 export function sortScopedProjectsForSidebar<

@@ -14,12 +14,7 @@ export const MOBILE_DEFAULT_THEME_ID = "t3-code";
 
 export const MOBILE_THEME_IDS = [MOBILE_DEFAULT_THEME_ID, ...BUILT_IN_THEME_IDS] as const;
 
-/**
- * Ids a theme may not take: the appearance keywords a stored preference uses,
- * every built-in, and the legacy aliases older saves still carry. Taking one
- * would either be shadowed by the built-in or capture clients that never chose
- * it, so the client library and the publish path both consult this set.
- */
+/** Reserve appearance keywords, built-ins, and legacy aliases so custom themes cannot capture stored preferences. */
 export const RESERVED_THEME_IDS: ReadonlySet<string> = new Set([
   "system",
   "light",
@@ -32,12 +27,7 @@ export const RESERVED_THEME_IDS: ReadonlySet<string> = new Set([
   "t3-iris",
 ]);
 
-/**
- * Additionally closed to a machine publishing a theme: the mobile default is
- * not a web or desktop built-in, so a saved theme may legitimately carry that
- * id, but no client that follows published themes can resolve it -- publishing
- * it would report success and change nothing.
- */
+/** The mobile default id is valid in saved themes but cannot be published because web/desktop cannot resolve it. */
 export const UNPUBLISHABLE_THEME_IDS: ReadonlySet<string> = new Set([
   ...RESERVED_THEME_IDS,
   MOBILE_DEFAULT_THEME_ID,
@@ -930,48 +920,46 @@ export const IRIS_THEME: ThemeDefinition = {
 
 /*
  * Catppuccin palette v1.8.0 (https://catppuccin.com), MIT License,
- * Copyright (c) 2021 Catppuccin. The colors the theme below uses, each with its
- * official hex.
+ * Copyright (c) 2021 Catppuccin. The colors the theme below uses, converted
+ * from their official hex values to OKLCH.
  */
 const CATPPUCCIN_MOCHA = {
-  rosewater: "oklch(0.92257 0.023835 30.492)", // #f5e0dc
-  flamingo: "oklch(0.879744 0.041813 17.975)", // #f2cdcd
-  red: "oklch(0.755592 0.129702 2.764)", // #f38ba8
-  yellow: "oklch(0.919303 0.070415 86.528)", // #f9e2af
-  blue: "oklch(0.76642 0.111344 259.885)", // #89b4fa
-  text: "oklch(0.87866 0.042552 272.277)", // #cdd6f4
-  subtext0: "oklch(0.750961 0.039565 273.932)", // #a6adc8
-  overlay2: "oklch(0.686521 0.037355 274.725)", // #9399b2
-  surface2: "oklch(0.476506 0.033994 278.643)", // #585b70
-  surface1: "oklch(0.403691 0.031955 280.152)", // #45475a
-  surface0: "oklch(0.324022 0.031885 281.978)", // #313244
-  base: "oklch(0.242867 0.030357 283.911)", // #1e1e2e
-  mantle: "oklch(0.215522 0.025417 284.065)", // #181825
+  rosewater: "oklch(0.92257 0.023835 30.492)",
+  flamingo: "oklch(0.879744 0.041813 17.975)",
+  red: "oklch(0.755592 0.129702 2.764)",
+  yellow: "oklch(0.919303 0.070415 86.528)",
+  blue: "oklch(0.76642 0.111344 259.885)",
+  text: "oklch(0.87866 0.042552 272.277)",
+  subtext0: "oklch(0.750961 0.039565 273.932)",
+  overlay2: "oklch(0.686521 0.037355 274.725)",
+  surface2: "oklch(0.476506 0.033994 278.643)",
+  surface1: "oklch(0.403691 0.031955 280.152)",
+  surface0: "oklch(0.324022 0.031885 281.978)",
+  base: "oklch(0.242867 0.030357 283.911)",
+  mantle: "oklch(0.215522 0.025417 284.065)",
 } as const;
 
 const CATPPUCCIN_LATTE = {
-  rosewater: "oklch(0.714133 0.104543 33.097)", // #dc8a78
-  flamingo: "oklch(0.68564 0.12594 20.867)", // #dd7878
-  red: "oklch(0.550474 0.215514 19.809)", // #d20f39
-  yellow: "oklch(0.713992 0.149442 67.777)", // #df8e1d
-  blue: "oklch(0.558617 0.225503 262.087)", // #1e66f5
-  text: "oklch(0.43547 0.043008 279.325)", // #4c4f69
-  subtext1: "oklch(0.492003 0.038491 279.299)", // #5c5f77
-  subtext0: "oklch(0.547078 0.034343 279.084)", // #6c6f85
-  surface2: "oklch(0.758394 0.020453 273.154)", // #acb0be
-  surface1: "oklch(0.808307 0.017393 271.198)", // #bcc0cc
-  surface0: "oklch(0.857477 0.01448 268.476)", // #ccd0da
-  base: "oklch(0.957761 0.005767 264.532)", // #eff1f5
-  mantle: "oklch(0.933459 0.008714 264.521)", // #e6e9ef
-  crust: "oklch(0.905965 0.011717 264.507)", // #dce0e8
+  rosewater: "oklch(0.714133 0.104543 33.097)",
+  flamingo: "oklch(0.68564 0.12594 20.867)",
+  red: "oklch(0.550474 0.215514 19.809)",
+  yellow: "oklch(0.713992 0.149442 67.777)",
+  blue: "oklch(0.558617 0.225503 262.087)",
+  text: "oklch(0.43547 0.043008 279.325)",
+  subtext1: "oklch(0.492003 0.038491 279.299)",
+  subtext0: "oklch(0.547078 0.034343 279.084)",
+  surface2: "oklch(0.758394 0.020453 273.154)",
+  surface1: "oklch(0.808307 0.017393 271.198)",
+  surface0: "oklch(0.857477 0.01448 268.476)",
+  base: "oklch(0.957761 0.005767 264.532)",
+  mantle: "oklch(0.933459 0.008714 264.521)",
+  crust: "oklch(0.905965 0.011717 264.507)",
 } as const;
 
 /**
- * Mocha with a Rosewater accent, and Latte for light mode. Roles follow
- * Catppuccin's style guide, with its translucent tints flattened onto the pane
- * they sit on. Latte's light Base is unreadable on its Rosewater, and its Red,
- * Yellow, and Blue are too light for text, so text on Rosewater uses Mocha's
- * Base and those three are darkened to WCAG AA where they are text.
+ * Mocha with a Rosewater accent, and Latte for light mode, with Catppuccin's roles and its tints
+ * flattened onto their pane. Latte's Base is unreadable on Rosewater and its Red, Yellow and Blue
+ * too light for text, so text on Rosewater uses Mocha's Base and those three are darkened to AA.
  */
 export const CATPPUCCIN_THEME: ThemeDefinition = {
   id: "catppuccin-mocha-rosewater",

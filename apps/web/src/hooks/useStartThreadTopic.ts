@@ -1,8 +1,8 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { threadContextRecord } from "@t3tools/shared/composerContextReferences";
 
 import { useComposerDraftStore } from "../composerDraftStore";
-import { threadContextRecord } from "../lib/composerContextRecords";
 import { readThreadShell } from "../state/entities";
 import { useNewThreadHandler } from "./useHandleNewThread";
 

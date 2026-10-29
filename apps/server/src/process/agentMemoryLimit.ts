@@ -23,8 +23,7 @@ export class AgentMemoryLimitError extends Schema.TaggedError<AgentMemoryLimitEr
 
 export const agentMemoryPressure = (
   scope: AgentScopeShape,
-): Effect.Effect<AgentMemoryPressure | undefined> =>
-  scope.memoryPressure ?? Effect.succeed(undefined);
+): Effect.Effect<AgentMemoryPressure | undefined> => scope.memoryPressure ?? Effect.undefined;
 
 /** Agents were throttled at their limit since `before`, or stall on memory now. */
 export function atAgentMemoryLimit(

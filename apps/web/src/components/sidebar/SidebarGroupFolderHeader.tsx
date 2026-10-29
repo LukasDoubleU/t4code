@@ -2,7 +2,7 @@ import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environ
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, EnvironmentMachineKind } from "@t3tools/contracts";
 import {
-  ChevronRightIcon,
+  ChevronDownIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleDashedIcon,
@@ -17,6 +17,7 @@ import { useUiStateStore } from "~/uiStateStore";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { resolveSidebarFolderDot, resolveThreadLastVisitedAt } from "../Sidebar.logic";
 import type { SidebarFolderHeader, SidebarStatusGroup } from "../Sidebar.viewOptions";
+import { sidebarFolderRowId } from "./SidebarProjectFolderHeader";
 
 const STATUS_FOLDERS: Record<
   SidebarStatusGroup,
@@ -34,6 +35,13 @@ const FOLDER_DOT_CLASS_NAME = {
   failed: "bg-error",
   unread: "bg-success",
   working: "bg-info",
+} as const;
+
+const FOLDER_DOT_LABEL = {
+  attention: ", needs you",
+  failed: ", failed",
+  unread: ", done",
+  working: ", working",
 } as const;
 
 const NO_VISITS: Readonly<Record<string, string>> = {};
@@ -91,36 +99,37 @@ export const SidebarGroupFolderHeader = memo(function SidebarGroupFolderHeader(p
     : null;
   const { label, icon } = folderTitle(header, props.machineByEnvironmentId);
   return (
-    <li className="relative mt-1 list-none first:mt-0">
+    <li data-testid="sidebar-group-folder" className="relative mt-2 list-none first:mt-0">
       <button
         type="button"
+        role="treeitem"
+        tabIndex={-1}
+        data-sidebar-row={sidebarFolderRowId(props.folderKey)}
         aria-expanded={!collapsed}
-        data-testid="sidebar-group-folder"
         onClick={() => props.onToggle(props.folderKey)}
-        className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2.5 text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-(--control-radius) px-(--sidebar-row-content-inset) text-left outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <ChevronRightIcon
-          aria-hidden
-          className={cn(
-            "-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150",
-            !collapsed && "rotate-90",
-          )}
-        />
         {icon}
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-sidebar-foreground/90">
           {label}
         </span>
         {folderDot ? (
-          <span
-            aria-hidden
-            className={cn("size-1.5 shrink-0 rounded-full", FOLDER_DOT_CLASS_NAME[folderDot])}
-          />
+          <span className={cn("size-1.5 shrink-0 rounded-full", FOLDER_DOT_CLASS_NAME[folderDot])}>
+            <span className="sr-only">{FOLDER_DOT_LABEL[folderDot]}</span>
+          </span>
         ) : null}
         {collapsed && hiddenInbox.length > 0 ? (
-          <span className="shrink-0 text-xs text-secondary-label tabular-nums">
+          <span className="shrink-0 text-xs tabular-nums text-sidebar-muted-foreground">
             {hiddenInbox.length}
           </span>
         ) : null}
+        <ChevronDownIcon
+          aria-hidden
+          className={cn(
+            "size-3 shrink-0 text-sidebar-muted-foreground transition-transform",
+            collapsed && "-rotate-90",
+          )}
+        />
       </button>
     </li>
   );

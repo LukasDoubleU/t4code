@@ -20,6 +20,27 @@ import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.t
 import { resolveInteractionMode, resolveRuntimeMode } from "./delegatedTaskModes.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 
+/**
+ * Threads an agent starts over MCP are `mcp:<uuid>`, and agents often paste the
+ * bare uuid. The id is never rewritten, so permission checks keyed on it still
+ * hold; the miss only names a live thread the caller could read by its full id.
+ */
+export const threadNotFound = Effect.fn("OrchestratorMcpService.threadNotFound")(function* (
+  threads: Pick<ThreadManagement.ThreadManagementService["Service"], "getThreadShell">,
+  threadId: ThreadId,
+  message: string,
+) {
+  const prefixed = ThreadId.make(`mcp:${threadId}`);
+  const shell = yield* threads.getThreadShell(prefixed).pipe(Effect.orElseSucceed(() => null));
+  return yield* new OrchestratorMcpFailure({
+    code: "thread_not_found",
+    message:
+      shell === null || shell.deletedAt !== null
+        ? message
+        : `${message} Did you mean \`${prefixed}\`?`,
+  });
+});
+
 export const unavailable = () =>
   new OrchestratorMcpFailure({
     code: "orchestration_error",
@@ -107,13 +128,7 @@ export const assertTargetWithinLimits = (
     Effect.asVoid,
   );
 
-/**
- * A caller's thread is live while it is not archived, runs on the caller's
- * provider instance, and has an active run or a background subagent that
- * instance started. A background subagent outlives its run and calls tools
- * with its thread's credential, which is revoked when the provider process
- * goes away.
- */
+/** Background subagents retain credentials until provider exit; archived threads and other instances cannot act. */
 export const isLiveCallerShell = (
   shell: Pick<
     OrchestrationV2ThreadShell,
@@ -130,33 +145,7 @@ export const isLiveCallerShell = (
     ) ??
       false));
 
-/**
- * Threads an agent starts over MCP are `mcp:<uuid>`, and agents often paste the
- * bare uuid. The id is never rewritten, so permission checks keyed on it still
- * hold; the miss only names a live thread the caller could read by its full id.
- */
-export const threadNotFound = Effect.fn("OrchestratorMcpService.threadNotFound")(function* (
-  threads: Pick<ThreadManagement.ThreadManagementService["Service"], "getThreadShell">,
-  threadId: ThreadId,
-  message: string,
-) {
-  const prefixed = ThreadId.make(`mcp:${threadId}`);
-  const shell = yield* threads.getThreadShell(prefixed).pipe(Effect.orElseSucceed(() => null));
-  return yield* new OrchestratorMcpFailure({
-    code: "thread_not_found",
-    message:
-      shell === null || shell.deletedAt !== null
-        ? message
-        : `${message} Did you mean \`${prefixed}\`?`,
-  });
-});
-
-/**
- * A thread caller acts only while it owns a live run, or a background
- * subagent that run started, of a thread that is not archived, so a provider
- * token that outlived its session cannot act. An OAuth client has no run; its
- * session and ceiling are its authority.
- */
+/** Thread callers need a live run or its background subagent in an unarchived thread. OAuth clients rely on their session and ceiling. */
 export function assertLiveCaller({ caller, scope }: Caller) {
   if (caller === undefined) return Effect.void;
   return isLiveCallerShell(caller, scope.thread?.providerInstanceId)

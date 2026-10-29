@@ -5,7 +5,9 @@ import {
   OrchestratorMcpFailure,
   ProjectId,
 } from "@t3tools/contracts";
+import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as ThreadLaunch from "../../../orchestration-v2/ThreadLaunchService.ts";
@@ -16,6 +18,9 @@ import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.t
 import * as Repositories from "../../../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
+import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
+import * as DateTime from "effect/DateTime";
+import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { resolveRuntimeMode } from "../../delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -40,9 +45,7 @@ function projectFailure(error: Project.ProjectServiceError) {
   return new OrchestratorMcpFailure({ code: "invalid_request", message });
 }
 
-/**
- * Without this check a launch could point an agent at any directory on the machine.
- */
+/** Require project worktrees so launches cannot target arbitrary host directories. */
 const assertProjectWorktree = Effect.fn("mcp.assertProjectWorktree")(function* (
   workspaceRoot: string,
   worktreePath: string,
@@ -60,6 +63,18 @@ const assertProjectWorktree = Effect.fn("mcp.assertProjectWorktree")(function* (
       message:
         "worktreePath must be one of the project's git worktrees. t3_worktree_list shows them.",
     });
+});
+
+/** A fixed-length id, so a long key fits in the scratch folder name derived from it. */
+const launchCommandId = Effect.fn("mcp.launchCommandId")(function* (
+  namespace: string,
+  key: string,
+) {
+  const crypto = yield* Crypto.Crypto;
+  // @effect-diagnostics-next-line preferSchemaOverJson:off - a JSON pair keeps the caller apart from the key.
+  const bytes = new TextEncoder().encode(JSON.stringify([namespace, key]));
+  const digest = yield* crypto.digest("SHA-256", bytes).pipe(Effect.mapError(unavailable));
+  return CommandId.make(`mcp:launch:${Hex.encode(digest)}`);
 });
 
 const access = Effect.gen(function* () {
@@ -80,9 +95,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
         const commandId =
           input.clientRequestId === undefined
             ? yield* newCommandId()
-            : CommandId.make(
-                `mcp:launch:${encodeURIComponent(scope.requestNamespace)}:${encodeURIComponent(input.clientRequestId)}`,
-              );
+            : yield* launchCommandId(scope.requestNamespace, input.clientRequestId);
         const threadId = ThreadId.make(commandId);
         const messageId = MessageId.make(commandId);
         const attachments = input.attachments ?? [];
@@ -118,7 +131,17 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           Effect.mapError(unavailable),
           Effect.map(Option.getOrUndefined),
         );
-        if (input.workspaceStrategy?.type === "existing_worktree") {
+        // A retry of an accepted launch replays it: it keeps the model it started
+        // with and skips the checks only a new launch needs, which the project
+        // may no longer pass, such as a base branch deleted since.
+        const launched =
+          input.clientRequestId === undefined
+            ? null
+            : yield* context.threads.getThreadShell(threadId).pipe(Effect.mapError(unavailable));
+        const launchedModel =
+          launched === null || launched.deletedAt !== null ? undefined : launched.modelSelection;
+        const replaying = launchedModel !== undefined;
+        if (!replaying && input.workspaceStrategy?.type === "existing_worktree") {
           const project = yield* readProject;
           if (project === undefined)
             return yield* new OrchestratorMcpFailure({
@@ -127,10 +150,9 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
             });
           yield* assertProjectWorktree(project.workspaceRoot, input.workspaceStrategy.worktreePath);
         }
-        // A launch is accepted before its worktree is provisioned, so a base
-        // ref that cannot resolve is refused while the agent can still act on it.
+        // Reject unresolved base refs before accepting a launch; worktree provisioning happens later.
         const strategy = input.workspaceStrategy;
-        if (strategy?.type === "worktree")
+        if (!replaying && strategy?.type === "worktree")
           yield* ThreadLaunch.ThreadLaunchService.pipe(
             Effect.flatMap((launches) =>
               launches.checkWorktreeBase({ projectId, workspaceStrategy: strategy }),
@@ -151,7 +173,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
         // project's effective defaults, as the composer does. Its mode stays
         // within the ceiling it was approved with.
         const projectDefaults =
-          caller === undefined
+          caller === undefined && !replaying
             ? yield* ServerSettings.ServerSettingsService.pipe(
                 Effect.flatMap((settings) => settings.getSettings),
                 Effect.mapError(unavailable),
@@ -165,8 +187,20 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
             : undefined;
         const modelSelection =
           input.modelSelection ??
+          launchedModel ??
           caller?.modelSelection ??
-          projectDefaults?.defaultModelSelection ??
+          (projectDefaults
+            ? resolveNewThreadModelSelection({
+                defaultSelection: projectDefaults.defaultModelSelection,
+                fallbackSelection: projectDefaults.fallbackModelSelection,
+                providers: yield* ProviderRegistry.ProviderRegistry.pipe(
+                  Effect.flatMap((registry) => registry.getProviders),
+                ),
+                settings: projectDefaults,
+                projectId,
+                now: DateTime.toEpochMillis(yield* DateTime.now),
+              }).selection
+            : null) ??
           undefined;
         if (modelSelection === undefined)
           return yield* new OrchestratorMcpFailure({
@@ -244,6 +278,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
         const run = result.projection.runs.find((run) => run.userMessageId === messageId);
         return {
           threadId: thread.id,
+          link: McpInvocationContext.threadLinkFor(scope, thread.id),
           projectId: thread.projectId,
           modelSelection: thread.modelSelection,
           runId: run?.id ?? null,
@@ -279,8 +314,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
       Effect.gen(function* () {
         const projects = yield* Project.ProjectService;
         if (workspaceRoot === undefined) {
-          // Project creation records no model default (only an update does), so
-          // reject what this mode would otherwise drop silently.
+          // Only updates record model defaults; reject defaults that creation would silently drop.
           if (
             input.scripts !== undefined ||
             input.createWorkspaceRootIfMissing !== undefined ||

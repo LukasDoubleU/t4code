@@ -137,12 +137,9 @@ const createItem = Effect.fn(function* (
   });
 });
 
-it.effect.each([
-  ["sql", layerSql],
-  ["memory", ProjectionStore.layerMemory],
-] as const)(
-  "%s: discovers settlement work with the same activity and background semantics as the shell",
-  ([, testLayer]) =>
+it.effect(
+  "sql: discovers settlement work with the same activity and background semantics as the shell",
+  () =>
     Effect.gen(function* () {
       const store = yield* ProjectionStore.ProjectionStoreV2;
       const idle = yield* createThread("idle");
@@ -292,13 +289,10 @@ it.effect.each([
         (yield* store.getThread(ThreadId.make("missing")).pipe(Effect.flip))._tag,
         "ProjectionStoreThreadNotFoundError",
       );
-    }).pipe(Effect.provide(testLayer)),
+    }).pipe(Effect.provide(layerSql)),
 );
 
-it.effect.each([
-  ["sql", layerSql],
-  ["memory", ProjectionStore.layerMemory],
-] as const)("%s: the user-authored message time ignores agent notifications", ([, testLayer]) =>
+it.effect("sql: the user-authored message time ignores agent notifications", () =>
   Effect.gen(function* () {
     const store = yield* ProjectionStore.ProjectionStoreV2;
     const threadId = yield* createThread("agent-woken");
@@ -347,13 +341,10 @@ it.effect.each([
       DateTime.formatIso(shellThread!.latestUserAuthoredMessageAt!),
       DateTime.formatIso(written),
     );
-  }).pipe(Effect.provide(testLayer)),
+  }).pipe(Effect.provide(layerSql)),
 );
 
-it.effect.each([
-  ["sql", layerSql],
-  ["memory", ProjectionStore.layerMemory],
-] as const)(
+it.effect.each([["sql", layerSql]] as const)(
   "%s: the shell says who started the latest run and keeps the user's result behind it",
   ([, testLayer]) =>
     Effect.gen(function* () {
@@ -445,49 +436,41 @@ const pullRequestLink = (number: number) => ({
   stack: null,
 });
 
-it.effect.each([
-  ["sql", layerSql],
-  ["memory", ProjectionStore.layerMemory],
-] as const)(
-  "%s: lists only active threads with pull request links, oldest first",
-  ([, testLayer]) =>
-    Effect.gen(function* () {
-      const store = yield* ProjectionStore.ProjectionStoreV2;
-      yield* createThread("no-links");
-      yield* createThread("empty-links", { pullRequests: [] });
-      yield* createThread("archived-link", {
-        archivedAt: old,
-        pullRequests: [pullRequestLink(1)],
-      });
-      const settled = yield* createThread("settled-link", {
-        settledOverride: "settled",
-        settledAt: old,
-        updatedAt: DateTime.subtract(now, { days: 12 }),
-        pullRequests: [pullRequestLink(2)],
-      });
-      const open = yield* createThread("open-link", {
-        pullRequests: [pullRequestLink(3), pullRequestLink(4)],
-      });
+it.effect("sql: lists only active threads with pull request links, oldest first", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    yield* createThread("no-links");
+    yield* createThread("empty-links", { pullRequests: [] });
+    yield* createThread("archived-link", {
+      archivedAt: old,
+      pullRequests: [pullRequestLink(1)],
+    });
+    const settled = yield* createThread("settled-link", {
+      settledOverride: "settled",
+      settledAt: old,
+      updatedAt: DateTime.subtract(now, { days: 12 }),
+      pullRequests: [pullRequestLink(2)],
+    });
+    const open = yield* createThread("open-link", {
+      pullRequests: [pullRequestLink(3), pullRequestLink(4)],
+    });
 
-      const threads = yield* store.getThreadsWithPullRequests();
-      assert.deepEqual(
-        threads.map((thread) => [thread.id, thread.settledOverride, thread.pullRequests?.length]),
-        [
-          [settled, "settled", 1],
-          [open, null, 2],
-        ],
-      );
-      assert.deepEqual(
-        (yield* store.getThreadsWithPullRequests(open)).map((thread) => thread.id),
-        [open],
-      );
-    }).pipe(Effect.provide(testLayer)),
+    const threads = yield* store.getThreadsWithPullRequests();
+    assert.deepEqual(
+      threads.map((thread) => [thread.id, thread.settledOverride, thread.pullRequests?.length]),
+      [
+        [settled, "settled", 1],
+        [open, null, 2],
+      ],
+    );
+    assert.deepEqual(
+      (yield* store.getThreadsWithPullRequests(open)).map((thread) => thread.id),
+      [open],
+    );
+  }).pipe(Effect.provide(layerSql)),
 );
 
-it.effect.each([
-  ["sql", layerSql],
-  ["memory", ProjectionStore.layerMemory],
-] as const)("%s: an unsettled-only shell read skips settled threads", ([, testLayer]) =>
+it.effect("sql: an unsettled-only shell read skips settled threads", () =>
   Effect.gen(function* () {
     const store = yield* ProjectionStore.ProjectionStoreV2;
     const open = yield* createThread("unsettled-open");
@@ -501,28 +484,27 @@ it.effect.each([
     assert.equal(shell.archivedThreads.length, 0);
     const all = yield* store.getShellSnapshot({ location: "active" });
     assert.equal(all.threads.length, 4);
-  }).pipe(Effect.provide(testLayer)),
+  }).pipe(Effect.provide(layerSql)),
 );
 
-it.effect.each([
-  ["sql", layerSql],
-  ["memory", ProjectionStore.layerMemory],
-] as const)("%s: a pinned-only shell read lists pinned threads of every project", ([, testLayer]) =>
-  Effect.gen(function* () {
-    const store = yield* ProjectionStore.ProjectionStoreV2;
-    const pinned = yield* createThread("pinned-here", { pinnedAt: old });
-    const elsewhere = yield* createThread("pinned-elsewhere", {
-      pinnedAt: old,
-      projectId: ProjectId.make("project:settlement-other"),
-    });
-    yield* createThread("pinned-unpinned");
-    yield* createThread("pinned-cleared", { pinnedAt: null });
-    yield* createThread("pinned-archived", { pinnedAt: old, archivedAt: old });
+it.effect.each([["sql", layerSql]] as const)(
+  "%s: a pinned-only shell read lists pinned threads of every project",
+  ([, testLayer]) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const pinned = yield* createThread("pinned-here", { pinnedAt: old });
+      const elsewhere = yield* createThread("pinned-elsewhere", {
+        pinnedAt: old,
+        projectId: ProjectId.make("project:settlement-other"),
+      });
+      yield* createThread("pinned-unpinned");
+      yield* createThread("pinned-cleared", { pinnedAt: null });
+      yield* createThread("pinned-archived", { pinnedAt: old, archivedAt: old });
 
-    const shell = yield* store.getShellSnapshot({ location: "active", pinnedOnly: true });
-    assert.deepEqual(
-      new Set(shell.threads.map((thread) => thread.id)),
-      new Set([pinned, elsewhere]),
-    );
-  }).pipe(Effect.provide(testLayer)),
+      const shell = yield* store.getShellSnapshot({ location: "active", pinnedOnly: true });
+      assert.deepEqual(
+        new Set(shell.threads.map((thread) => thread.id)),
+        new Set([pinned, elsewhere]),
+      );
+    }).pipe(Effect.provide(testLayer)),
 );

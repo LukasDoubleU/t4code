@@ -5,7 +5,7 @@ import {
   type AuthClientMetadata,
   type AuthClientSession,
   type AuthEnvironmentScope,
-  type ClientSurface,
+  AuthWebSocketTicketUse,
   RuntimeMode,
   type ServerAuthSessionMethod,
 } from "@t3tools/contracts";
@@ -61,6 +61,10 @@ export interface VerifiedSession {
   readonly runtimeModeCeiling?: RuntimeMode;
   /** An MCP client that is another T3 Code environment's peer link. */
   readonly peerLink?: true;
+}
+
+export interface VerifiedWebSocketTicket extends VerifiedSession {
+  readonly audience?: AuthWebSocketTicketUse;
 }
 
 export type SessionCredentialChange =
@@ -387,6 +391,8 @@ export class SessionStore extends Context.Service<
       sessionId: AuthSessionId,
       input?: {
         readonly ttl?: Duration.Duration;
+        readonly audience?: AuthWebSocketTicketUse;
+        readonly proofKeyThumbprint?: string;
       },
     ) => Effect.Effect<
       {
@@ -397,7 +403,7 @@ export class SessionStore extends Context.Service<
     >;
     readonly verifyWebSocketToken: (
       token: string,
-    ) => Effect.Effect<VerifiedSession, SessionCredentialError>;
+    ) => Effect.Effect<VerifiedWebSocketTicket, SessionCredentialError>;
     readonly listActive: () => Effect.Effect<
       ReadonlyArray<AuthClientSession>,
       SessionCredentialInternalError
@@ -414,13 +420,6 @@ export class SessionStore extends Context.Service<
     ) => Effect.Effect<number, SessionCredentialInternalError>;
     readonly markConnected: (sessionId: AuthSessionId) => Effect.Effect<void, never>;
     readonly markDisconnected: (sessionId: AuthSessionId) => Effect.Effect<void, never>;
-    readonly recordClientConnection: (
-      sessionId: AuthSessionId,
-      client: {
-        readonly surface?: ClientSurface | undefined;
-        readonly appVersion?: string | undefined;
-      },
-    ) => Effect.Effect<void, never>;
   }
 >()("t3/auth/SessionStore") {}
 
@@ -448,6 +447,8 @@ const WebSocketClaims = Schema.Struct({
   v: Schema.Literal(1),
   kind: Schema.Literal("websocket"),
   sid: AuthSessionId,
+  aud: Schema.optionalKey(AuthWebSocketTicketUse),
+  jkt: Schema.optionalKey(Schema.String),
   iat: Schema.Number,
   exp: Schema.Number,
 });
@@ -606,27 +607,6 @@ const make = Effect.gen(function* () {
       ),
       Effect.withSpan("SessionStore.markConnected"),
     );
-
-  const recordClientConnection: SessionStore["Service"]["recordClientConnection"] = (
-    sessionId,
-    client,
-  ) =>
-    client.surface === undefined && client.appVersion === undefined
-      ? Effect.void
-      : authSessions
-          .setClientConnection({
-            sessionId,
-            surface: client.surface ?? null,
-            appVersion: client.appVersion ?? null,
-          })
-          .pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Failed to record session client connection metadata.").pipe(
-                Effect.annotateLogs({ sessionId, cause }),
-              ),
-            ),
-            Effect.withSpan("SessionStore.recordClientConnection"),
-          );
 
   const markDisconnected: SessionStore["Service"]["markDisconnected"] = (sessionId) =>
     Ref.update(connectedSessionsRef, (current) => {
@@ -874,6 +854,8 @@ const make = Effect.gen(function* () {
       v: 1,
       kind: "websocket",
       sid: sessionId,
+      ...(input?.audience ? { aud: input.audience } : {}),
+      ...(input?.proofKeyThumbprint ? { jkt: input.proofKeyThumbprint } : {}),
       iat: issuedAt.epochMilliseconds,
       exp: expiresAt.epochMilliseconds,
     };
@@ -966,7 +948,9 @@ const make = Effect.gen(function* () {
       expiresAt: row.value.expiresAt,
       subject: row.value.subject,
       scopes: row.value.scopes,
-    } satisfies VerifiedSession;
+      ...(claims.aud ? { audience: claims.aud } : {}),
+      ...(claims.jkt ? { proofKeyThumbprint: claims.jkt } : {}),
+    } satisfies VerifiedWebSocketTicket;
   });
 
   const listActive: SessionStore["Service"]["listActive"] = Effect.fn("SessionStore.listActive")(
@@ -1095,7 +1079,6 @@ const make = Effect.gen(function* () {
     revokeAllExcept,
     markConnected,
     markDisconnected,
-    recordClientConnection,
   });
 });
 

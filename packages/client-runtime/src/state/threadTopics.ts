@@ -20,10 +20,8 @@ function upstreamOf(environmentId: ScopedThreadRef["environmentId"], thread: Thr
 }
 
 /**
- * The expert a launched thread is a topic of: the nearest expert up from its launcher, through
- * subagents and delegated tasks, the expert's other topics, and threads that started fresh in
- * it. Topics stay flat, so a helper's launch belongs to the expert behind it. The walk ends,
- * without an expert, at a loop, a thread this client does not know, or a thread on another
+ * The nearest expert up a launched thread's launchers, through subagents, tasks, other topics and
+ * fresh starts, so topics stay flat. No expert at a loop, an unknown thread, or a thread on another
  * environment that is not itself an expert.
  */
 export function resolveThreadTopicOf(input: {

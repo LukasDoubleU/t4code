@@ -311,7 +311,6 @@ describe("sorting and grouping threads", () => {
       activeOrderKey: "b",
     }),
   ];
-  const settled = [thread("settled", { environmentId: remoteEnvironmentId })];
 
   const arrange = (sort: SidebarThreadSort, grouping: SidebarGrouping) => {
     const sorted = sortSidebarActiveThreads(active, sort, statusGroupOf);
@@ -321,13 +320,12 @@ describe("sorting and grouping threads", () => {
       projectGroups,
       machines,
       primaryEnvironmentId: localEnvironmentId,
-      inbox: sorted,
-      settled,
+      threads: sorted,
+      keepEmpty: false,
       statusGroupOf,
     }).map((folder) => ({
       key: folder.key,
-      inbox: folder.inbox.map((entry) => entry.id),
-      settled: folder.settled.map((entry) => entry.id),
+      threads: folder.threads.map((entry) => entry.id),
     }));
   };
 
@@ -335,79 +333,73 @@ describe("sorting and grouping threads", () => {
     manual: {
       none: ["working", "input", "idle", "failed", "approval", "done"],
       project: [
-        { key: "app", inbox: ["input", "idle", "approval", "done"], settled: ["settled"] },
-        { key: "docs", inbox: ["working", "failed"], settled: [] },
+        { key: "app", threads: ["input", "idle", "approval", "done"] },
+        { key: "docs", threads: ["working", "failed"] },
       ],
       machine: [
         {
           key: `sidebar-machine:${localEnvironmentId}`,
-          inbox: ["working", "idle", "approval"],
-          settled: [],
+          threads: ["working", "idle", "approval"],
         },
         {
           key: `sidebar-machine:${remoteEnvironmentId}`,
-          inbox: ["input", "failed", "done"],
-          settled: ["settled"],
+          threads: ["input", "failed", "done"],
         },
       ],
       status: [
-        { key: "sidebar-status:needs_you", inbox: ["input", "approval"], settled: [] },
-        { key: "sidebar-status:failed", inbox: ["failed"], settled: [] },
-        { key: "sidebar-status:completed", inbox: ["done"], settled: [] },
-        { key: "sidebar-status:working", inbox: ["working"], settled: [] },
-        { key: "sidebar-status:idle", inbox: ["idle"], settled: [] },
+        { key: "sidebar-status:needs_you", threads: ["input", "approval"] },
+        { key: "sidebar-status:failed", threads: ["failed"] },
+        { key: "sidebar-status:completed", threads: ["done"] },
+        { key: "sidebar-status:working", threads: ["working"] },
+        { key: "sidebar-status:idle", threads: ["idle"] },
       ],
     },
     last_message: {
       none: ["idle", "working", "failed", "approval", "done", "input"],
       project: [
-        { key: "app", inbox: ["idle", "approval", "done", "input"], settled: ["settled"] },
-        { key: "docs", inbox: ["working", "failed"], settled: [] },
+        { key: "app", threads: ["idle", "approval", "done", "input"] },
+        { key: "docs", threads: ["working", "failed"] },
       ],
       machine: [
         {
           key: `sidebar-machine:${localEnvironmentId}`,
-          inbox: ["idle", "working", "approval"],
-          settled: [],
+          threads: ["idle", "working", "approval"],
         },
         {
           key: `sidebar-machine:${remoteEnvironmentId}`,
-          inbox: ["failed", "done", "input"],
-          settled: ["settled"],
+          threads: ["failed", "done", "input"],
         },
       ],
       status: [
-        { key: "sidebar-status:needs_you", inbox: ["approval", "input"], settled: [] },
-        { key: "sidebar-status:failed", inbox: ["failed"], settled: [] },
-        { key: "sidebar-status:completed", inbox: ["done"], settled: [] },
-        { key: "sidebar-status:working", inbox: ["working"], settled: [] },
-        { key: "sidebar-status:idle", inbox: ["idle"], settled: [] },
+        { key: "sidebar-status:needs_you", threads: ["approval", "input"] },
+        { key: "sidebar-status:failed", threads: ["failed"] },
+        { key: "sidebar-status:completed", threads: ["done"] },
+        { key: "sidebar-status:working", threads: ["working"] },
+        { key: "sidebar-status:idle", threads: ["idle"] },
       ],
     },
     status: {
       none: ["approval", "input", "failed", "done", "working", "idle"],
       project: [
-        { key: "app", inbox: ["approval", "input", "done", "idle"], settled: ["settled"] },
-        { key: "docs", inbox: ["failed", "working"], settled: [] },
+        { key: "app", threads: ["approval", "input", "done", "idle"] },
+        { key: "docs", threads: ["failed", "working"] },
       ],
       machine: [
         {
           key: `sidebar-machine:${localEnvironmentId}`,
-          inbox: ["approval", "working", "idle"],
-          settled: [],
+          threads: ["approval", "working", "idle"],
         },
         {
           key: `sidebar-machine:${remoteEnvironmentId}`,
-          inbox: ["input", "failed", "done"],
-          settled: ["settled"],
+          threads: ["input", "failed", "done"],
         },
       ],
       status: [
-        { key: "sidebar-status:needs_you", inbox: ["approval", "input"], settled: [] },
-        { key: "sidebar-status:failed", inbox: ["failed"], settled: [] },
-        { key: "sidebar-status:completed", inbox: ["done"], settled: [] },
-        { key: "sidebar-status:working", inbox: ["working"], settled: [] },
-        { key: "sidebar-status:idle", inbox: ["idle"], settled: [] },
+        { key: "sidebar-status:needs_you", threads: ["approval", "input"] },
+        { key: "sidebar-status:failed", threads: ["failed"] },
+        { key: "sidebar-status:completed", threads: ["done"] },
+        { key: "sidebar-status:working", threads: ["working"] },
+        { key: "sidebar-status:idle", threads: ["idle"] },
       ],
     },
   };
@@ -442,8 +434,8 @@ describe("sorting and grouping threads", () => {
       projectGroups,
       machines,
       primaryEnvironmentId: localEnvironmentId,
-      inbox: active.filter((entry) => entry.environmentId === localEnvironmentId),
-      settled: [],
+      threads: active.filter((entry) => entry.environmentId === localEnvironmentId),
+      keepEmpty: false,
       statusGroupOf,
     });
     expect(folders.map((folder) => folder.header)).toEqual([
@@ -458,8 +450,8 @@ describe("sorting and grouping threads", () => {
       projectGroups,
       machines,
       primaryEnvironmentId: localEnvironmentId,
-      inbox: [thread("orphan", { environmentId: gone })],
-      settled: [],
+      threads: [thread("orphan", { environmentId: gone })],
+      keepEmpty: false,
       statusGroupOf,
     });
     expect(folders.map((folder) => folder.header)).toEqual([
@@ -474,8 +466,8 @@ describe("sorting and grouping threads", () => {
         projectGroups,
         machines,
         primaryEnvironmentId: localEnvironmentId,
-        inbox: active,
-        settled,
+        threads: active,
+        keepEmpty: false,
         statusGroupOf,
       });
       expect(folders.map((folder) => folder.expansionKeys)).toEqual(

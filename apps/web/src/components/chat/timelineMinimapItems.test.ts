@@ -104,3 +104,25 @@ describe("timeline minimap groups", () => {
     expect(isTimelineMinimapRangeVisible(10, 30, null, null)).toBe(false);
   });
 });
+
+describe("resolveTimelineMinimapPreview", () => {
+  it("previews a thread autolink as prose, not its URL", () => {
+    const preview = resolveTimelineMinimapPreview({
+      id: "turn-1",
+      firstItemIndex: 0,
+      items: [
+        {
+          id: "turn-1",
+          rowIndex: 0,
+          userAuthored: true,
+          userText: null,
+          assistantText:
+            "Started <t3-thread://v2/env-1/thread-1> and [Fix CI](t3-thread://v2/env-1/t2).",
+        },
+      ],
+    });
+    expect(preview?.kind === "turn" ? preview.assistantText : null).toBe(
+      "Started a thread and Fix CI.",
+    );
+  });
+});

@@ -1,9 +1,7 @@
 /**
- * A pairing code for linking, minted on the environment being linked to with
- * the user's own session there, so a link card can be answered without the
- * user fetching a code by hand. The code is one-use, carries exactly what an
- * agent sign-in with the chosen access needs, and goes straight into the link
- * answer.
+ * A one-use pairing code for linking, minted on the environment being linked to with the
+ * user's own session there, so a link card can be answered without fetching a code by hand.
+ * It carries exactly what an agent sign-in with the chosen access needs.
  */
 import { type AuthMcpClientAccess, mcpClientScopes } from "@t3tools/contracts";
 import * as Data from "effect/Data";

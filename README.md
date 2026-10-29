@@ -47,7 +47,7 @@ It is based on upstream `v0.1.4` and follows upstream releases. Releases have Wi
 
 - Keeps running in the tray when the window closes; **Quit** in the tray menu stops it.
 - Its own name and icon, and Catppuccin (Mocha and Latte, Rosewater accent) as the default theme.
-- Updates come from this repository's releases.
+- Updates come from this repository's releases, on a single track: there is no Nightly to switch to, and a switch another T3 Code app starts is refused.
 
 ## Install
 

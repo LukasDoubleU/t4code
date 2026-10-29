@@ -38,6 +38,8 @@ below.
 
 ## Switch between Stable and Nightly
 
+T4 Code releases have a single track, so T4 Code has no **Update track** setting, and its machines refuse a switch started from another T3 Code app.
+
 In the desktop app, change **Settings → About → Update track**. T3 Code shows each
 connected machine it will move and each one it skips, then moves them in one
 step. Remote servers install the latest release on the new track. Remote desktop

@@ -22,7 +22,7 @@ import {
   normalizeLinuxPasswordStorePreference,
   type LinuxPasswordStorePreference,
 } from "../linuxSecretStorage.ts";
-import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
+import { desktopUpdateChannelOf, isForkReleaseVersion } from "@t3tools/shared/cliRelease";
 import { isValidDistroName } from "../wsl/wslPathParsing.ts";
 
 export interface DesktopSettings {
@@ -223,9 +223,11 @@ function normalizeDesktopSettingsDocument(
       parsed.serverExposureMode === "network-accessible" ? "network-accessible" : "local-only",
     tailscaleServeEnabled: parsed.tailscaleServeEnabled === true,
     tailscaleServePort: normalizeTailscaleServePort(parsed.tailscaleServePort),
-    updateChannel: updateChannelConfiguredByUser
-      ? Option.getOrElse(parsedUpdateChannel, () => defaultSettings.updateChannel)
-      : defaultSettings.updateChannel,
+    // Fork-only: T4 publishes no other track, so a track saved by an earlier build cannot strand it.
+    updateChannel:
+      updateChannelConfiguredByUser && !isForkReleaseVersion(appVersion)
+        ? Option.getOrElse(parsedUpdateChannel, () => defaultSettings.updateChannel)
+        : defaultSettings.updateChannel,
     updateChannelConfiguredByUser,
     wslBackendEnabled,
     wslDistro: normalizeWslDistro(parsed.wslDistro),

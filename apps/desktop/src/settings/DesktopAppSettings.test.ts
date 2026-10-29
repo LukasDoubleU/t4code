@@ -287,6 +287,21 @@ describe("DesktopSettings", () => {
     ),
   );
 
+  it.effect("keeps a T4 build on its only track whatever track was saved", () =>
+    withSettings(
+      Effect.gen(function* () {
+        const settings = yield* DesktopAppSettings.DesktopAppSettings;
+        yield* writeSettingsPatch({
+          updateChannel: "nightly",
+          updateChannelConfiguredByUser: true,
+        });
+
+        assert.equal((yield* settings.load).updateChannel, "latest");
+      }),
+      { appVersion: "0.1.6-t4.1" },
+    ),
+  );
+
   it.effect("preserves explicit stable update channel on nightly builds", () =>
     withSettings(
       Effect.gen(function* () {

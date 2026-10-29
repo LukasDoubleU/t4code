@@ -72,6 +72,11 @@ export const CLI_RELEASE_CHANNELS: ReadonlyArray<CliReleaseChannel> = [
   "preview",
 ];
 
+/** Fork-only: a build from this repository's releases, which have a single update track. */
+export function isForkReleaseVersion(version: string): boolean {
+  return /^\d+\.\d+\.\d+-(?:t4|test)\.\d+$/.test(version);
+}
+
 export function cliReleaseChannelOf(version: string): CliReleaseChannel {
   const channel = /^[^-+]+-(nightly|preview)\.\d{8}\.\d+$/.exec(version)?.[1];
   return channel === "nightly" || channel === "preview" ? channel : "stable";

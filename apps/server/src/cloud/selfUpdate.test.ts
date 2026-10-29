@@ -314,6 +314,15 @@ it.layer(NodeServices.layer)("pruning runtimes on start", (it) => {
   );
 });
 
+it("a T4 build refuses every track switch and still takes plain updates", () => {
+  const refusal = ServerSelfUpdate.forkTrackSwitchRefusal;
+  expect(refusal("0.1.6-t4.1", "latest")).toContain("single update track");
+  expect(refusal("0.1.6-test.2", "nightly")).toContain("single update track");
+  expect(refusal("0.1.6-t4.1", undefined)).toBeNull();
+  expect(refusal("0.1.5", "nightly")).toBeNull();
+  expect(refusal("0.1.5-nightly.20261029.1", "latest")).toBeNull();
+});
+
 it("a host crosses tracks only to a release that knows its whole database", () => {
   const cross = (
     serverVersion: string,

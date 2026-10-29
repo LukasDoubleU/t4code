@@ -20,7 +20,11 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/http";
 
-import { CLI_RELEASE_BASE_URL_ENV, crossesReleaseTrack } from "@t3tools/shared/cliRelease";
+import {
+  CLI_RELEASE_BASE_URL_ENV,
+  crossesReleaseTrack,
+  isForkReleaseVersion,
+} from "@t3tools/shared/cliRelease";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
@@ -94,6 +98,13 @@ export const pruneRuntimesOnStart = Effect.fn("cloud.server_self_update.prune_on
   },
 );
 
+/** Fork-only: T4 publishes no other track, so a track switch could only strand this machine. */
+export function forkTrackSwitchRefusal(serverVersion: string, channel: string | undefined) {
+  return channel !== undefined && isForkReleaseVersion(serverVersion)
+    ? "T4 Code has a single update track, so it does not switch tracks."
+    : null;
+}
+
 /** The client checks this when planning; the host checks again because its database may have
  * moved on since (another client updated it). Stable and Nightly each build their own commits,
  * so crossing tracks needs the target release to know every migration this database holds. */
@@ -151,6 +162,8 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
   const update: ServerSelfUpdate["Service"]["update"] = Effect.fn(
     "cloud.server_self_update.update",
   )(function* (input, reportProgress = () => Effect.void, onHandoffAccepted = () => Effect.void) {
+    const forkRefusal = forkTrackSwitchRefusal(packageJson.version, input.channel);
+    if (forkRefusal !== null) return yield* failWith(forkRefusal);
     if (capability === "desktop-managed") {
       const unsafeCrossing = input.channel === undefined ? null : crossesTrackUnsafely(input);
       if (unsafeCrossing !== null) return yield* failWith(unsafeCrossing);

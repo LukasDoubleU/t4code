@@ -1,69 +1,9 @@
 {
   "upstream": "pingdotgg/t3code",
   "issue": 13,
-  "base": "v0.1.2",
+  "base": "v0.1.4",
   "carried": [
-    {
-      "name": "Peer-link stack",
-      "issue": 1,
-      "pulls": {
-        "16653": "open",
-        "16654": "open",
-        "16655": "open",
-        "16684": "open",
-        "16695": "open",
-        "16698": "open",
-        "16719": "open",
-        "17130": "open"
-      }
-    },
     { "name": "Tray", "issue": 2, "pulls": { "19176": "closed" } },
-    { "name": "Boring Sidebar", "issue": 7, "pulls": { "21039": "open" } },
-    { "name": "Last-message sort", "issue": 8, "pulls": { "22032": "open" } },
-    {
-      "name": "Stop stops subagents, picked from main",
-      "issue": 13,
-      "pulls": { "23886": "merged" }
-    },
-    {
-      "name": "Agent scope for browsers, picked from main",
-      "issue": 13,
-      "pulls": { "21299": "merged" }
-    },
-    {
-      "name": "Pinned patched packages, picked from main",
-      "issue": 13,
-      "pulls": { "23798": "merged" }
-    },
-    {
-      "name": "Paged long turns, picked from main",
-      "issue": 13,
-      "pulls": { "24589": "merged" }
-    },
-    {
-      "name": "Retried provider event writes, picked from main",
-      "issue": 13,
-      "pulls": { "24571": "merged" }
-    },
-    {
-      "name": "Scroll to the real end, picked from main",
-      "issue": 13,
-      "pulls": { "24622": "merged" }
-    },
-    {
-      "name": "Settled threads with open PRs, picked from main",
-      "issue": 13,
-      "pulls": { "24617": "merged" }
-    },
-    {
-      "name": "Faster shell snapshots, picked from main",
-      "issue": 13,
-      "pulls": { "23751": "merged" }
-    },
-    {
-      "name": "Ranked thread search with indexed messages, picked from main",
-      "issue": 13,
-      "pulls": { "24032": "merged", "24343": "merged" }
-    }
+    { "name": "Last-message sort", "issue": 8, "pulls": { "22032": "open" } }
   ]
 }

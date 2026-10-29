@@ -4,7 +4,7 @@
 
 T4 Code is a personal fork of [T3 Code](https://github.com/pingdotgg/t3code), the open-source GUI for Claude Code, Codex and other coding agents. It is built for running many agents across several machines and subscriptions: threads that reach across machines, an app that keeps running in the tray, a sidebar made for long-lived threads, and a hint which account to use next.
 
-It is based on upstream `v0.1.2` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
+It is based on upstream `v0.1.4` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
 
 > [!NOTE]
 > T4 Code is not affiliated with T3 Tools or the T3 Code team. Please don't report its problems upstream.
@@ -13,7 +13,7 @@ It is based on upstream `v0.1.2` and follows upstream releases. Releases have Wi
 
 **Across machines**
 
-- **Linked environments.** Link two machines in **Settings → Connections**, and agents on one launch, message, wait on and stop threads on the other; `delegate_task` runs a task there and reports back. Both machines need T4 Code. [Link another environment](./docs/user/remote-access.md#link-another-environment)
+- **Linked environments.** Link two machines in **Settings → Environments**, and agents on one launch, message, wait on and stop threads on the other; `delegate_task` runs a task there and reports back. Both machines need T4 Code. [Link another environment](./docs/user/remote-access.md#link-another-environment)
 - **Find threads by name.** Agents find pinned threads across projects and linked machines, and resolve a bare thread ID on whichever machine has it. **Copy thread ID** is in the thread menu and the command palette.
 
 **Long-lived threads**
@@ -60,7 +60,7 @@ It is based on upstream `v0.1.2` and follows upstream releases. Releases have Wi
 
 From a clone, `pwsh -File scripts/t4/install-t4.ps1` does the same in one step: it checks the download against `SHA256SUMS`, quits the app, backs up your data and installs. Each release also has the `t3` command-line tool as `t3-<version>-win32-x64.zip`.
 
-Versions read `0.1.3-t4.N`: the upstream patch after the base, plus the fork's build number.
+Versions read `0.1.5-t4.N`: the upstream patch after the base, plus the fork's build number.
 
 ### Linux server
 
@@ -68,27 +68,18 @@ Each release also has the server for Linux x64, `t3-<version>-linux-x64.tar.gz`,
 
 ### Back to T3 Code
 
-Install the official `v0.1.2` over T4 Code: everything stays, and it only warns about the database migrations it doesn't know: the fork's three, and two from upstream changes T4 carries ahead of a release. For a later official release, rehearse the switch first; [`scripts/t4/README.md`](./scripts/t4/README.md) explains how.
+Install the official `v0.1.4` or later over T4 Code: everything stays, since T4 Code's database migrations are upstream's. Rehearse the switch first; [`scripts/t4/README.md`](./scripts/t4/README.md) explains how. Official releases before `v0.1.4` can't read the linked environments T4 Code stores.
 
 ## Following upstream
 
 T4 Code merges each upstream release rather than rebasing, and drops a change once upstream ships it. Until then it carries these upstream pull requests:
 
-| Change                          | Upstream                                                                       |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| Linked environments             | `#16653`, `#16654`, `#16655`, `#16684`, `#16695`, `#16698`, `#16719`, `#17130` |
-| Tray                            | `#19176`                                                                       |
-| Group threads by project        | `#21039`                                                                       |
-| Sort threads by last message    | `#22032`                                                                       |
-| Stop stops a thread's subagents | `#23886`, merged after `v0.1.2`                                                |
-| Browsers end with their agent   | `#21299`, merged after `v0.1.2`                                                |
-| Pinned patched packages         | `#23798`, merged after `v0.1.2`                                                |
-| Long turns open in pages        | `#24589`, merged after `v0.1.2`                                                |
-| Event writes retry on locks     | `#24571`, merged after `v0.1.2`                                                |
-| Scroll to end lands at the end  | `#24622`, merged after `v0.1.2`                                                |
-| Threads with open PRs settle    | `#24617`, merged after `v0.1.2`                                                |
-| Faster shell snapshots          | `#23751`, merged after `v0.1.2`                                                |
-| Ranked thread search            | `#24032`, `#24343`, merged after `v0.1.2`                                      |
+| Change                       | Upstream |
+| ---------------------------- | -------- |
+| Tray                         | `#19176` |
+| Sort threads by last message | `#22032` |
+
+Linked environments (`#16653` and its stack), project folders (`#21039`) and the fixes T4 Code picked from upstream's `main` shipped in `v0.1.4`, so T4 Code now uses upstream's code for them.
 
 Everything else is a fork patch, tracked in this repository's issues. A daily workflow comments on the upkeep issue (#13) when upstream publishes a release or a carried pull request changes state.
 
@@ -96,6 +87,7 @@ Everything else is a fork patch, tracked in this repository's issues. A daily wo
 
 The docs in [docs/](./docs) are upstream's, with the fork's features added.
 
+- [FAQ](./docs/user/faq.md)
 - [Install and first run](./docs/user/install.md)
 - [Working with threads](./docs/user/thread-sidebar.md)
 - [Usage and limits](./docs/user/usage.md)

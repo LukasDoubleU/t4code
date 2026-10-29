@@ -1470,6 +1470,120 @@ describe("orchestration v2 provider switching", () => {
       ),
   );
 
+  it.live("starts a fresh native thread when a returning handoff exceeds the old one", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const cwd = yield* checkpointWorkspace("handoff-exceeds-native-thread");
+        const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+        const generation = yield* Ref.make(0);
+        const layerRegistry = ProviderAdapterRegistry.layerFromAdapters([
+          makeTestAdapter({
+            instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+            driver: CLAUDE_DRIVER,
+            capabilities: ClaudeProviderCapabilitiesV2,
+            modelSelection: CLAUDE_MODEL_SELECTION,
+            responseByRunOrdinal: { 1: "Original partial work" },
+            capturedTurns,
+            nativeThreadGeneration: generation,
+            tokenUsageByRunOrdinal: { 1: { usedTokens: 190_000, maxTokens: 200_000 } },
+          }),
+          makeTestAdapter({
+            instanceId: CODEX_MODEL_SELECTION.instanceId,
+            driver: CODEX_DRIVER,
+            capabilities: CodexProviderCapabilitiesV2,
+            modelSelection: CODEX_MODEL_SELECTION,
+            responseByRunOrdinal: { 2: "Work on the other provider" },
+            capturedTurns,
+          }),
+        ]);
+        yield* Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+          const run = Effect.fn("run")(function* (
+            ordinal: number,
+            text: string,
+            selection: ModelSelection,
+          ) {
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make(`exceeds-native:${ordinal}`),
+              threadId,
+              messageId: MessageId.make(`exceeds-native:${ordinal}`),
+              createdBy: "user",
+              creationSource: "web",
+              text,
+              attachments: [],
+              modelSelection: selection,
+              dispatchMode: { type: "start_immediately" },
+            });
+            yield* orchestrator.streamStoredEvents.pipe(
+              Stream.filter(
+                ({ event }) =>
+                  event.type === "run.updated" &&
+                  event.payload.ordinal === ordinal &&
+                  (event.payload.status === "completed" || event.payload.status === "failed"),
+              ),
+              Stream.runHead,
+            );
+            yield* worker.drain();
+            const projection = yield* orchestrator.getThreadProjection(threadId);
+            assert.deepEqual(
+              projection.turnItems.flatMap((item) =>
+                item.type === "error" ? [item.failure.message] : [],
+              ),
+              [],
+            );
+            assert.equal(projection.runs.at(-1)?.status, "completed");
+          });
+          yield* orchestrator.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make("exceeds-native:create"),
+            threadId,
+            projectId,
+            createdBy: "user",
+            creationSource: "web",
+            title: "Handoff exceeds native thread",
+            modelSelection: CLAUDE_MODEL_SELECTION,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+          });
+          yield* run(1, "Original request with constraints", CLAUDE_MODEL_SELECTION);
+          yield* run(2, "Request on the other provider", CODEX_MODEL_SELECTION);
+          yield* run(3, "Continue", CLAUDE_MODEL_SELECTION);
+          yield* run(4, "Continue again", CLAUDE_MODEL_SELECTION);
+
+          const turns = (yield* Ref.get(capturedTurns)).filter(
+            (turn) => turn.driver === CLAUDE_DRIVER,
+          );
+          assert.equal(yield* Ref.get(generation), 2);
+          assert.notEqual(turns[1]?.nativeThreadId, turns[0]?.nativeThreadId);
+          assert.isFalse(turns[1]?.nativeThreadHasTurns);
+          // The fresh thread has none of the old history, so it gets the whole thread.
+          assert.include(turns[1]?.text, "Original request with constraints");
+          assert.include(turns[1]?.text, "Work on the other provider");
+          assert.equal(turns[2]?.nativeThreadId, turns[1]?.nativeThreadId);
+          assert.equal(turns[2]?.text, "Continue again");
+        }).pipe(
+          Effect.provide(
+            ProviderReplayHarness.layerWithRegistry(
+              {
+                name: "handoff-exceeds-native-thread",
+                runtimePolicyOverride: {
+                  cwd,
+                  approvalPolicy: "never",
+                  sandboxPolicy: { type: "readOnly" },
+                },
+              },
+              layerRegistry,
+            ),
+          ),
+        );
+      }),
+    ),
+  );
+
   it.live.each([
     ["background work", new ClaudeBackgroundWorkBlocksQueryReplacementError()],
     ["an unreadable append file", new ClaudeAppendSystemPromptFileError({ path: "missing.md" })],

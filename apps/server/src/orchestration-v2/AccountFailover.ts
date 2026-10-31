@@ -1,5 +1,6 @@
 import {
   CommandId,
+  isListedThreadLineage,
   type ModelSelection,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ServerCommand,
@@ -140,7 +141,7 @@ const startsTurn = (command: MessageDispatch) =>
 
 /**
  * A delegated task's thread fails as before: its parent hears of the failure and chooses, and a
- * continuation there would not report back to it.
+ * continuation there would not report back to it. A side chat fails too, beside its parent.
  */
 const threadMoves = (
   thread: Pick<
@@ -151,7 +152,7 @@ const threadMoves = (
   thread.archivedAt === null &&
   thread.settledOverride !== "settled" &&
   thread.accountFailoverDisabledAt == null &&
-  thread.lineage.relationshipToParent !== "subagent";
+  isListedThreadLineage(thread.lineage);
 
 export interface MovedCommand {
   readonly command: OrchestrationV2ServerCommand;

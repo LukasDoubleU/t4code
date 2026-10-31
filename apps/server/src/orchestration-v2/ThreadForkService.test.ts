@@ -281,11 +281,30 @@ it.effect("rejects in-progress and rolled-back fork sources", () =>
 it.effect("marks only requested forks as supervised side chats", () =>
   Effect.gen(function* () {
     const sourceRun = makeSourceRun("completed");
-    const sideChat = yield* planFork(sourceRun, makeSourceProjection(sourceRun), {
-      sideChat: true,
-    });
+    const topicSource = makeSourceProjection(sourceRun);
+    const sideChat = yield* planFork(
+      sourceRun,
+      {
+        ...topicSource,
+        thread: {
+          ...topicSource.thread,
+          launchedBy: {
+            environmentId: EnvironmentId.make("local"),
+            threadId: ThreadId.make("thread:expert"),
+            title: "Expert",
+          },
+          continuedIn: ThreadId.make("thread:continued"),
+          attention: { reason: "Pick a plan", requestedAt: snoozedAt },
+        },
+      },
+      { sideChat: true },
+    );
     assert.isTrue(sideChat.targetThread.lineage.sideChat);
     assert.equal(sideChat.targetThread.runtimeMode, "approval-required");
+    // Not a topic of the parent's expert, a continuation, or a call for the user.
+    assert.isUndefined(sideChat.targetThread.launchedBy);
+    assert.isUndefined(sideChat.targetThread.continuedIn);
+    assert.isNull(sideChat.targetThread.attention);
 
     const sideChatSource = makeSourceProjection(sourceRun);
     const sideChatProjection = {

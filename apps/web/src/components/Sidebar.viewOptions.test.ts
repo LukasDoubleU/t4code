@@ -321,7 +321,7 @@ describe("sorting and grouping threads", () => {
       machines,
       primaryEnvironmentId: localEnvironmentId,
       threads: sorted,
-      keepEmpty: false,
+      keepEmpty: () => false,
       statusGroupOf,
     }).map((folder) => ({
       key: folder.key,
@@ -435,7 +435,7 @@ describe("sorting and grouping threads", () => {
       machines,
       primaryEnvironmentId: localEnvironmentId,
       threads: active.filter((entry) => entry.environmentId === localEnvironmentId),
-      keepEmpty: false,
+      keepEmpty: () => false,
       statusGroupOf,
     });
     expect(folders.map((folder) => folder.header)).toEqual([
@@ -451,7 +451,7 @@ describe("sorting and grouping threads", () => {
       machines,
       primaryEnvironmentId: localEnvironmentId,
       threads: [thread("orphan", { environmentId: gone })],
-      keepEmpty: false,
+      keepEmpty: () => false,
       statusGroupOf,
     });
     expect(folders.map((folder) => folder.header)).toEqual([
@@ -467,7 +467,7 @@ describe("sorting and grouping threads", () => {
         machines,
         primaryEnvironmentId: localEnvironmentId,
         threads: active,
-        keepEmpty: false,
+        keepEmpty: () => false,
         statusGroupOf,
       });
       expect(folders.map((folder) => folder.expansionKeys)).toEqual(

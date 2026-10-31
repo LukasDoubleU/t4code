@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
+import { MessageId } from "@t3tools/contracts";
+import { ATTACHMENT_ONLY_BOOTSTRAP_PROMPT } from "@t3tools/shared/composerContextReferences";
 
 import {
   isTimelineMinimapRangeVisible,
   resolveTimelineMinimapMarkCapacity,
 } from "./MessagesTimeline.logic";
 import {
+  deriveTimelineMinimapItems,
   groupTimelineMinimapItems,
   resolveTimelineMinimapPreview,
   type TimelineMinimapItem,
@@ -103,6 +106,40 @@ describe("timeline minimap groups", () => {
     expect(isTimelineMinimapRangeVisible(10, 30, 31, 40)).toBe(false);
     expect(isTimelineMinimapRangeVisible(10, 30, null, null)).toBe(false);
   });
+});
+
+describe("deriveTimelineMinimapItems", () => {
+  it.each(["", "Ultrathink:\n"])(
+    "omits bootstrap text from the minimap label and tooltip (%j)",
+    (prefix) => {
+      const at = "2026-10-01T00:00:00Z";
+      const items = deriveTimelineMinimapItems([
+        {
+          kind: "message",
+          id: "image-only",
+          createdAt: at,
+          showAssistantMeta: false,
+          showAssistantCopyButton: false,
+          assistantCopyStreaming: false,
+          message: {
+            id: MessageId.make("image-only"),
+            role: "user",
+            text: prefix + ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
+            runId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        },
+      ]);
+      expect(items).toEqual([
+        { id: "image-only", rowIndex: 0, userAuthored: true, userText: "", assistantText: null },
+      ]);
+      expect(
+        resolveTimelineMinimapPreview({ id: "image-only", firstItemIndex: 0, items }),
+      ).toMatchObject({ kind: "turn", userText: null });
+    },
+  );
 });
 
 describe("resolveTimelineMinimapPreview", () => {

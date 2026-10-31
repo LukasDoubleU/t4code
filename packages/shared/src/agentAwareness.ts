@@ -1,5 +1,6 @@
 import {
   isBackgroundRunOrigin,
+  isListedThreadLineage,
   type EnvironmentId,
   type OrchestrationV2ThreadShell,
   type Project,
@@ -63,7 +64,7 @@ export function projectThreadAwarenessV2(
   input: ProjectThreadAwarenessV2Input,
 ): AgentAwarenessState | null {
   const { environmentId, project, thread } = input;
-  if (thread.lineage.relationshipToParent === "subagent") return null;
+  if (!isListedThreadLineage(thread.lineage)) return null;
   const phase = resolveThreadAwarenessPhaseV2(thread);
   // The relay alerts on input phases, so an agent's call for the user arrives as a question
   // does. A pending question or approval of its own says more.

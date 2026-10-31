@@ -20,6 +20,7 @@ import {
 } from "@t3tools/client-runtime/operations/projects";
 import {
   type EnvironmentId,
+  type ProjectId,
   type EnvironmentMachineKind,
   type FilesystemBrowseEntry,
   type KeybindingCommand,
@@ -31,7 +32,7 @@ import { filterFilesystemBrowseEntries } from "@t3tools/client-runtime/state/fil
 import { type ReactNode } from "react";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type SidebarThreadSummary, type Thread } from "../types";
-import { isSidebarSubagentThread } from "./Sidebar.logic";
+import { isSidebarHiddenThread } from "./Sidebar.logic";
 
 export const RECENT_THREAD_LIMIT = 12;
 export const ITEM_ICON_CLASS = "size-4 text-icon-muted";
@@ -208,6 +209,14 @@ export interface CommandPaletteActionItem extends CommandPaletteItem {
   readonly kind: "action";
   readonly keepOpen?: boolean;
   readonly run: () => Promise<void>;
+  /** A pin toggle on the row, also reached with the pin shortcut while the row is highlighted. */
+  readonly pin?: CommandPaletteItemPin;
+}
+
+export interface CommandPaletteItemPin {
+  readonly name: string;
+  readonly pinned: boolean;
+  readonly toggle: () => void;
 }
 
 export interface CommandPaletteSubmenuItem extends CommandPaletteItem {
@@ -338,8 +347,8 @@ export function enumerateCommandPaletteItems(
   });
 }
 
-// The new-thread picker lists projects by name rather than the sidebar sort, so neither recent
-// activity nor the thread it was opened from reshuffles the rows or their number labels.
+// The new-thread picker lists pinned projects first, then by name rather than the sidebar sort,
+// so neither recent activity nor the thread it was opened from reshuffles the rows or their numbers.
 export function sortNewThreadPickerProjects<
   TProject extends Pick<
     CommandPaletteProject,
@@ -351,11 +360,13 @@ export function sortNewThreadPickerProjects<
     EnvironmentId,
     { readonly kind: "local" | "remote"; readonly label: string }
   >,
+  isPinned: (project: TProject) => boolean = () => false,
 ): TProject[] {
   const location = (project: TProject) =>
     locationByEnvironmentId.get(project.environmentId) ?? { kind: "remote", label: "Remote" };
   return projects.toSorted(
     (left, right) =>
+      Number(isPinned(right)) - Number(isPinned(left)) ||
       left.displayName.localeCompare(right.displayName, undefined, { sensitivity: "accent" }) ||
       Number(location(left).kind !== "local") - Number(location(right).kind !== "local") ||
       location(left).label.localeCompare(location(right).label) ||
@@ -408,24 +419,29 @@ export function buildProjectActionItems(input: {
   searchTerms?: (project: CommandPaletteProject) => ReadonlyArray<string>;
   renderDescription?: (project: CommandPaletteProject) => ReactNode;
   shortcutCommand?: KeybindingCommand;
+  pin?: (project: CommandPaletteProject) => CommandPaletteItemPin | null;
 }): CommandPaletteActionItem[] {
-  return input.projects.map((project) => ({
-    kind: "action",
-    value: `${input.valuePrefix}:${project.environmentId}:${project.id}`,
-    searchTerms: [
-      project.displayName,
-      project.title,
-      project.workspaceRoot,
-      ...(input.searchTerms?.(project) ?? []),
-    ],
-    title: project.displayName,
-    description: input.renderDescription?.(project) ?? project.workspaceRoot,
-    icon: input.icon(project),
-    ...(input.shortcutCommand !== undefined ? { shortcutCommand: input.shortcutCommand } : {}),
-    run: async () => {
-      await input.runProject(project);
-    },
-  }));
+  return input.projects.map((project) => {
+    const pin = input.pin?.(project) ?? null;
+    return {
+      kind: "action",
+      value: `${input.valuePrefix}:${project.environmentId}:${project.id}`,
+      searchTerms: [
+        project.displayName,
+        project.title,
+        project.workspaceRoot,
+        ...(input.searchTerms?.(project) ?? []),
+      ],
+      title: project.displayName,
+      description: input.renderDescription?.(project) ?? project.workspaceRoot,
+      icon: input.icon(project),
+      ...(input.shortcutCommand !== undefined ? { shortcutCommand: input.shortcutCommand } : {}),
+      ...(pin ? { pin } : {}),
+      run: async () => {
+        await input.runProject(project);
+      },
+    };
+  });
 }
 
 export type BuildThreadActionItemsThread = Pick<
@@ -465,7 +481,7 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
 }): CommandPaletteActionItem[] {
   // Callers order these: recents by last use, search results by rank.
   const visibleThreads = input.threads.filter(
-    (thread) => thread.archivedAt === null && !isSidebarSubagentThread(thread),
+    (thread) => thread.archivedAt === null && !isSidebarHiddenThread(thread),
   );
 
   return visibleThreads.map((thread) => {
@@ -904,4 +920,12 @@ export function overlayModeForCommand(command: string | null): SearchOverlayMode
   return command in OVERLAY_MODE_BY_COMMAND
     ? OVERLAY_MODE_BY_COMMAND[command as keyof typeof OVERLAY_MODE_BY_COMMAND]
     : null;
+}
+
+export function resolveCommandPaletteProject<TProject>(
+  projects: ReadonlyMap<string, TProject>,
+  environmentId: EnvironmentId | null,
+  projectId: ProjectId | null,
+) {
+  return environmentId && projectId ? projects.get(`${environmentId}:${projectId}`) : undefined;
 }

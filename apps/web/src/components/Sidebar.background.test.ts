@@ -350,7 +350,7 @@ describe("Background with every sort and grouping", () => {
         machines,
         primaryEnvironmentId: localEnvironmentId,
         threads: inbox,
-        keepEmpty: false,
+        keepEmpty: () => false,
         statusGroupOf,
       });
       expect(

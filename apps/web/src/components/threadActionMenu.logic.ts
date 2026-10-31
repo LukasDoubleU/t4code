@@ -3,6 +3,7 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
 
 export type ThreadActionMenuId =
   | "dismiss-attention"
+  | "find"
   | "new-thread-on-branch"
   | "start-topic"
   | "change-icon"
@@ -82,6 +83,7 @@ export function buildDraftActionMenuItems(options: {
 
 export interface ThreadActionMenuState {
   readonly canOperate: boolean;
+  readonly canFind?: boolean;
   readonly branch: string | null;
   readonly projectFilter: {
     readonly label: string;
@@ -137,6 +139,7 @@ export interface ThreadActionMenuState {
  */
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
   return ![
+    "find",
     "new-thread-on-branch",
     "more",
     "project-settings",
@@ -275,6 +278,9 @@ export function buildThreadActionMenuItems(
   const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
     ...(state.needsYou === true
       ? [{ id: "dismiss-attention" as const, label: "Dismiss Needs you", icon: "check" }]
+      : []),
+    ...(state.canFind
+      ? [{ id: "find" as const, label: "Find in thread", icon: "text-search" }]
       : []),
     ...(state.branch
       ? [

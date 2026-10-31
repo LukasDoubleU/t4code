@@ -63,6 +63,10 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
 const DESKTOP_APP_ID = "com.t3tools.t3code";
+// Fork-only: T4's own Windows uninstall entry. electron-builder derives upstream's from the
+// app id, and winget's T3Tools.T3Code matches it; the app id stays for shortcuts and taskbar
+// pins. installer.nsh moves installs off upstream's entry. Never change this value.
+const T4_WINDOWS_INSTALL_GUID = "49d6d89a-2f1e-4a32-85a7-795b034c6b7c";
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -2942,6 +2946,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     buildConfig.npmRebuild = false;
     buildConfig.nsis = {
       differentialPackage: true,
+      guid: T4_WINDOWS_INSTALL_GUID,
       include: "apps/desktop/resources/installer.nsh",
       shortcutName: resolveDesktopDisplayName(version),
       uninstallDisplayName: resolveDesktopDisplayName(version),

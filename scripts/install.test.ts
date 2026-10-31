@@ -9,13 +9,13 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 const nightlies = Array.from({ length: 100 }, (_, index) => ({
-  tag_name: `v1.2.4-nightly.20261020.${200 - index}`,
+  tag_name: `t4-v1.2.4-nightly.20261020.${200 - index}`,
 }));
 
 // regression: #22490
 describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer channel lookup", () => {
   it.each([
-    ["stable", "1.2.3"],
+    ["stable", "1.2.3-t4.1"],
     ["preview", "1.2.4-preview.20261019.50"],
   ])("finds the newest %s release behind a full page of nightlies", async (channel, version) => {
     const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-install-index-"));
@@ -23,13 +23,14 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer chan
     const server = NodeHttp.createServer((request, response) => {
       const url = new URL(request.url ?? "/", "http://fixture");
       const body =
-        url.pathname === "/pingdotgg/t3code/releases/latest" &&
+        url.pathname === "/LukasDoubleU/t4code/releases/latest" &&
         request.headers.accept === "application/json"
-          ? { tag_name: "v1.2.3" }
-          : url.pathname === "/repos/pingdotgg/t3code/releases"
-            ? { "1": nightlies, "2": [{ tag_name: `v${version}` }, { tag_name: "v1.2.3" }] }[
-                url.searchParams.get("page") ?? ""
-              ]
+          ? { tag_name: "t4-v1.2.3-t4.1" }
+          : url.pathname === "/repos/LukasDoubleU/t4code/releases"
+            ? {
+                "1": nightlies,
+                "2": [{ tag_name: `t4-v${version}` }, { tag_name: "t4-v1.2.3-t4.1" }],
+              }[url.searchParams.get("page") ?? ""]
             : undefined;
       if (body === undefined) response.statusCode = 404;
       // The API pretty-prints and the installer reads it line by line.
@@ -136,6 +137,8 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer chec
           const archive = await NodeFSP.readFile(archivePath);
           const digest = NodeCrypto.createHash("sha256").update(archive).digest("hex");
           server.on("request", (request, response) => {
+            // Assets exist only under the fork's release tag.
+            if (!request.url?.startsWith(`/t4-v${version}/`)) response.statusCode = 404;
             response.end(
               request.url?.endsWith("/SHA256SUMS")
                 ? `${validChecksum ? digest : "0".repeat(64)}  ${archiveName}\n`

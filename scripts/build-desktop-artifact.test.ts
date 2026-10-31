@@ -504,7 +504,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(resolveDesktopDisplayName("0.0.17-nightly.20260413.42"), "T4 Code (Nightly)");
   });
 
-  it.effect("names the Windows shortcuts and Apps entry after the fork", () =>
+  it.effect("gives the Windows installer the fork's names and its own uninstall entry", () =>
     Effect.gen(function* () {
       const win = yield* createBuildConfig(
         "win",
@@ -516,7 +516,12 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         undefined,
         true,
       );
-      assert.include(win.nsis, { shortcutName: "T4 Code", uninstallDisplayName: "T4 Code" });
+      // Installs register under this product code; a new one would orphan them.
+      assert.include(win.nsis, {
+        shortcutName: "T4 Code",
+        uninstallDisplayName: "T4 Code",
+        guid: "49d6d89a-2f1e-4a32-85a7-795b034c6b7c",
+      });
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
 

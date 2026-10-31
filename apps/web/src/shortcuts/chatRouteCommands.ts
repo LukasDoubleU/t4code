@@ -85,7 +85,10 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
 
   const startNewLocal: CommandHandler = (event) => {
     claim(event);
-    void startNewThreadFromContext(readThreadContext());
+    // With no current or open project, such as when every project is archived, pick one.
+    void startNewThreadFromContext(readThreadContext()).then((started) => {
+      if (!started) openNewThreadDialog();
+    });
   };
 
   const previewCommand =

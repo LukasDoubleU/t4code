@@ -176,7 +176,7 @@ const UNKNOWN_MACHINE_LABEL = "Unknown machine";
 
 /**
  * Folders hold active threads in their given order, so the chosen sort applies inside
- * them. A project without threads gets a folder only with `keepEmpty`; machine and
+ * them. A project without threads gets a folder only when `keepEmpty` says so; machine and
  * status folders only appear while they hold threads.
  */
 export function groupSidebarThreads<
@@ -191,7 +191,7 @@ export function groupSidebarThreads<
   }>;
   readonly primaryEnvironmentId: EnvironmentId | null;
   readonly threads: readonly TThread[];
-  readonly keepEmpty: boolean;
+  readonly keepEmpty: (group: TGroup) => boolean;
   readonly statusGroupOf: (thread: TThread) => SidebarStatusGroup;
 }): SidebarThreadFolder<TThread, TGroup>[] {
   type Folder = SidebarThreadFolder<TThread, TGroup>;

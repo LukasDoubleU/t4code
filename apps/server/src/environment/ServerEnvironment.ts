@@ -22,6 +22,7 @@ import { resolveServiceLauncherMode } from "../cloud/serviceLauncherClient.ts";
 import * as ServerConfig from "../config.ts";
 import { databaseMigrationHead } from "../persistence/databaseMigrationHead.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import { triageRefusal } from "../triage/triagePrompt.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
 import { detectServerEnvironmentMachineKind } from "./ServerEnvironmentMachine.ts";
 
@@ -224,6 +225,7 @@ export const make = Effect.gen(function* () {
       fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
       pullRequests: true,
       pullRequestChecks: true,
+      sideChats: true,
       inlineMessageContext: true,
       messageReactions: true,
       replyReferences: true,
@@ -242,6 +244,7 @@ export const make = Effect.gen(function* () {
       projectSettingsOverrides: true,
       projectProviderInstanceOverrides: true,
       threadSnooze: true,
+      threadForceStop: true,
       environmentThemes: true,
       usageLimitSources: true,
       providerWorkspaceSnapshotsOnDemand: true,
@@ -268,8 +271,11 @@ export const make = Effect.gen(function* () {
       ...(hostPlatform === "win32" ? {} : { localServerStop: true }),
       environmentIcon: true,
       projectCloneTracking: true,
+      projectOrganization: true,
       ignoredFileListing: true,
-      triage: true,
+      // Fork builds hide in-app triage, which files issues upstream.
+      triage: triageRefusal(packageJson.version) === null,
+      npmReleaseLookup: true,
       ...(serverSelfUpdate === null ? {} : { serverSelfUpdate }),
       ...(serverInstallation === null ? {} : { serverInstallation }),
       ...(serverSelfUpdate === "boot-service" || desktopAppUpdate

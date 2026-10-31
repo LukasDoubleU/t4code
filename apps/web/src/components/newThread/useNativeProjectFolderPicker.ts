@@ -73,7 +73,8 @@ export function useNativeProjectFolderPicker() {
       return { environmentId: input.environmentId, path: pickedPath };
     }
 
-    desktopWslState ??= (await window.desktopBridge?.getWslState().catch(() => null)) ?? null;
+    desktopWslState =
+      desktopWslState ?? (await window.desktopBridge?.getWslState().catch(() => null)) ?? null;
     let primaryRunningDistro: string | null = null;
     try {
       primaryRunningDistro =

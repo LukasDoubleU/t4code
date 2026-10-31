@@ -4,6 +4,7 @@ import type { Thread } from "../types";
 import { makeThreadFixture } from "../test-fixtures";
 import {
   buildNestedSearchItems,
+  resolveCommandPaletteProject,
   buildThreadActionItems,
   buildLinkedThreadActionItems,
   buildNewThreadPickerItems,
@@ -161,7 +162,7 @@ describe("new-thread picker order", () => {
     run: async () => undefined,
   });
 
-  it("sorts projects by name, then the local machine, then the machine label", () => {
+  it("sorts pinned projects first, then by name, the local machine and the machine label", () => {
     const projects = [
       project(laptop, "web-laptop", "web"),
       project(local, "zebra", "Zebra"),
@@ -183,6 +184,13 @@ describe("new-thread picker order", () => {
     expect(sortNewThreadPickerProjects(projects.toReversed(), locations)).toEqual(
       sortNewThreadPickerProjects(projects, locations),
     );
+    // Pinned projects come first, by name among themselves.
+    const pinned = new Set(["zebra", "web-server"]);
+    expect(
+      sortNewThreadPickerProjects(projects, locations, (entry) => pinned.has(entry.id)).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(["web-server", "zebra", "api", "docs", "web-local", "web-laptop"]);
   });
 
   it("numbers the project rows top-down, highlights the current one in place and ends with No project", () => {
@@ -1010,4 +1018,23 @@ describe("returning from file and content search", () => {
     expect(reduceCommandPaletteUiState(closed, { _tag: "BackToCommand" })).toEqual(closed);
     expect(reduceCommandPaletteUiState(closed, { _tag: "SetOpen", open: true })).toEqual(root);
   });
+});
+
+it("resolves project metadata and browse roots within the active environment", () => {
+  const local = { title: "Local project", workspaceRoot: "/local/repo" };
+  const remote = { title: "Remote project", workspaceRoot: "/remote/repo" };
+  const projects = new Map([
+    ["local:shared-project", local],
+    ["remote:shared-project", remote],
+  ]);
+  expect(
+    resolveCommandPaletteProject(projects, EnvironmentId.make("local"), PROJECT_ID),
+  ).toBeUndefined();
+  const sharedId = ProjectId.make("shared-project");
+  expect(resolveCommandPaletteProject(projects, EnvironmentId.make("local"), sharedId)).toBe(local);
+  expect(resolveCommandPaletteProject(projects, EnvironmentId.make("remote"), sharedId)).toBe(
+    remote,
+  );
+  expect(resolveCommandPaletteProject(projects, null, sharedId)).toBeUndefined();
+  expect(resolveCommandPaletteProject(projects, EnvironmentId.make("local"), null)).toBeUndefined();
 });

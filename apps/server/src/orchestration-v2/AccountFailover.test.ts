@@ -471,6 +471,35 @@ it.layer(layerRuntime(10))("a turn that hits its account's usage limit", (it) =>
       assert.isNull((yield* orchestrator.getThreadShell(threadId))?.accountFailoverDisabledAt);
     }),
   );
+  it.effect("leaves a side chat on its account", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const reactor = yield* AccountFailover.AccountFailoverReactor;
+      const parentId = yield* createThread("side-chat-parent");
+      const threadId = ThreadId.make("account-failover:side-chat");
+      yield* orchestrator.dispatch({
+        type: "thread.fork",
+        commandId: CommandId.make(`${threadId}:fork`),
+        sourceThreadId: parentId,
+        targetThreadId: threadId,
+        sourcePoint: { type: "latest_stable" },
+        sideChat: true,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* sendMessage(threadId, "Quick question.", "defer_start");
+      const [source] = (yield* orchestrator.getThreadProjection(threadId)).runs as [
+        OrchestrationV2Run,
+      ];
+
+      yield* reactor.handle(yield* failOnUsageLimit(source));
+
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.isTrue(after.thread.lineage.sideChat);
+      assert.lengthOf(after.runs, 1);
+      assert.deepStrictEqual(yield* notices(threadId), []);
+    }),
+  );
 });
 
 it.layer(layerRuntime(100))("a turn on an account its reading shows used up", (it) => {

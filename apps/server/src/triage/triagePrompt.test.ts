@@ -9,7 +9,17 @@ import {
   buildTriageLaunchPrompt,
   type TriageContextInput,
   TRIAGE_PLAYBOOK,
+  triageRefusal,
 } from "./triagePrompt.ts";
+
+it("refuses triage on fork builds and points to the fork's issues", () => {
+  for (const version of ["0.1.7-t4.1", "0.1.7-test.2"]) {
+    assert.include(triageRefusal(version), "https://github.com/LukasDoubleU/t4code/issues");
+  }
+  for (const version of ["0.1.6", "0.1.7-nightly.20261031.1"]) {
+    assert.isNull(triageRefusal(version));
+  }
+});
 
 it("stays byte-identical to .github/triage/PLAYBOOK.md", () => {
   // Older releases fetch the repository playbook.

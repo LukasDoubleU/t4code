@@ -48,7 +48,7 @@ interface ProjectGroupLike<TProject> {
 }
 
 /**
- * One machine's projects in sidebar order, with the current project first so
+ * One machine's projects in the order of `groups`, with the current project first so
  * Enter starts the thread Ctrl+N used to.
  */
 export function machineProjects<

@@ -640,6 +640,10 @@ export const ServerConfig = Schema.Struct({
   threadFindProgressive: Schema.optionalKey(Schema.Boolean),
   /** The server writes "Catch me up" briefs (`orchestration.catchUpThread`). */
   threadCatchUp: Schema.optionalKey(Schema.Boolean),
+  /** Settings patches may carry `secretProviders`; older servers drop the key without an error. */
+  secretProviderSettings: Schema.optionalKey(Schema.Boolean),
+  /** Secret settings may point at a secret provider; older servers drop the reference. */
+  secretReferences: Schema.optionalKey(Schema.Boolean),
   scratchWorkspaceRoot: Schema.optionalKey(TrimmedNonEmptyString),
   newProjectsRoot: Schema.optionalKey(TrimmedNonEmptyString),
   /** Where pinned threads keep their memory files. Absent on servers without them. */
@@ -878,6 +882,29 @@ export class ServerProviderUpdateError extends Schema.TaggedError<ServerProvider
 ) {
   override get message(): string {
     return `Provider update failed for ${this.provider}: ${this.reason}`;
+  }
+}
+
+export const ServerNpmReleaseInput = Schema.Struct({
+  spec: Schema.String.check(
+    Schema.isMaxLength(64),
+    Schema.isPattern(/^(?:latest|nightly|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/),
+  ),
+});
+export type ServerNpmReleaseInput = typeof ServerNpmReleaseInput.Type;
+
+export const ServerNpmRelease = Schema.Struct({
+  version: Schema.String,
+  databaseMigration: Schema.optionalKey(Schema.Int),
+});
+export type ServerNpmRelease = typeof ServerNpmRelease.Type;
+
+export class ServerNpmReleaseError extends Schema.TaggedError<ServerNpmReleaseError>()(
+  "ServerNpmReleaseError",
+  { reason: Schema.String },
+) {
+  override get message(): string {
+    return `Could not check the configured npm registry: ${this.reason}`;
   }
 }
 

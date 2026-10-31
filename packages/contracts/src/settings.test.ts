@@ -549,6 +549,16 @@ describe("sidebar Experts section", () => {
     });
     expect(decodeClientSettingsPatch({})).not.toHaveProperty("sidebarExpertsCollapsed");
   });
+
+  it("folds experts quiet for 8 hours unless a device chose another window or off", () => {
+    expect(decodeClientSettings({}).sidebarExpertsQuietAfterHours).toBe(8);
+    expect(decodeClientSettings({ sidebarExpertsQuietAfterHours: null })).toMatchObject({
+      sidebarExpertsQuietAfterHours: null,
+    });
+    expect(decodeClientSettingsPatch({ sidebarExpertsQuietAfterHours: 24 })).toEqual({
+      sidebarExpertsQuietAfterHours: 24,
+    });
+  });
 });
 
 describe("always show message times", () => {

@@ -120,6 +120,13 @@ Collapsed, the section keeps only the thread you have open, and a thread dropped
 header is pinned as the menu's **Pin** would. Experts lists the pinned threads of every
 environment the app is connected to.
 
+On web and desktop, experts that have been quiet for 8 hours fold into one row at the end of
+the section, such as **12 quiet**; click it to list them, and again to fold them. An expert that
+is working, needs you or has a result you have not opened always stays in view, and a folded one
+comes back on its own as soon as it gets a message, starts a run or asks for you. Nothing is
+unpinned or settled. Choose the window, or **Off** to list every expert, under **Settings →
+General → Fold quiet experts**.
+
 Each expert takes one line: its project, title, status or last activity, and a machine icon for a
 thread on another machine. Hover the row to see its machine, branch, pull request, account, and
 memory.

@@ -451,6 +451,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["hide fold running monitoring threads inbox sidebar shelf"],
   },
   {
+    id: "quiet-experts",
+    title: "Fold quiet experts",
+    to: "/settings/general",
+    searchTerms: ["hide idle inactive pinned experts sidebar quiet window hours"],
+  },
+  {
     id: "boring-sidebar",
     title: "Boring sidebar (group by project)",
     to: "/settings/labs",

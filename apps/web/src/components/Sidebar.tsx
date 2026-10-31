@@ -223,6 +223,7 @@ import {
   type SidebarListItem,
   type SidebarSection,
   resolveSidebarExpertsSection,
+  isSidebarThreadQuiet,
   resolveSidebarRowThreadId,
   resolveSidebarRowVariant,
   resolveSidebarTopicExpert,
@@ -301,7 +302,9 @@ import {
 } from "./sidebar/SidebarProjectFolderHeader";
 import {
   SidebarDragBoundary,
+  SidebarQuietExpertsRow,
   SidebarSectionHeader,
+  SIDEBAR_QUIET_EXPERTS_ROW,
   SidebarSectionPlaceholder,
 } from "./sidebar/SidebarListMarkers";
 
@@ -364,6 +367,8 @@ const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
 const BACKGROUND_SHELF_EXPANDED_KEY = "t3code:sidebar:background-expanded";
+const QUIET_EXPERTS_EXPANDED_KEY = "t3code:sidebar:quiet-experts-expanded";
+const HOUR_MS = 60 * 60 * 1000;
 // Experts whose topics this device shows.
 const OPEN_TOPICS_KEY = "t3code:sidebar:open-topics";
 const NO_OPEN_TOPICS: readonly string[] = [];
@@ -522,6 +527,7 @@ function useSidebarThreads(input: {
   const workingShelfEnabled =
     useClientSettings((s) => s.sidebarWorkingShelfEnabled) && grouping === "none";
   const expertsCollapsed = useClientSettings((s) => s.sidebarExpertsCollapsed);
+  const quietAfterHours = useClientSettings((s) => s.sidebarExpertsQuietAfterHours);
   const background = useSidebarBackground();
   const machines = useEnvironmentIdentities();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -556,6 +562,11 @@ function useSidebarThreads(input: {
   );
   const [backgroundShelfExpanded, setBackgroundShelfExpanded] = useLocalStorage(
     BACKGROUND_SHELF_EXPANDED_KEY,
+    false,
+    Schema.Boolean,
+  );
+  const [quietExpertsExpanded, setQuietExpertsExpanded] = useLocalStorage(
+    QUIET_EXPERTS_EXPANDED_KEY,
     false,
     Schema.Boolean,
   );
@@ -607,6 +618,18 @@ function useSidebarThreads(input: {
     collapsed: expertsCollapsed,
     routeThreadKey: routeRowThreadKey,
     keyOf: threadShellKey,
+    // The minute clock re-evaluates the window, so no row keeps a timer of its own.
+    ...(quietAfterHours === null
+      ? {}
+      : {
+          isQuiet: (thread: EnvironmentThreadShell) =>
+            isSidebarThreadQuiet(thread, {
+              statusGroup: partition.statusGroupOf(thread),
+              nowMs: Date.parse(`${nowMinute}:00.000Z`),
+              quietAfterMs: quietAfterHours * HOUR_MS,
+            }),
+        }),
+    quietExpanded: quietExpertsExpanded,
   });
   const topicThreads = [...topicsByExpert.values()].flat();
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
@@ -673,6 +696,7 @@ function useSidebarThreads(input: {
         });
   const orderedThreads = [
     ...experts.rows.map((row) => row.thread),
+    ...experts.quiet.rows.map((row) => row.thread),
     ...(folders === null ? activeThreads : folders.flatMap((folder) => folder.threads)),
     ...visibleWorkingThreads,
     // Background is one list below the folders, whatever they group by.
@@ -719,6 +743,7 @@ function useSidebarThreads(input: {
       })),
     experts,
     toggleExperts: () => void updateClientSettings({ sidebarExpertsCollapsed: !expertsCollapsed }),
+    toggleQuietExperts: () => setQuietExpertsExpanded((value) => !value),
     openTopicKeys,
     toggleTopics: (expertKey: string) =>
       setOpenTopicKeys((keys) =>
@@ -1490,6 +1515,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     pinnedThreads,
     experts,
     toggleExperts,
+    toggleQuietExperts,
     topicsByExpert,
     topicKeys,
     openTopicKeys,
@@ -2120,6 +2146,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     });
   };
   const hasFolders = folders !== null && folders.length > 0;
+  const quietExpertKeys = new Set(
+    experts.quiet.rows.flatMap((row) =>
+      row.section === "pinned" ? [threadShellKey(row.thread)] : [],
+    ),
+  );
   const sidebarListItemsFresh = ((): readonly SidebarListItem[] => {
     const rowsOf = (
       list: readonly EnvironmentThreadShell[],
@@ -2145,6 +2176,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
     for (const row of experts.rows) {
       items.push({ kind: "thread", key: threadShellKey(row.thread), section: row.section });
+    }
+    if (experts.quiet.count > 0) {
+      items.push({ kind: "marker", marker: "quiet-experts" });
+      for (const row of experts.quiet.rows) {
+        items.push({ kind: "thread", key: threadShellKey(row.thread), section: row.section });
+      }
     }
     items.push({ kind: "marker", marker: "pinned-divider" });
     const activeRows = rowsOf(activeThreads, "active");
@@ -2242,6 +2279,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     settledOrder: draggedSettledOrder,
     ...(draggedPinnedOrder === undefined ? {} : { pinnedOrder: draggedPinnedOrder }),
     pinnedExpanded: experts.expanded,
+    quietExpertKeys,
     ...(draggedActiveOrder === undefined ? {} : { activeOrder: draggedActiveOrder }),
     backgroundOrder: draggedBackgroundOrder,
     backgroundExpanded: backgroundShelfExpanded,
@@ -3671,6 +3709,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             variant={rowVariant}
                             navigationParent={
                               folder?.row ??
+                              (section === "pinned" && quietExpertKeys.has(threadKey)
+                                ? SIDEBAR_QUIET_EXPERTS_ROW
+                                : undefined) ??
                               (section === "working" ||
                               section === "snoozed" ||
                               section === "settled"
@@ -3853,6 +3894,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                   isDropTarget={dragTargetSection === "pinned"}
                                 />
                               ),
+                            );
+                            break;
+                          case "quiet-experts":
+                            items.push(
+                              <SidebarQuietExpertsRow
+                                key="quiet-experts"
+                                count={experts.quiet.count}
+                                expanded={experts.quiet.expanded}
+                                onToggle={toggleQuietExperts}
+                              />,
                             );
                             break;
                           case "pinned-divider":

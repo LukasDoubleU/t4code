@@ -99,6 +99,8 @@ export function createSidebarSortingStrategy(input: {
   settledOrder: readonly string[];
   pinnedOrder?: readonly string[];
   pinnedExpanded?: boolean;
+  /** Experts listed below the quiet fold row. */
+  quietExpertKeys?: ReadonlySet<string>;
   activeOrder?: readonly string[];
   backgroundOrder?: readonly string[];
   backgroundExpanded?: boolean;
@@ -214,8 +216,17 @@ export function createSidebarSortingStrategy(input: {
       else marker(`${name}-placeholder`);
     };
     marker("pinned-header");
-    for (const expert of groups.pinned) {
-      projected.push(expert, ...(topicsByExpert.get(expert.key) ?? []));
+    const quietKeys = input.quietExpertKeys;
+    const pushExperts = (quiet: boolean) => {
+      for (const expert of groups.pinned) {
+        if ((quietKeys?.has(expert.key) ?? false) !== quiet) continue;
+        projected.push(expert, ...(topicsByExpert.get(expert.key) ?? []));
+      }
+    };
+    pushExperts(false);
+    if (items.some((item) => item.kind === "marker" && item.marker === "quiet-experts")) {
+      marker("quiet-experts");
+      pushExperts(true);
     }
     marker("pinned-divider");
     section("active");

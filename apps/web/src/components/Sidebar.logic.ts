@@ -44,6 +44,7 @@ import {
   type ThreadSortInput,
 } from "@t3tools/client-runtime/state/thread-sort";
 import type { SidebarThreadSummary, Thread } from "../types";
+import type { SidebarStatusGroup } from "./Sidebar.viewOptions";
 import { normalizeSearchText } from "../lib/utils";
 import { isLatestRunSettled } from "../session-logic";
 import { observeIntersection } from "../lib/observeIntersection";
@@ -267,6 +268,37 @@ export function resolveSidebarTopicExpert(input: {
 }
 
 /**
+ * An expert folds away once it has been quiet for the window: nothing to show the user (working,
+ * needing them or unread) and no message, run or pin since. Visits do not count as activity.
+ */
+export function isSidebarThreadQuiet(
+  thread: Pick<
+    SidebarThreadSummary,
+    "createdAt" | "pinnedAt" | "latestUserMessageAt" | "latestRun"
+  >,
+  input: {
+    readonly statusGroup: SidebarStatusGroup;
+    readonly nowMs: number;
+    readonly quietAfterMs: number;
+  },
+): boolean {
+  if (input.statusGroup !== "idle") return false;
+  const lastActivityMs = Math.max(
+    ...[
+      thread.createdAt,
+      thread.pinnedAt,
+      thread.latestUserMessageAt,
+      thread.latestRun?.requestedAt,
+      thread.latestRun?.startedAt,
+      thread.latestRun?.completedAt,
+    ].map((at) => toSortableTimestamp(at ?? undefined) ?? Number.NEGATIVE_INFINITY),
+  );
+  return input.nowMs - lastActivityMs >= input.quietAfterMs;
+}
+
+type SidebarExpertRow<T> = { readonly thread: T; readonly section: "pinned" | "topic" };
+
+/**
  * Pinned threads form the Experts section, each with its topics nested under it, shown once
  * the expert's count is opened. Collapsed, the section keeps only the open thread, with its
  * expert when it is a topic, as a collapsed shelf does, and hides its order: a drop onto its
@@ -280,31 +312,56 @@ export function resolveSidebarExpertsSection<T>(input: {
   readonly collapsed: boolean;
   readonly routeThreadKey: string | null;
   readonly keyOf: (thread: T) => string;
+  /**
+   * Absent while the quiet window is off. An expert quiet with all its topics lists below the
+   * fold row, in order; folded, the fold keeps only the open thread, like a collapsed shelf.
+   */
+  readonly isQuiet?: (thread: T) => boolean;
+  readonly quietExpanded?: boolean;
 }): {
-  readonly rows: ReadonlyArray<{ readonly thread: T; readonly section: "pinned" | "topic" }>;
+  readonly rows: ReadonlyArray<SidebarExpertRow<T>>;
   readonly count: number;
   readonly expanded: boolean;
+  readonly quiet: {
+    readonly rows: ReadonlyArray<SidebarExpertRow<T>>;
+    readonly count: number;
+    readonly expanded: boolean;
+  };
 } {
-  const { pinned, topicsByExpert, openTopicKeys, collapsed, routeThreadKey, keyOf } = input;
-  const rows: Array<{ readonly thread: T; readonly section: "pinned" | "topic" }> = [];
+  const { pinned, topicsByExpert, openTopicKeys, collapsed, routeThreadKey, keyOf, isQuiet } =
+    input;
+  const quietExpanded = input.quietExpanded ?? false;
+  const rows: Array<SidebarExpertRow<T>> = [];
+  const quietRows: Array<SidebarExpertRow<T>> = [];
+  let quietCount = 0;
   for (const expert of pinned) {
     const expertKey = keyOf(expert);
     const topics = topicsByExpert.get(expertKey) ?? [];
+    const quiet = !collapsed && isQuiet !== undefined && isQuiet(expert) && topics.every(isQuiet);
+    if (quiet) quietCount += 1;
+    const hidden = collapsed || (quiet && !quietExpanded);
     const shownTopics =
-      !collapsed && openTopicKeys.has(expertKey)
+      !hidden && openTopicKeys.has(expertKey)
         ? topics
         : topics.filter((topic) => keyOf(topic) === routeThreadKey);
-    if (collapsed && expertKey !== routeThreadKey && shownTopics.length === 0) continue;
-    rows.push({ thread: expert, section: "pinned" });
-    for (const topic of shownTopics) rows.push({ thread: topic, section: "topic" });
+    if (hidden && expertKey !== routeThreadKey && shownTopics.length === 0) continue;
+    const list = quiet ? quietRows : rows;
+    list.push({ thread: expert, section: "pinned" });
+    for (const topic of shownTopics) list.push({ thread: topic, section: "topic" });
   }
-  return { rows, count: pinned.length, expanded: !collapsed };
+  return {
+    rows,
+    count: pinned.length,
+    expanded: !collapsed,
+    quiet: { rows: quietRows, count: quietCount, expanded: quietExpanded },
+  };
 }
 
 const SIDEBAR_MARKER_PREFIX = "sidebar-marker-";
 
 export type SidebarListMarker =
   | "pinned-header"
+  | "quiet-experts"
   | "active-placeholder"
   | "settled-placeholder"
   | "pinned-divider"

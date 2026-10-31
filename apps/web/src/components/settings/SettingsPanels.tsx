@@ -124,6 +124,14 @@ const SIDEBAR_PROJECT_SORT_ORDER_LABELS: Record<SidebarProjectSortOrder, string>
 };
 const isSidebarProjectSortOrder = Schema.is(SidebarProjectSortOrder);
 
+const QUIET_EXPERTS_OFF = "off";
+const QUIET_EXPERTS_HOURS = [1, 4, 8, 24, 72] as const;
+function quietExpertsLabel(hours: number | null): string {
+  if (hours === null) return "Off";
+  if (hours % 24 === 0) return hours === 24 ? "1 day" : `${hours / 24} days`;
+  return hours === 1 ? "1 hour" : `${hours} hours`;
+}
+
 const TIMESTAMP_FORMAT_LABELS = {
   locale: "System default",
   "12-hour": "12-hour",
@@ -470,6 +478,10 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarWorkingShelfEnabled !== DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled
       ? ["Working section"]
       : []),
+    ...(settings.sidebarExpertsQuietAfterHours !==
+    DEFAULT_UNIFIED_SETTINGS.sidebarExpertsQuietAfterHours
+      ? ["Fold quiet experts"]
+      : []),
     ...(settings.sidebarAutoSettleAfterDays !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
       ? ["Auto-settle inactive threads"]
       : []),
@@ -638,6 +650,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
+      sidebarExpertsQuietAfterHours: DEFAULT_UNIFIED_SETTINGS.sidebarExpertsQuietAfterHours,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
@@ -891,6 +904,51 @@ export function GeneralSettingsPanel() {
               }
               aria-label="Working section"
             />
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("quiet-experts")}
+          description="Experts with nothing for you fold into one row at the end of the Experts section once they have been quiet this long. A message, a run or a request for you brings one back."
+          resetAction={
+            settings.sidebarExpertsQuietAfterHours !==
+            DEFAULT_UNIFIED_SETTINGS.sidebarExpertsQuietAfterHours ? (
+              <SettingResetButton
+                label="fold quiet experts"
+                onClick={() =>
+                  updateSettings({
+                    sidebarExpertsQuietAfterHours:
+                      DEFAULT_UNIFIED_SETTINGS.sidebarExpertsQuietAfterHours,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={String(settings.sidebarExpertsQuietAfterHours ?? QUIET_EXPERTS_OFF)}
+              onValueChange={(value) => {
+                if (value === null) return;
+                updateSettings({
+                  sidebarExpertsQuietAfterHours: value === QUIET_EXPERTS_OFF ? null : Number(value),
+                });
+              }}
+            >
+              <SelectTrigger size="sm" className="w-full sm:w-44" aria-label="Fold quiet experts">
+                <SelectValue>
+                  {quietExpertsLabel(settings.sidebarExpertsQuietAfterHours)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value={QUIET_EXPERTS_OFF}>
+                  Off
+                </SelectItem>
+                {QUIET_EXPERTS_HOURS.map((hours) => (
+                  <SelectItem hideIndicator key={hours} value={String(hours)}>
+                    {quietExpertsLabel(hours)}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
           }
         />
       </SettingsSection>

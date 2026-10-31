@@ -47,6 +47,10 @@ $repo = 'LukasDoubleU/t4code'
 $tagPrefix = 't4-v'
 $installerAsset = '^T3-Code-(?<version>.+)-x64\.exe$'
 $checksumsAsset = 'SHA256SUMS'
+# Uninstall entries of the app: T4 Code's own product code (nsis.guid in
+# build-desktop-artifact.ts), then T3 Code's, which official builds and earlier
+# fork builds use.
+$productCodes = '49d6d89a-2f1e-4a32-85a7-795b034c6b7c', 'e9197887-efb3-55e0-985e-d6d3b5dd594a'
 
 $t3Home = if ($env:T3CODE_HOME) { $env:T3CODE_HOME } else { Join-Path $HOME '.t3' }
 $userdata = Join-Path $t3Home 'userdata'
@@ -68,17 +72,18 @@ function Find-Release {
   Fail "$repo has no release$(if ($Version) { " $Version" })"
 }
 
-# The installer registers the app under its uninstall key, named T3 Code by
-# official builds and older fork builds and T4 Code by newer ones; the
-# executable's name differs between builds.
+# The installed app under each of its uninstall entries, in the order of
+# $productCodes. An install under T4 Code's own entry removes T3 Code's for the
+# same folder, so both remain only after installing an earlier build over it.
+# The executable's name differs between builds.
 function Find-InstalledApp {
-  $entry = Get-ItemProperty -ErrorAction SilentlyContinue -Path @(
-    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
-    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
-  ) | Where-Object { $_.DisplayName -match '^T[34] Code' -and $_.DisplayIcon } | Select-Object -First 1
-  if (-not $entry) { return $null }
-  $exe = ($entry.DisplayIcon -replace ',\d+$', '').Trim('"')
-  [pscustomobject]@{ Exe = $exe; Dir = Split-Path $exe; Version = $entry.DisplayVersion }
+  $keys = foreach ($code in $productCodes) {
+    foreach ($root in 'HKCU:', 'HKLM:') { "$root\Software\Microsoft\Windows\CurrentVersion\Uninstall\$code" }
+  }
+  foreach ($entry in Get-ItemProperty -ErrorAction SilentlyContinue -LiteralPath $keys | Where-Object DisplayIcon) {
+    $exe = ($entry.DisplayIcon -replace ',\d+$', '').Trim('"')
+    [pscustomobject]@{ Exe = $exe; Dir = Split-Path $exe; Version = $entry.DisplayVersion }
+  }
 }
 
 function Test-Under([string] $path, [string[]] $dirs) {
@@ -279,8 +284,9 @@ if (-not $installer) { Fail "release $($release.tag_name) has no Windows install
 if (-not $checksums) { Fail "release $($release.tag_name) has no $checksumsAsset" }
 $releaseVersion = [regex]::Match($installer.name, $installerAsset).Groups['version'].Value
 
-$app = Find-InstalledApp
-if ($app -and $app.Version -eq $releaseVersion) {
+$installed = @(Find-InstalledApp)
+$app = $installed | Select-Object -First 1
+if ($app -and -not ($installed | Where-Object Version -ne $releaseVersion)) {
   Write-Host "T4 Code $releaseVersion is already installed."
   exit 0
 }
@@ -326,8 +332,8 @@ try {
     exit 0
   }
   $run = Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -PassThru
-  $app = Find-InstalledApp
-  if ($run.ExitCode -ne 0 -or -not $app -or $app.Version -ne $releaseVersion) {
+  $app = Find-InstalledApp | Where-Object Version -eq $releaseVersion | Select-Object -First 1
+  if ($run.ExitCode -ne 0 -or -not $app) {
     Fail ("the installer failed (exit code $($run.ExitCode))" + $(if ($backup) { "; the backup is in $backup" }))
   }
   Write-Host "Installed T4 Code $releaseVersion."

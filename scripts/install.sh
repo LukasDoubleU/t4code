@@ -2,7 +2,7 @@
 # Installs the T3 Code CLI from a GitHub Release archive. Needs only sh, tar,
 # sha256sum or shasum, and curl or wget; no Node, npm, or compiler.
 #
-#   curl -fsSL https://t3.codes/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/LukasDoubleU/t4code/t4/scripts/install.sh | sh
 #
 # Environment:
 #   T3CODE_CHANNEL           release train to follow: stable, nightly, or preview
@@ -17,7 +17,10 @@
 # instead of fetching the release again.
 set -eu
 
-repo="pingdotgg/t3code"
+# Fork-only: this repository's releases, which t4-release.yml tags t4-v<version>
+# and builds for linux-x64 and win32-x64. Upstream: "pingdotgg/t3code", "v".
+repo="LukasDoubleU/t4code"
+tag_prefix="t4-v"
 base_url="${T3CODE_RELEASE_BASE_URL:-https://github.com/${repo}/releases/download}"
 t3_home="${T3CODE_HOME:-$HOME/.t3}"
 bin_dir="${T3CODE_INSTALL_BIN_DIR:-$HOME/.local/bin}"
@@ -134,7 +137,7 @@ case "$(uname -m)" in
   *) fail "unsupported architecture $(uname -m)" ;;
 esac
 if [ "${platform}-${arch}" = darwin-x64 ]; then
-  fail "there is no t3 CLI for Intel Macs. Install the desktop app from https://t3.codes/download, or run a server from source: https://github.com/${repo}/blob/main/docs/user/install.md#intel-macs"
+  fail "there is no t3 CLI for Intel Macs. Run a server from source: https://github.com/${repo}/blob/t4/docs/user/install.md#other-platforms"
 fi
 command -v tar >/dev/null 2>&1 || fail "tar is required"
 if command -v sha256sum >/dev/null 2>&1; then
@@ -149,8 +152,8 @@ channel="${T3CODE_CHANNEL:-stable}"
 version="${T3CODE_VERSION:-}"
 if [ -z "$version" ]; then
   case "$channel" in
-    stable) tag_pattern='v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)' ;;
-    nightly | preview) tag_pattern="v\([0-9][^\"]*-${channel}\.[0-9]*\.[0-9]*\)" ;;
+    stable) tag_pattern="${tag_prefix}"'\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*-t4\.[0-9][0-9]*\)' ;;
+    nightly | preview) tag_pattern="${tag_prefix}\([0-9][^\"]*-${channel}\.[0-9]*\.[0-9]*\)" ;;
     *) fail "T3CODE_CHANNEL must be stable, nightly, or preview" ;;
   esac
   tmp_index="$(mktemp)"
@@ -203,7 +206,7 @@ else
   printf '  %sInstalling%s T3 Code %s%s%s\n\n' "$muted" "$reset" "$bold" "$version" "$reset" >&2
   step "Downloading..."
   fetch_status=0
-  fetch "${base_url}/v${version}/SHA256SUMS" "${staging}/SHA256SUMS" || fetch_status=$?
+  fetch "${base_url}/${tag_prefix}${version}/SHA256SUMS" "${staging}/SHA256SUMS" || fetch_status=$?
   if [ "$fetch_status" -eq 44 ]; then
     fail "t3 ${version} has no release archive for ${platform}-${arch}; releases before the self-contained CLI can only be installed with \`npm install -g t3@${version}\`"
   elif [ "$fetch_status" -ne 0 ]; then
@@ -211,7 +214,7 @@ else
   fi
   expected="$(grep " \*\{0,1\}${archive}\$" "${staging}/SHA256SUMS" | cut -d' ' -f1)"
   [ -n "$expected" ] || fail "t3 ${version} has no release archive for ${platform}-${arch}"
-  download "${base_url}/v${version}/${archive}" "${staging}/${archive}"
+  download "${base_url}/${tag_prefix}${version}/${archive}" "${staging}/${archive}"
 
   step "Verifying the download..."
   actual="$(checksum "${staging}/${archive}")"

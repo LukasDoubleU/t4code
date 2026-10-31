@@ -1,7 +1,7 @@
 # Installs the T3 Code CLI from a GitHub Release archive on Windows. Needs
 # only PowerShell 5.1+; no Node, npm, or compiler.
 #
-#   irm https://t3.codes/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/LukasDoubleU/t4code/t4/scripts/install.ps1 | iex
 #
 # Environment:
 #   T3CODE_CHANNEL           release train to follow: stable, nightly, or preview
@@ -16,7 +16,10 @@
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$repo = "pingdotgg/t3code"
+# Fork-only: this repository's releases, which t4-release.yml tags t4-v<version>
+# and builds for linux-x64 and win32-x64. Upstream: "pingdotgg/t3code", "v".
+$repo = "LukasDoubleU/t4code"
+$tagPrefix = "t4-v"
 $baseUrl = if ($env:T3CODE_RELEASE_BASE_URL) { $env:T3CODE_RELEASE_BASE_URL.TrimEnd("/") } else { "https://github.com/$repo/releases/download" }
 $t3Home = if ($env:T3CODE_HOME) { $env:T3CODE_HOME } else { Join-Path $HOME ".t3" }
 $binDir = if ($env:T3CODE_INSTALL_BIN_DIR) { $env:T3CODE_INSTALL_BIN_DIR } else { Join-Path $HOME ".local\bin" }
@@ -128,9 +131,9 @@ $channel = if ($env:T3CODE_CHANNEL) { $env:T3CODE_CHANNEL } else { "stable" }
 $version = $env:T3CODE_VERSION
 if (-not $version) {
   $tagPattern = switch ($channel) {
-    "stable" { '^v\d+\.\d+\.\d+$' }
-    "nightly" { '^v\d+\.\d+\.\d+-nightly\.\d+\.\d+$' }
-    "preview" { '^v\d+\.\d+\.\d+-preview\.\d+\.\d+$' }
+    "stable" { "^$tagPrefix\d+\.\d+\.\d+-t4\.\d+$" }
+    "nightly" { "^$tagPrefix\d+\.\d+\.\d+-nightly\.\d+\.\d+$" }
+    "preview" { "^$tagPrefix\d+\.\d+\.\d+-preview\.\d+\.\d+$" }
     default { Fail "T3CODE_CHANNEL must be stable, nightly, or preview" }
   }
   if ($channel -eq "stable") {
@@ -147,7 +150,7 @@ if (-not $version) {
     }
   }
   if (-not $tag) { Fail "could not find a $channel release; set T3CODE_VERSION" }
-  $version = $tag.Substring(1)
+  $version = $tag.Substring($tagPrefix.Length)
 }
 if ($version -match '-preview\.') {
   Write-Warning "t3 $version is a preview build. Preview builds are cut by maintainers from unreleased branches to exercise the release pipeline. They can be broken, receive no fixes, and are never offered as updates. Set T3CODE_CHANNEL=stable (the default) for a supported build."
@@ -173,7 +176,7 @@ if ((Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $version)) {
     [Console]::Error.WriteLine("  ${muted}Installing$reset T3 Code $bold$version$reset`n")
     Step "Downloading..."
     try {
-      Fetch "$baseUrl/v$version/SHA256SUMS" (Join-Path $staging "SHA256SUMS")
+      Fetch "$baseUrl/$tagPrefix$version/SHA256SUMS" (Join-Path $staging "SHA256SUMS")
     } catch {
       $status = $_.Exception.Response.StatusCode.value__
       if ($status -eq 404) {
@@ -181,7 +184,7 @@ if ((Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $version)) {
       }
       throw
     }
-    Fetch "$baseUrl/v$version/$archive" (Join-Path $staging $archive) -progress
+    Fetch "$baseUrl/$tagPrefix$version/$archive" (Join-Path $staging $archive) -progress
 
     Step "Verifying the download..."
 

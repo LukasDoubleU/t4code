@@ -56,6 +56,9 @@ It is based on upstream `v0.1.6` and follows upstream releases. Releases have Wi
 
 1. Install and sign in to at least one agent CLI, for example [Claude Code](https://claude.com/product/claude-code) (`claude auth login`) or [Codex](https://developers.openai.com/codex/cli) (`codex login`). See [Install and first run](./docs/user/install.md).
 2. Download `T3-Code-<version>-x64.exe` from the [latest release](https://github.com/LukasDoubleU/t4code/releases/latest) and run it. Windows SmartScreen may warn first, because the installer is unsigned. The installer and the program folder keep T3 Code's names, so existing shortcuts and updates carry over.
+
+   T4 Code has its own entry in Windows' installed apps, so winget and other package managers can't mistake it for T3 Code and install T3 Code over it. Builds up to `0.1.7-t4.1` used T3 Code's entry; installing a newer one over them, or over T3 Code, moves that install to T4 Code's entry in place, with its folder, shortcuts, taskbar pins and data.
+
 3. Later versions arrive through the app's update check.
 
 From a clone, `pwsh -File scripts/t4/install-t4.ps1` does the same in one step: it checks the download against `SHA256SUMS`, quits the app, backs up your data and installs. Each release also has the `t3` command-line tool as `t3-<version>-win32-x64.zip`.
@@ -69,6 +72,12 @@ Each release also has the server for Linux x64, `t3-<version>-linux-x64.tar.gz`,
 ### Back to T3 Code
 
 Install the official `v0.1.4` or later over T4 Code: everything stays, since T4 Code's database migrations are upstream's. Rehearse the switch first; [`scripts/t4/README.md`](./scripts/t4/README.md) explains how. Official releases before `v0.1.4` can't read the linked environments T4 Code stores.
+
+On Windows, T4 Code's entry in the installed apps stays behind and points at the folder T3 Code now uses. Remove it in PowerShell:
+
+```powershell
+Remove-Item -Recurse 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\49d6d89a-2f1e-4a32-85a7-795b034c6b7c', 'HKCU:\Software\49d6d89a-2f1e-4a32-85a7-795b034c6b7c'
+```
 
 ## Following upstream
 

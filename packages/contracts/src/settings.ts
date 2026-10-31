@@ -87,6 +87,8 @@ export const SidebarAutoSettleAfterDays = Schema.Number.check(
   }),
 );
 export type SidebarAutoSettleAfterDays = typeof SidebarAutoSettleAfterDays.Type;
+
+const SidebarExpertsQuietAfterHours = Schema.Finite.check(Schema.isGreaterThan(0));
 const DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS: SidebarAutoSettleAfterDays = 3;
 
 export const MAX_SNOOZE_PRESET_MINUTES = 30 * 24 * 60;
@@ -504,6 +506,10 @@ export const ClientSettingsSchema = Schema.Struct({
   // Threads agents start wait in a Background section until the user writes in them.
   sidebarBackgroundSection: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   sidebarExpertsCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Experts with nothing to show for this long fold into one row; null shows every expert.
+  sidebarExpertsQuietAfterHours: Schema.NullOr(SidebarExpertsQuietAfterHours).pipe(
+    Schema.withDecodingDefault(Effect.succeed(8)),
+  ),
   sidebarProjectGroupingMode: SidebarProjectGroupingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE)),
   ),
@@ -1811,6 +1817,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarThreadGrouping: Schema.optionalKey(SidebarThreadGrouping),
   sidebarBackgroundSection: Schema.optionalKey(Schema.Boolean),
   sidebarExpertsCollapsed: Schema.optionalKey(Schema.Boolean),
+  sidebarExpertsQuietAfterHours: Schema.optionalKey(Schema.NullOr(SidebarExpertsQuietAfterHours)),
   timestampFormat: Schema.optionalKey(TimestampFormat),
   alwaysShowMessageTimes: Schema.optionalKey(Schema.Boolean),
   messageTimeStyle: Schema.optionalKey(MessageTimeStyle),

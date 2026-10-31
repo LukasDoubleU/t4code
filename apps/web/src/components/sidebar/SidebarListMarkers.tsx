@@ -1,4 +1,5 @@
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
+import { ChevronRightIcon } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { type ReactNode, useLayoutEffect } from "react";
@@ -160,3 +161,35 @@ export function SidebarSectionHeader(props: {
     </SortableSidebarMarker>
   );
 }
+
+/** Folds the quiet experts at the end of the Experts section; they list below it once opened. */
+export function SidebarQuietExpertsRow(props: {
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <SortableSidebarMarker marker="quiet-experts" data-testid="sidebar-quiet-experts">
+      <button
+        type="button"
+        role="treeitem"
+        tabIndex={-1}
+        data-sidebar-row={SIDEBAR_QUIET_EXPERTS_ROW}
+        aria-expanded={props.expanded}
+        onClick={props.onToggle}
+        className="flex h-7 w-full cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-left text-xs text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+      >
+        <ChevronRightIcon
+          aria-hidden
+          className={cn(
+            "size-3 shrink-0 transition-transform duration-150",
+            props.expanded && "rotate-90",
+          )}
+        />
+        <span className="tabular-nums">{props.count} quiet</span>
+      </button>
+    </SortableSidebarMarker>
+  );
+}
+
+export const SIDEBAR_QUIET_EXPERTS_ROW = "experts:quiet";

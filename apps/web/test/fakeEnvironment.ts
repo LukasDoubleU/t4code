@@ -185,6 +185,8 @@ export interface FakeThread {
   readonly title: string;
   readonly runs: ReadonlyArray<OrchestrationV2Run>;
   readonly items: ReadonlyArray<OrchestrationV2TurnItem>;
+  readonly pinnedAt?: DateTime.Utc;
+  readonly latestUserMessageAt?: DateTime.Utc;
 }
 
 /** A thread of `turns` user prompts, each answered in markdown with a list and inline code. */
@@ -233,7 +235,7 @@ function shellOf(thread: FakeThread): OrchestrationV2ThreadShell {
     status: latest ? "completed" : "idle",
     pendingRuntimeRequest: null,
     latestVisibleMessage: null,
-    latestUserMessageAt: AT,
+    latestUserMessageAt: thread.latestUserMessageAt ?? AT,
     hasActionableProposedPlan: false,
     itemCount: thread.items.length,
     visibleItemCount: thread.items.length,
@@ -242,6 +244,7 @@ function shellOf(thread: FakeThread): OrchestrationV2ThreadShell {
     archivedAt: null,
     settledOverride: null,
     settledAt: null,
+    pinnedAt: thread.pinnedAt ?? null,
     lastVisitedAt: AT,
     deletedAt: null,
   };
@@ -307,6 +310,7 @@ const json = (body: unknown, status = 200) =>
 
 // Keyed by thread id: a live thread subscription's queue, for pushing events to it.
 const threadSubscribers = new Map<string, Queue.Queue<OrchestrationV2ThreadStreamItem>>();
+const shellSubscribers = new Set<Queue.Queue<OrchestrationV2ShellStreamItem>>();
 let threads: ReadonlyArray<FakeThread> = [];
 let sequence = 1;
 
@@ -325,19 +329,27 @@ const subscribe = <A>(first: ReadonlyArray<A>, register?: (queue: Queue.Queue<A>
 
 const handlers: Record<string, (input: never) => unknown> = {
   [ORCHESTRATION_V2_WS_METHODS.subscribeShell]: () =>
-    subscribe<OrchestrationV2ShellStreamItem>([
-      {
-        kind: "snapshot",
-        snapshot: {
-          schemaVersion: 1,
-          snapshotSequence: sequence,
-          projects: [project],
-          threads: threads.map(shellOf),
-          archivedThreads: [],
+    subscribe<OrchestrationV2ShellStreamItem>(
+      [
+        {
+          kind: "snapshot",
+          snapshot: {
+            schemaVersion: 1,
+            snapshotSequence: sequence,
+            projects: [project],
+            threads: threads.map(shellOf),
+            archivedThreads: [],
+          },
         },
+        { kind: "synchronized" },
+      ],
+      (queue) => {
+        shellSubscribers.add(queue);
+        return () => {
+          shellSubscribers.delete(queue);
+        };
       },
-      { kind: "synchronized" },
-    ]),
+    ),
   [ORCHESTRATION_V2_WS_METHODS.subscribeThread]: (input: { readonly threadId: ThreadId }) => {
     const thread = threads.find((candidate) => candidate.id === input.threadId);
     if (!thread) return Stream.never;
@@ -456,6 +468,21 @@ export async function emitThreadEvent(
       sequence,
       event: { ...event, id: EventId.make(`event-${sequence}`), threadId, occurredAt: AT },
     } as OrchestrationV2ThreadStreamItem),
+  );
+}
+
+/** Delivers a thread's changed shell, as the server does after a message or a run. */
+export async function emitThreadShell(thread: FakeThread): Promise<void> {
+  threads = threads.map((candidate) => (candidate.id === thread.id ? thread : candidate));
+  sequence += 1;
+  const item: OrchestrationV2ShellStreamItem = {
+    kind: "thread.updated",
+    sequence,
+    location: "active",
+    thread: shellOf(thread),
+  };
+  await Effect.runPromise(
+    Effect.forEach(shellSubscribers, (queue) => Queue.offer(queue, item), { discard: true }),
   );
 }
 

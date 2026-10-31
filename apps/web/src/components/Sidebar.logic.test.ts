@@ -24,6 +24,7 @@ import {
   sortInboxThreadsByReturn,
   resolveSidebarDropTarget,
   resolveSidebarExpertsSection,
+  isSidebarThreadQuiet,
   resolveSidebarRowVariant,
   resolveSidebarTopicExpert,
   resolveSidebarTopicOf,
@@ -49,6 +50,7 @@ import {
   sortPinnedThreadsByOrderKey,
 } from "@t3tools/client-runtime/state/thread-sort";
 import { resolveProjectExpanded } from "../uiStateStore";
+import type { SidebarStatusGroup } from "./Sidebar.viewOptions";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import type { ThreadTopicLinks } from "@t3tools/client-runtime/state/thread-topics";
 import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
@@ -154,6 +156,53 @@ describe("resolveSidebarTopicExpert", () => {
   });
 });
 
+describe("isSidebarThreadQuiet", () => {
+  const hour = 60 * 60 * 1000;
+  const nowMs = Date.parse("2026-03-10T12:00:00.000Z");
+  const expert = (activity: {
+    readonly latestUserMessageAt?: string | null;
+    readonly runCompletedAt?: string;
+    readonly pinnedAt?: string | null;
+  }) => ({
+    createdAt: "2026-03-01T00:00:00.000Z",
+    pinnedAt: activity.pinnedAt ?? "2026-03-01T00:00:00.000Z",
+    latestUserMessageAt: activity.latestUserMessageAt ?? null,
+    latestRun:
+      activity.runCompletedAt === undefined
+        ? null
+        : {
+            runId: RunId.make("run-1"),
+            status: "completed" as const,
+            requestedAt: "2026-03-01T00:00:00.000Z",
+            startedAt: "2026-03-01T00:00:00.000Z",
+            completedAt: activity.runCompletedAt,
+            assistantMessageId: null,
+          },
+  });
+  const quiet = (
+    thread: ReturnType<typeof expert>,
+    statusGroup: SidebarStatusGroup = "idle",
+    quietAfterHours = 8,
+  ) => isSidebarThreadQuiet(thread, { statusGroup, nowMs, quietAfterMs: quietAfterHours * hour });
+
+  it("folds an idle expert once its last message, run or pin is older than the window", () => {
+    expect(quiet(expert({}))).toBe(true);
+    expect(quiet(expert({ latestUserMessageAt: "2026-03-10T05:00:00.000Z" }))).toBe(false);
+    expect(quiet(expert({ runCompletedAt: "2026-03-10T05:00:00.000Z" }))).toBe(false);
+    expect(quiet(expert({ runCompletedAt: "2026-03-10T03:59:00.000Z" }))).toBe(true);
+    expect(quiet(expert({ pinnedAt: "2026-03-10T11:00:00.000Z" }))).toBe(false);
+    // The window is the setting's.
+    expect(quiet(expert({ runCompletedAt: "2026-03-10T05:00:00.000Z" }), "idle", 4)).toBe(true);
+    expect(quiet(expert({}), "idle", 24 * 30)).toBe(false);
+  });
+
+  it("never folds an expert that is working, needs the user or has an unread result", () => {
+    for (const statusGroup of ["working", "needs_you", "failed", "completed"] as const) {
+      expect(quiet(expert({}), statusGroup)).toBe(false);
+    }
+  });
+});
+
 describe("resolveSidebarExpertsSection", () => {
   const pinned = ["p1", "p2", "p3"];
   const keyOf = (key: string) => key;
@@ -173,13 +222,18 @@ describe("resolveSidebarExpertsSection", () => {
         routeThreadKey: null,
         keyOf,
       }),
-    ).toEqual({ rows: expertRows(pinned), count: 3, expanded: true });
+    ).toEqual({
+      rows: expertRows(pinned),
+      count: 3,
+      expanded: true,
+      quiet: { rows: [], count: 0, expanded: false },
+    });
   });
 
   it("keeps only the open thread while collapsed, and still counts every pin", () => {
     const collapsed = (routeThreadKey: string | null) =>
       resolveSidebarExpertsSection({ pinned, ...noTopics, collapsed: true, routeThreadKey, keyOf });
-    expect(collapsed(null)).toEqual({ rows: [], count: 3, expanded: false });
+    expect(collapsed(null)).toMatchObject({ rows: [], count: 3, expanded: false });
     expect(collapsed("p2").rows).toEqual(expertRows(["p2"]));
     expect(collapsed("a1").rows).toEqual([]);
   });
@@ -216,6 +270,53 @@ describe("resolveSidebarExpertsSection", () => {
       { thread: "p2", section: "pinned" },
       { thread: "t1", section: "topic" },
     ]);
+  });
+
+  it("folds quiet experts below one row, in order, and keeps the open one there", () => {
+    const pinned = ["p1", "p2", "p3", "p4"];
+    const quietKeys = new Set(["p2", "p4", "t3"]);
+    const section = (input: {
+      quietExpanded: boolean;
+      routeThreadKey?: string | null;
+      isQuiet?: (thread: string) => boolean;
+      collapsed?: boolean;
+    }) =>
+      resolveSidebarExpertsSection({
+        pinned,
+        topicsByExpert: new Map([["p3", ["t3"]]]),
+        openTopicKeys: new Set(["p3"]),
+        keyOf,
+        collapsed: input.collapsed ?? false,
+        routeThreadKey: input.routeThreadKey ?? null,
+        quietExpanded: input.quietExpanded,
+        ...(input.isQuiet ? { isQuiet: input.isQuiet } : {}),
+      });
+    const isQuiet = (thread: string) => quietKeys.has(thread);
+    expect(section({ quietExpanded: false, isQuiet })).toEqual({
+      rows: [
+        { thread: "p1", section: "pinned" },
+        { thread: "p3", section: "pinned" },
+        { thread: "t3", section: "topic" },
+      ],
+      count: 4,
+      expanded: true,
+      quiet: { rows: [], count: 2, expanded: false },
+    });
+    expect(section({ quietExpanded: true, isQuiet }).quiet.rows).toEqual(expertRows(["p2", "p4"]));
+    expect(section({ quietExpanded: false, isQuiet, routeThreadKey: "p4" }).quiet.rows).toEqual(
+      expertRows(["p4"]),
+    );
+    // A topic still going keeps its expert out of the fold.
+    const liveTopic = section({
+      quietExpanded: false,
+      isQuiet: (thread) => thread !== "p1" && thread !== "t3",
+    });
+    expect(liveTopic.rows.map((row) => row.thread)).toEqual(["p1", "p3", "t3"]);
+    expect(liveTopic.quiet.count).toBe(2);
+    // Off, or with the section collapsed, nothing folds.
+    expect(section({ quietExpanded: false }).quiet.count).toBe(0);
+    expect(section({ quietExpanded: false }).rows).toHaveLength(5);
+    expect(section({ quietExpanded: false, isQuiet, collapsed: true }).quiet.count).toBe(0);
   });
 
   it("leaves topics out of the order a drop among them pins into", () => {

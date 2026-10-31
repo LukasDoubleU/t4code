@@ -5,6 +5,7 @@ import {
   getCloneDestinationPath,
 } from "@t3tools/client-runtime/operations/projects";
 import { getFilesystemBrowsePath } from "@t3tools/client-runtime/state/filesystem";
+import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
 import {
   appendBrowsePathSegment,
   ensureBrowseDirectoryPath,
@@ -472,7 +473,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
   function projectStepGroups(): CommandPaletteGroup[] {
     if (environmentId === null) return [];
     const projectItems: DialogItem[] = machineProjects({
-      groups: projectGroups,
+      groups: pickableProjectGroups(projectGroups),
       environmentId,
       currentProjectRef: contextualProjectRef,
       isHidden: (project) =>

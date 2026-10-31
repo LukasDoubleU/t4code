@@ -24,7 +24,8 @@ if that project exists there. Otherwise it selects an environment that has it.
 On web and desktop, `mod+n` and the sidebar's new thread button open the new
 thread dialog. It opens on the machine of your current thread, or the one you
 picked last, with the current project highlighted, so Enter starts the thread
-there. Type to find another project. To use another machine, press Backspace in
+there. Pinned projects follow it, and archived projects are left out. Type to find
+another project. To use another machine, press Backspace in
 the empty search field or choose **Switch machine**. The same list adds projects:
 
 - **Open folder** suggests the folders your projects are in and the Git

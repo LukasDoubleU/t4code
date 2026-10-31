@@ -1,3 +1,4 @@
+import { CLI_ISSUES_PAGE_URL, isForkReleaseVersion } from "@t3tools/shared/cliRelease";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 
 /** Keep TRIAGE_PLAYBOOK byte-identical to .github/triage/PLAYBOOK.md after unescaping backticks and backslashes. */
@@ -156,6 +157,16 @@ duplicate with fresh evidence is more useful than a second thread.
 `;
 
 /** Where the session started: the `t3 triage` CLI, or "Triage an issue" in a client. */
+/**
+ * Fork builds run no triage: the playbook files issues on upstream's repository, where an agent
+ * could post this machine's private context. Null where triage runs.
+ */
+export function triageRefusal(version: string): string | null {
+  return isForkReleaseVersion(version)
+    ? `T4 Code builds don't run triage, which files issues on T3 Code's repository. Report the problem at ${CLI_ISSUES_PAGE_URL} instead.`
+    : null;
+}
+
 export type TriageEntry =
   | { readonly kind: "cli"; readonly cliVersion: string; readonly launchedAs: string }
   | { readonly kind: "app"; readonly client: string };

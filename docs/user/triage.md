@@ -27,3 +27,8 @@ npx t3 triage
 ```
 
 It starts Claude Code or Codex in your terminal with the same instructions.
+
+T4 Code builds don't run triage, because it files issues on T3 Code's repository:
+the app doesn't offer it and T4 Code's own `t3 triage` refuses. `npx t3 triage`
+downloads T3 Code's CLI instead, so don't use it for T4 Code. Report T4 Code
+problems in [its own issues](https://github.com/LukasDoubleU/t4code/issues).

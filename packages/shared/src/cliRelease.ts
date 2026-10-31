@@ -9,6 +9,7 @@ import { compareSemverVersions } from "./semver.ts";
 const CLI_RELEASE_REPOSITORY = "LukasDoubleU/t4code";
 const CLI_RELEASE_TAG_PREFIX = "t4-v";
 export const CLI_RELEASES_PAGE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases`;
+export const CLI_ISSUES_PAGE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/issues`;
 
 export function cliReleasePageUrl(version: string): string {
   return `${CLI_RELEASES_PAGE_URL}/tag/${CLI_RELEASE_TAG_PREFIX}${version}`;

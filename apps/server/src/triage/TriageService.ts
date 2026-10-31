@@ -13,7 +13,7 @@ import * as Path from "effect/Path";
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
-import { buildTriageAppPrompt, type TriageSourceClone } from "./triagePrompt.ts";
+import { buildTriageAppPrompt, triageRefusal, type TriageSourceClone } from "./triagePrompt.ts";
 import { triageSourceCacheDir, writeTriageSession } from "./triageSession.ts";
 
 const T3CODE_REPOSITORY_URL = "https://github.com/pingdotgg/t3code";
@@ -186,6 +186,8 @@ const make = Effect.gen(function* () {
 
   const prepare: TriageService["Service"]["prepare"] = Effect.fn("TriageService.prepare")(
     function* (input) {
+      const refusal = triageRefusal(serverVersion);
+      if (refusal !== null) return yield* new ServerPrepareTriageError({ cause: refusal });
       const sourceClone = yield* startSourceClone().pipe(
         Effect.catch((error) =>
           Effect.succeed<TriageSourceClone>({

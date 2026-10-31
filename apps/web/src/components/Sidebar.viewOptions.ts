@@ -91,7 +91,14 @@ export function resolveSidebarStatusGroup(
   context: { readonly now: string; readonly localLastVisitedAt: string | undefined },
 ): SidebarStatusGroup {
   const status = resolveSidebarThreadStatus(thread);
-  if (status === "approval" || status === "input" || thread.attention != null) return "needs_you";
+  if (
+    status === "approval" ||
+    status === "input" ||
+    status === "request" ||
+    thread.attention != null
+  ) {
+    return "needs_you";
+  }
   if (status === "failed" || status === "limited") return "failed";
   if (status === "working" || status === "waiting") return "working";
   const lastVisitedAt = resolveThreadLastVisitedAt(
@@ -159,22 +166,18 @@ interface SidebarThreadFolder<TThread, TGroup> {
   /** Where the folder's open state is saved, most specific first. */
   readonly expansionKeys: readonly string[];
   readonly header: SidebarFolderHeader<TGroup>;
-  readonly inbox: readonly TThread[];
-  readonly settled: readonly TThread[];
+  readonly threads: readonly TThread[];
 }
 
-type SidebarFolderProjectGroup = Parameters<
-  typeof groupSidebarThreadsByProject
->[0]["groups"][number] &
+type SidebarFolderProjectGroup = Parameters<typeof groupSidebarThreadsByProject>[0][number] &
   Parameters<typeof sidebarFolderExpansionKeys>[0];
 
 const UNKNOWN_MACHINE_LABEL = "Unknown machine";
 
 /**
- * Folders keep each list's order, so the chosen sort applies inside them. Project
- * folders list every project so each can start a thread; machine and status folders
- * only appear while they hold threads. Status folders hold active threads only: the
- * sidebar keeps settled threads on its own shelf then.
+ * Folders hold active threads in their given order, so the chosen sort applies inside
+ * them. A project without threads gets a folder only with `keepEmpty`; machine and
+ * status folders only appear while they hold threads.
  */
 export function groupSidebarThreads<
   TThread extends Pick<SidebarThreadSummary, "environmentId" | "projectId">,
@@ -187,44 +190,36 @@ export function groupSidebarThreads<
     readonly label: string;
   }>;
   readonly primaryEnvironmentId: EnvironmentId | null;
-  readonly inbox: readonly TThread[];
-  readonly settled: readonly TThread[];
+  readonly threads: readonly TThread[];
+  readonly keepEmpty: boolean;
   readonly statusGroupOf: (thread: TThread) => SidebarStatusGroup;
 }): SidebarThreadFolder<TThread, TGroup>[] {
   type Folder = SidebarThreadFolder<TThread, TGroup>;
   switch (input.grouping) {
     case "project":
-      return groupSidebarThreadsByProject({
-        groups: input.projectGroups,
-        inbox: input.inbox,
-        settled: input.settled,
-      }).map((folder): Folder => ({
-        key: folder.group.projectKey,
-        expansionKeys: sidebarFolderExpansionKeys(folder.group),
-        header: { kind: "project", group: folder.group },
-        inbox: folder.inbox,
-        settled: folder.settled,
-      }));
+      return groupSidebarThreadsByProject(input.projectGroups, input.threads, input.keepEmpty).map(
+        (folder): Folder => ({
+          key: folder.group.projectKey,
+          expansionKeys: sidebarFolderExpansionKeys(folder.group),
+          header: { kind: "project", group: folder.group },
+          threads: folder.threads,
+        }),
+      );
     case "machine": {
       const labelById = new Map(
         input.machines.map((machine) => [machine.environmentId, machine.label] as const),
       );
-      const folders = new Map<EnvironmentId, { inbox: TThread[]; settled: TThread[] }>();
-      for (const list of ["inbox", "settled"] as const) {
-        for (const thread of input[list]) {
-          let folder = folders.get(thread.environmentId);
-          if (folder === undefined) {
-            folder = { inbox: [], settled: [] };
-            folders.set(thread.environmentId, folder);
-          }
-          folder[list].push(thread);
-        }
+      const folders = new Map<EnvironmentId, TThread[]>();
+      for (const thread of input.threads) {
+        const folder = folders.get(thread.environmentId);
+        if (folder === undefined) folders.set(thread.environmentId, [thread]);
+        else folder.push(thread);
       }
       return [...folders]
-        .map(([environmentId, folder]) => ({
+        .map(([environmentId, threads]) => ({
           environmentId,
           label: labelById.get(environmentId) ?? UNKNOWN_MACHINE_LABEL,
-          ...folder,
+          threads,
         }))
         .toSorted(
           (left, right) =>
@@ -233,26 +228,23 @@ export function groupSidebarThreads<
             left.label.localeCompare(right.label) ||
             left.environmentId.localeCompare(right.environmentId),
         )
-        .map(({ environmentId, label, inbox, settled }): Folder => {
+        .map(({ environmentId, label, threads }): Folder => {
           const key = `sidebar-machine:${environmentId}`;
           return {
             key,
             expansionKeys: [key],
             header: { kind: "machine", environmentId, label },
-            inbox,
-            settled,
+            threads,
           };
         });
     }
     case "status": {
-      const buckets = bucketByStatus(input.inbox, input.statusGroupOf);
+      const buckets = bucketByStatus(input.threads, input.statusGroupOf);
       return SIDEBAR_STATUS_GROUPS.flatMap((status): Folder[] => {
-        const inbox = buckets.get(status)!;
-        if (inbox.length === 0) return [];
+        const threads = buckets.get(status)!;
+        if (threads.length === 0) return [];
         const key = `sidebar-status:${status}`;
-        return [
-          { key, expansionKeys: [key], header: { kind: "status", status }, inbox, settled: [] },
-        ];
+        return [{ key, expansionKeys: [key], header: { kind: "status", status }, threads }];
       });
     }
   }

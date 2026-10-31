@@ -1,51 +1,129 @@
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { threadLatestRunIsBackground } from "@t3tools/client-runtime/state/models";
+import {
+  threadLatestRunIsBackground,
+  type EnvironmentThreadShell,
+} from "@t3tools/client-runtime/state/models";
+import { WORKING_EXIT_GRACE_MS } from "@t3tools/client-runtime/state/thread-inbox";
 
 import { resolveSidebarThreadStatus, type SidebarThreadStatus } from "./Sidebar.logic";
 
-/** What a thread last notified about, so each question, failure and completion notifies once. */
-export interface ThreadNotificationMarks {
+export type ThreadNotificationKind = "input" | "completion";
+
+export interface ThreadNotificationObservation {
+  /** Run and status key while the thread needs attention, otherwise null. */
   readonly attention: string | null;
-  readonly completion: number | null;
+  /** The thread is idle and its latest run completed. */
+  readonly settled: boolean;
+  /** When the latest run completed, if it did. */
+  readonly completedAt: number | null;
 }
 
-interface ThreadNotificationDecision {
-  readonly marks: ThreadNotificationMarks;
+export interface ThreadNotificationState extends ThreadNotificationObservation {
   readonly status: SidebarThreadStatus;
-  /** `attention`: the thread's agent asked for the user, and notifies as a question does. */
-  readonly kind: "input" | "attention" | "completion" | null;
+  /** The thread's agent asked for the user with Needs you, while its status does not. */
+  readonly needsYou: boolean;
+  /** The run was stopped, or the user didn't start it: only its questions and failures notify. */
+  readonly quiet: boolean;
+  /** The user didn't start the latest run. */
+  readonly background: boolean;
 }
 
-export function decideThreadNotification(
-  thread: EnvironmentThreadShell,
-  prior: ThreadNotificationMarks | undefined,
-): ThreadNotificationDecision {
+export function observeThreadNotification(thread: EnvironmentThreadShell): ThreadNotificationState {
   let status = resolveSidebarThreadStatus(thread);
   if (status === "ready" && thread.latestRun?.status === "failed") status = "failed";
   const statusNeedsUser =
-    status === "input" || status === "approval" || status === "failed" || status === "limited";
-  const attention = statusNeedsUser
-    ? `${thread.latestRun?.runId ?? ""}:${status}`
-    : thread.attention != null
-      ? `attention:${thread.attention.requestedAt}`
-      : null;
+    status === "input" ||
+    status === "request" ||
+    status === "approval" ||
+    status === "failed" ||
+    status === "limited";
+  const asked = thread.attention ?? null;
+  const background = threadLatestRunIsBackground(thread);
   const completedAt = Date.parse(thread.latestRun?.completedAt ?? "");
-  const completion =
-    status === "ready" && thread.latestRun?.status === "completed" && Number.isFinite(completedAt)
-      ? completedAt
-      : (prior?.completion ?? null);
-  const marks = { attention, completion };
-  if (!prior || thread.archivedAt !== null) return { marks, status, kind: null };
-  const kind =
-    attention && attention !== prior.attention
-      ? statusNeedsUser
-        ? "input"
-        : "attention"
-      : completion !== null &&
-          (prior.completion === null || completion > prior.completion) &&
-          // The user didn't start this turn, so only its questions and failures reach them.
-          !threadLatestRunIsBackground(thread)
-        ? "completion"
-        : null;
-  return { marks, status, kind };
+  const settled = status === "ready" && thread.latestRun?.status === "completed";
+  return {
+    status,
+    attention: statusNeedsUser
+      ? `${thread.latestRun?.runId ?? ""}:${status}`
+      : asked !== null
+        ? `attention:${asked.requestedAt}`
+        : null,
+    needsYou: !statusNeedsUser && asked !== null,
+    settled,
+    completedAt: settled && Number.isFinite(completedAt) ? completedAt : null,
+    quiet: thread.source.latestRunStopRequested === true || background,
+    background,
+  };
+}
+
+/**
+ * Attention notifies at once. Completion waits out the Working shelf's exit grace,
+ * because an orchestrator run can end moments before its continuation starts. Any
+ * observation that is not settled during the wait cancels it.
+ */
+export function createThreadNotificationGate<Key>(
+  notify: (key: Key, kind: ThreadNotificationKind) => void,
+) {
+  const pending = new Map<Key, { at: number; timer: ReturnType<typeof setTimeout> }>();
+  // The newest completion already notified, or deliberately skipped.
+  const handled = new Map<Key, number>();
+  // The newest completion seen settled, kept while the thread works or waits.
+  const lastSettled = new Map<Key, number>();
+  const cancel = (key: Key) => {
+    clearTimeout(pending.get(key)?.timer);
+    pending.delete(key);
+  };
+  const skip = (key: Key, at: number | null) => {
+    if (at !== null && at > (handled.get(key) ?? -Infinity)) handled.set(key, at);
+  };
+  return {
+    observe(
+      key: Key,
+      prior: ThreadNotificationObservation | undefined,
+      next: ThreadNotificationObservation,
+      options: {
+        readonly archived: boolean;
+        readonly quiet: boolean;
+        /** The user didn't start the latest run. */
+        readonly background?: boolean;
+      },
+    ): void {
+      if (next.settled && next.completedAt !== null) lastSettled.set(key, next.completedAt);
+      // A run the user didn't start never notifies, so it must not cancel their pending completion.
+      const keepsPending = options.background === true;
+      if (options.archived || (!keepsPending && (!next.settled || options.quiet))) cancel(key);
+      // The first sighting, archived threads, and stopped or silent runs never notify completion.
+      if (!prior || options.archived || options.quiet) skip(key, next.completedAt);
+      if (!prior || options.archived) return;
+      if (next.attention && next.attention !== prior.attention) {
+        // Attention replaces the completion before it, so that run must not notify later.
+        skip(key, lastSettled.get(key) ?? null);
+        cancel(key);
+        notify(key, "input");
+        return;
+      }
+      const at = next.completedAt;
+      if (!next.settled || at === null || at <= (handled.get(key) ?? -Infinity)) return;
+      if (pending.get(key)?.at === at) return;
+      cancel(key);
+      pending.set(key, {
+        at,
+        timer: setTimeout(() => {
+          pending.delete(key);
+          skip(key, at);
+          notify(key, "completion");
+        }, WORKING_EXIT_GRACE_MS),
+      });
+    },
+    /** Forgets threads that left the snapshot. */
+    retain(keys: ReadonlySet<Key>): void {
+      for (const key of pending.keys()) if (!keys.has(key)) cancel(key);
+      for (const key of handled.keys()) if (!keys.has(key)) handled.delete(key);
+      for (const key of lastSettled.keys()) if (!keys.has(key)) lastSettled.delete(key);
+    },
+    clear(): void {
+      for (const key of pending.keys()) cancel(key);
+      handled.clear();
+      lastSettled.clear();
+    },
+  };
 }

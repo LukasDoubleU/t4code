@@ -1,15 +1,9 @@
-// Fork-only: tells the fork's upkeep issue when upstream publishes a stable
-// release newer than the fork's base, or when a carried upstream PR changes
-// state. scripts/t4/upstream.json holds the base and the carried PRs, and the
-// upkeep updates it (scripts/t4/README.md).
-//
+// Fork-only: comments on the upkeep issue when upstream ships a stable release newer than the
+// base in scripts/t4/upstream.json, or a carried PR changes state. Dependency-free, so the
+// workflow runs it without installing the workspace. Usage:
 //   node .github/scripts/t4-upstream-watch.cjs [--dry-run] [--repo <owner/name>] [--config <file>]
-//
-// Dependency-free, so the workflow runs it without installing the workspace.
-// Each change is reported once: a comment carries a hidden marker per change,
-// and the newest marker for a PR is the state the next run compares against.
-// Comments name upstream PRs as code spans, so nothing links to them or
-// notifies anyone upstream.
+
+// A hidden marker per change reports each once; PRs appear as code spans, notifying no one.
 const fs = require("node:fs");
 const path = require("node:path");
 

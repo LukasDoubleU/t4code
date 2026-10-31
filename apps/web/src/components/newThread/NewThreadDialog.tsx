@@ -5,7 +5,13 @@ import {
   getCloneDestinationPath,
 } from "@t3tools/client-runtime/operations/projects";
 import { getFilesystemBrowsePath } from "@t3tools/client-runtime/state/filesystem";
-import { isScratchProject } from "@t3tools/client-runtime/state/projects";
+import {
+  appendBrowsePathSegment,
+  ensureBrowseDirectoryPath,
+  findProjectByPath,
+  inferProjectTitleFromPath,
+  isScratchProject,
+} from "@t3tools/client-runtime/state/projects";
 import {
   isAtomCommandInterrupted,
   settlePromise,
@@ -36,12 +42,6 @@ import { useNewProject } from "../../hooks/useNewProject";
 import { useScratchProject } from "../../hooks/useScratchProject";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { resolveThreadActionProjectRef } from "../../lib/chatThreadActions";
-import {
-  appendBrowsePathSegment,
-  ensureBrowseDirectoryPath,
-  findProjectByPath,
-  inferProjectTitleFromPath,
-} from "../../lib/projectPaths";
 import { newProjectId } from "../../lib/utils";
 import { useProjects, waitForProject } from "../../state/entities";
 import { useEnvironments } from "../../state/environments";
@@ -119,9 +119,6 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
   const { scratchEnvironmentId, scratchWorkspaceRootFor, openScratchProject } = useScratchProject();
   const createNewProject = useNewProject();
   const createProject = useAtomCommand(projectEnvironment.create, { reportFailure: false });
-  const cloneRepository = useAtomCommand(sourceControlEnvironment.cloneRepository, {
-    reportFailure: false,
-  });
   const startProjectClone = useAtomCommand(sourceControlEnvironment.startProjectClone, {
     reportFailure: false,
   });
@@ -328,21 +325,6 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
         return false;
       }
       rememberNewThreadMachine(environmentId);
-      // Older servers only offer the blocking clone, so wait for git and add
-      // the project afterwards.
-      if (environment?.serverConfig?.environment.capabilities.projectCloneTracking !== true) {
-        const cloned = await cloneRepository({
-          environmentId,
-          input: { remoteUrl, destinationPath },
-        });
-        if (cloned._tag === "Failure") {
-          if (!isAtomCommandInterrupted(cloned)) {
-            reportFailure("Clone failed", squashAtomCommandFailure(cloned));
-          }
-          return false;
-        }
-        return openFolderAsProject(environmentId, cloned.value.cwd);
-      }
       const projectId = newProjectId();
       const started = await startProjectClone({
         environmentId,

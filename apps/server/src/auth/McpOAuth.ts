@@ -28,6 +28,7 @@ import * as Schema from "effect/Schema";
 import { HttpServerRequest } from "effect/http";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as McpHttpServer from "../mcp/McpHttpServer.ts";
 import type * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
@@ -40,12 +41,8 @@ import {
   timingSafeEqualBase64Url,
 } from "./utils.ts";
 
-/**
- * Every URL is derived from the request's own origin, so the same server
- * answers correctly over loopback, Tailscale Serve and a T3 Connect tunnel.
- * Client registration is stateless: a client id is its signed metadata, so an
- * unauthenticated caller cannot grow server state.
- */
+// Request-derived origins support loopback, Tailscale and tunnels.
+// Signed client metadata keeps unauthenticated registration stateless.
 
 const SIGNING_SECRET_NAME = "mcp-oauth-signing-key";
 const AUTHORIZATION_CODE_TTL_MS = 60_000;
@@ -98,7 +95,7 @@ export const authorizationServerMetadata = (
 });
 
 const parseRedirect = (value: string): URL | undefined => {
-  // No fragment, not even an empty one, which `URL.hash` reports as "" (RFC 6749 §3.1.2).
+  // URL.hash misses empty fragments, which RFC 6749 §3.1.2 also forbids.
   if (value.length > MAX_REDIRECT_URI_LENGTH || value.includes("#")) return undefined;
   try {
     const url = new URL(value);
@@ -111,10 +108,7 @@ const parseRedirect = (value: string): URL | undefined => {
   }
 };
 
-/**
- * Loopback redirects match on everything but the port (RFC 8252 §7.3), since
- * CLI agents listen on whatever port is free; https redirects match exactly.
- */
+/** Loopback redirects ignore port (RFC 8252 §7.3); HTTPS redirects match exactly. */
 export const redirectMatches = (registered: string, presented: string): boolean => {
   const left = parseRedirect(registered);
   const right = parseRedirect(presented);
@@ -246,6 +240,11 @@ const make = Effect.gen(function* () {
   const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
   const crypto = yield* Crypto.Crypto;
+  const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const linksEnabled = serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.linkedEnvironmentsEnabled),
+    Effect.orElseSucceed(() => false),
+  );
   const signingKey = yield* secretStore
     .getOrCreateRandom(SIGNING_SECRET_NAME, 32)
     .pipe(Effect.orDie);
@@ -322,11 +321,15 @@ const make = Effect.gen(function* () {
             "Redirect URIs must be https, or http on localhost, 127.0.0.1 or [::1].",
         });
       }
-      // Requested grant types, scopes and token endpoint auth methods are ignored rather
-      // than rejected: RFC 7591 lets the server answer with what it supports. Claude Code
-      // asks for refresh_token, and hosted agents may ask for a client secret; every client
-      // is registered as public and proves itself with PKCE instead.
+      // RFC 7591 allows ignoring unsupported registration options; all clients use public PKCE.
       const peerLink = metadata.software_id === MCP_PEER_LINK_SOFTWARE_ID;
+      if (peerLink && !(yield* linksEnabled)) {
+        return yield* new AuthMcpRegistrationError({
+          error: "invalid_client_metadata",
+          error_description:
+            "Linked environments is off on that machine. Turn it on in its Settings → Labs.",
+        });
+      }
       return {
         clientId: signClientId(name, redirectUris, peerLink),
         name,
@@ -556,36 +559,40 @@ export const layerMcpClientAuthenticator = Layer.effect(
     const environment = yield* ServerEnvironment.ServerEnvironment;
     const environmentId = yield* environment.getEnvironmentId;
     return McpHttpServer.McpClientAuthenticator.of({
-      authenticate: (request) =>
-        environmentAuth.authenticateMcpClient(request).pipe(
-          Effect.flatMap((client) =>
-            Clock.currentTimeMillis.pipe(
-              Effect.map((issuedAt): McpInvocationContext.McpInvocationScope => ({
-                environmentId,
-                requestNamespace: `client:${client.sessionId}`,
-                thread: undefined,
-                client: {
-                  sessionId: client.sessionId,
-                  label: client.label,
-                  access: client.access,
-                  linked: client.peerLink,
-                },
-                capabilities: new Set<McpInvocationContext.McpCapability>([
-                  "orchestration",
-                  "worktree",
-                  "pull-requests",
-                ]),
-                issuedAt,
-              })),
+      authenticate: Effect.fn("McpHttpServer.McpClientAuthenticator.authenticate")(
+        function (request) {
+          return environmentAuth.authenticateMcpClient(request).pipe(
+            Effect.flatMap((client) =>
+              Clock.currentTimeMillis.pipe(
+                Effect.map((issuedAt): McpInvocationContext.McpInvocationScope => ({
+                  environmentId,
+                  requestNamespace: `client:${client.sessionId}`,
+                  thread: undefined,
+                  client: {
+                    sessionId: client.sessionId,
+                    label: client.label,
+                    access: client.access,
+                    linked: client.peerLink,
+                    ...(client.peerLink ? {} : { webOrigin: requestUrls(request).issuer }),
+                  },
+                  capabilities: new Set<McpInvocationContext.McpCapability>([
+                    "orchestration",
+                    "worktree",
+                    "pull-requests",
+                  ]),
+                  issuedAt,
+                })),
+              ),
             ),
-          ),
-          Effect.catch((error) =>
-            (EnvironmentAuth.isServerAuthCredentialError(error)
-              ? Effect.void
-              : Effect.logWarning("MCP client authentication failed.", { cause: error })
-            ).pipe(Effect.as(undefined)),
-          ),
-        ),
+            Effect.catch((error) =>
+              (EnvironmentAuth.isServerAuthCredentialError(error)
+                ? Effect.void
+                : Effect.logWarning("MCP client authentication failed.", { cause: error })
+              ).pipe(Effect.as(undefined)),
+            ),
+          );
+        },
+      ),
     });
   }),
 );

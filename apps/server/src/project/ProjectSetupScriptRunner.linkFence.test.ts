@@ -3,7 +3,6 @@ import { assert, it, vi } from "@effect/vitest";
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 
 import { liveThreadShell } from "../mcp/McpToolAccess.testkit.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
@@ -53,7 +52,7 @@ it.effect("skips the project's setup script for work a link below full access st
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ProjectService.ProjectService)({
-          getById: () => Effect.succeed(Option.some(project)),
+          getById: () => Effect.succeedSome(project),
         }),
         Layer.mock(TerminalManager.TerminalManager)({
           open,

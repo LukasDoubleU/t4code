@@ -1,3 +1,4 @@
+import { pipe } from "effect/Function";
 import {
   formatAssistantCitationHref,
   formatAssistantReplyHref,
@@ -33,7 +34,11 @@ export function assistantCitationFromLocation(href: string) {
   const hash = href.slice(hashIndex + 1);
   if (!hash.startsWith(CITATION_HASH_PREFIX) || hash.length > 140_000) return null;
   try {
-    const href = Result.getOrThrow(Base64Url.decodeString(hash.slice(CITATION_HASH_PREFIX.length)));
+    const href = pipe(
+      hash.slice(CITATION_HASH_PREFIX.length),
+      Base64Url.decodeString,
+      Result.getOrThrow,
+    );
     return parseAssistantCitationHref(href) ?? parseAssistantReplyHref(href);
   } catch {
     return null;

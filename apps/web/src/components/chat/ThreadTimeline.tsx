@@ -27,8 +27,6 @@ export function ThreadTimeline({
   activeThreadKey,
   syncing,
   detailLoading,
-  readyMarkdownCwd,
-  readyWorkspaceRoot,
   lastVisitedAt,
   ...timelineProps
 }: Omit<ComponentProps<typeof MessagesTimeline>, "timelineEntries" | "sinceLastVisitAt"> & {
@@ -40,8 +38,6 @@ export function ThreadTimeline({
   activeThreadKey: string | null;
   syncing: boolean;
   detailLoading: boolean;
-  readyMarkdownCwd: string | null;
-  readyWorkspaceRoot: string | null;
   /** The thread's last visit; undefined while its shell is unknown. */
   lastVisitedAt: string | null | undefined;
 }) {
@@ -51,23 +47,19 @@ export function ThreadTimeline({
     visibleTurnItems,
   });
   const entries = draftEntries ?? serverEntries;
-  const displayed = resolveThreadSwitchTimeline({
+  const displayedEntries = resolveThreadSwitchTimeline({
     loading: entries.length === 0 && syncing,
     activeThreadKey,
     nextEntries: entries,
     rememberedForActive: peekRememberedThreadTimeline<typeof entries>(activeThreadKey),
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- stores the committed ready timeline in the module-level cache used during thread switches
   useLayoutEffect(() => {
     if (detailLoading || entries.length === 0 || timelineHasEphemeralPreviewUrls(entries)) {
       return;
     }
-    rememberReadyThreadTimeline({
-      threadKey: activeThreadKey,
-      entries,
-      markdownCwd: readyMarkdownCwd,
-      workspaceRoot: readyWorkspaceRoot,
-    });
-  }, [activeThreadKey, detailLoading, entries, readyMarkdownCwd, readyWorkspaceRoot]);
+    rememberReadyThreadTimeline({ threadKey: activeThreadKey, entries });
+  }, [activeThreadKey, detailLoading, entries]);
   const sinceLastVisitAt = useSinceLastVisitAt({
     threadKey: draftEntries === null ? activeThreadKey : null,
     lastVisitedAt,
@@ -77,8 +69,8 @@ export function ThreadTimeline({
   return (
     <MessagesTimeline
       {...timelineProps}
-      timelineEntries={displayed.entries}
-      sinceLastVisitAt={timelineProps.paintOnly ? null : sinceLastVisitAt}
+      timelineEntries={displayedEntries}
+      sinceLastVisitAt={sinceLastVisitAt}
     />
   );
 }

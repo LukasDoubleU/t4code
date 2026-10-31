@@ -47,7 +47,7 @@ function environmentAccounts(input: AccountReadings) {
  * readings it already holds. Agents choose before any client's session-room or model choice
  * applies, so the defaults rank: 25% session room, every model's allowance counted.
  */
-export function rankProviderInstances(input: {
+function rankProviderInstances(input: {
   readonly environmentId: EnvironmentId;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly usageLimitSources: ReadonlyArray<UsageLimitSourceSnapshot>;

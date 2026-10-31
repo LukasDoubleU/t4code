@@ -24,7 +24,7 @@ export const MEMORY_BACKUPS_KEPT = 20;
 const BACKUP_NAME = /^\d{6}-.+\.md$/;
 
 /** The share of the context window at which a pinned thread is told to save its memory. */
-export const MEMORY_NUDGE_CONTEXT_SHARE = 0.85;
+const MEMORY_NUDGE_CONTEXT_SHARE = 0.85;
 
 /**
  * The same text on every turn of a thread, so the provider's prompt cache
@@ -80,11 +80,9 @@ function contextNearlyFull(usage: OrchestrationV2ProviderTurnTokenUsage): boolea
 }
 
 /**
- * Whether the next turn on this provider thread should be told to save its
- * memory: its newest usage report is close to the limit and the newest one
- * from an earlier attempt was not. So the reminder comes once per approach to
- * the limit, and again only after a compaction brought the context down.
- * Providers that report no window never get it.
+ * Whether the next turn should be told to save its memory: the newest usage report is near the
+ * limit and the newest from an earlier attempt was not, so it comes once per approach and again
+ * only after a compaction. Providers that report no window never get it.
  */
 export function memoryNudgeDue(
   providerTurns: ReadonlyArray<

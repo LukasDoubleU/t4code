@@ -233,6 +233,15 @@ describe("provider enabled defaults", () => {
   });
 });
 
+describe("ServerSettings linked environments", () => {
+  it("keeps links on for a settings file saved before the setting existed", () => {
+    expect(decodeServerSettings({}).linkedEnvironmentsEnabled).toBe(true);
+    expect(
+      decodeServerSettings({ linkedEnvironmentsEnabled: false }).linkedEnvironmentsEnabled,
+    ).toBe(false);
+  });
+});
+
 describe("ServerSettings worktree defaults", () => {
   it("defaults the thread env mode to inherit and keeps stored values", () => {
     expect(decodeServerSettings({}).defaultThreadEnvMode).toBeNull();

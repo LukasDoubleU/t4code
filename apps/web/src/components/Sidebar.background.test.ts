@@ -315,9 +315,9 @@ describe("Background with every sort and grouping", () => {
     last_message: ["bg-seen", "bg-running", "bg-done"],
     status: ["bg-done", "bg-running", "bg-seen"],
   };
-  // Folders hold the main list only; the docs folder stays though its thread waits in Background.
+  // Folders hold the main list only, so docs, whose thread waits in Background, has none.
   const folders: Record<Exclude<SidebarGrouping, "none">, Record<string, readonly string[]>> = {
-    project: { app: ["bg-asks", "mine-running", "mine-seen"], docs: [] },
+    project: { app: ["bg-asks", "mine-running", "mine-seen"] },
     machine: {
       [`sidebar-machine:${localEnvironmentId}`]: ["bg-asks", "mine-running"],
       [`sidebar-machine:${remoteEnvironmentId}`]: ["mine-seen"],
@@ -349,13 +349,13 @@ describe("Background with every sort and grouping", () => {
         projectGroups,
         machines,
         primaryEnvironmentId: localEnvironmentId,
-        inbox,
-        settled: [],
+        threads: inbox,
+        keepEmpty: false,
         statusGroupOf,
       });
       expect(
         Object.fromEntries(
-          grouped.map((folder) => [folder.key, folder.inbox.map((e) => e.id).toSorted()]),
+          grouped.map((folder) => [folder.key, folder.threads.map((e) => e.id).toSorted()]),
         ),
       ).toEqual(folders[grouping]);
     },

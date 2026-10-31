@@ -71,6 +71,7 @@ export function useJumpToMyLastMessage(input: {
     tryJump(rows, historyControls);
   });
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens on the catch-up action bus while mounted.
   useEffect(() => {
     if (!enabled) return;
     const unsubscribe = subscribeThreadCatchUpAction("jump-to-my-last-message", threadKey, () =>
@@ -83,6 +84,7 @@ export function useJumpToMyLastMessage(input: {
   }, [enabled, threadKey]);
 
   // Each loaded page re-renders the rows; keep going until the message is in them.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the timeline to the message as each requested history page arrives.
   useEffect(() => {
     if (requestedPagesRef.current !== null) tryJump(rows, historyControls);
   }, [rows, historyControls]);

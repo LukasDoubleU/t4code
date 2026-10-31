@@ -1,3 +1,4 @@
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
   foldSearchQuery,
   PALETTE_SECONDARY_LIMIT,
@@ -14,6 +15,7 @@ import {
 export interface CommandPaletteItem {
   readonly key: string;
   readonly kind: "action" | "project" | "thread";
+  readonly project?: EnvironmentProject;
   readonly title: string;
   readonly detail?: string;
   readonly searchTerms: ReadonlyArray<string>;

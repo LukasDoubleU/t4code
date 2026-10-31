@@ -90,6 +90,7 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
       },
     });
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens on the catch-up action bus while mounted.
   useEffect(
     () => subscribeThreadCatchUpAction("catch-up", threadKey, () => request()),
     [threadKey],

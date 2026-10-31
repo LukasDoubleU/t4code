@@ -1,20 +1,8 @@
 /**
- * PeerLinkRequests - links an agent asks the user to make.
- *
- * The agent rarely knows where the user's machines answer, so it usually
- * names none: the user picks the machine in a card, along with the access,
- * and their client answers with the addresses it knows for that machine and
- * a pairing code from it, which the client mints with its own session there
- * or the user pastes. The code goes straight
- * to `PeerLinks.link` and is never recorded, so it never reaches the
- * transcript, projections, or the agent's context.
- *
- * Asking does not wait: provider CLIs abandon a tool call after a few
- * minutes, and a person may answer much later. The card stays open until the
- * user answers it or stops or archives the thread, and the answer reaches the
- * agent as a notification in its thread.
- *
- * @module PeerLinkRequests
+ * Links an agent asks the user to make. The user picks the machine and access in a card, and
+ * their client answers with its addresses and a pairing code that goes straight to
+ * `PeerLinks.link`, never into the transcript or the agent's context. Asking does not wait
+ * (provider CLIs abandon a long tool call): the answer reaches the agent as a notification.
  */
 import {
   CommandId,
@@ -75,7 +63,8 @@ export class PeerLinkRequests extends Context.Service<
   {
     /**
      * Shows a link card in the calling thread and returns at once. A retry
-     * with the same clientRequestId returns the card's current outcome.
+     * with the same clientRequestId and MCP credential returns the card's
+     * current outcome.
      */
     readonly request: (
       scope: McpInvocationContext.McpInvocationScope,
@@ -155,6 +144,12 @@ const make = Effect.gen(function* () {
         "t3_environment_link",
       );
       const threadId = threadScope.thread.threadId;
+      if (!(yield* peerLinks.enabled)) {
+        return yield* new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: PeerLinks.LINKED_ENVIRONMENTS_OFF,
+        });
+      }
       const unreadable = (error: unknown) =>
         new OrchestratorMcpFailure({
           code: "orchestration_error",
@@ -392,7 +387,7 @@ const outcomeNotice = (
     case "linked": {
       const label = outcome.linkedLabel ?? target;
       return {
-        text: `The user linked ${label} with ${outcome.linkedAccess} access. Pass environmentId ${outcome.linkedEnvironmentId} to act there; t3_environment_links lists it.`,
+        text: `The user linked ${label} with ${outcome.linkedAccess} access. Pass environmentId ${outcome.linkedEnvironmentId} to act there.`,
         notification: {
           source: { kind: "background_task" },
           outcome: "completed",
@@ -402,7 +397,7 @@ const outcomeNotice = (
     }
     case "failed":
       return {
-        text: `Linking ${target} failed: ${outcome.failure ?? "the other environment refused"}. Ask the user to link it in Settings → Connections if they still want it.`,
+        text: `Linking ${target} failed: ${outcome.failure ?? "the other environment refused"}. Call t3_environment_link again if the user still wants it.`,
         notification: {
           source: { kind: "background_task" },
           outcome: "failed",

@@ -33,7 +33,7 @@ export function ThreadContextChip(props: {
               <ProjectFavicon
                 project={project}
                 icon={shell?.icon}
-                className="size-[1.17em] self-center"
+                className="size-[1em] self-center"
               />
             ) : (
               <MessagesSquareIcon />

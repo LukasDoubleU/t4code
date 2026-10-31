@@ -45,10 +45,12 @@ export function useTallTurnFoldReplies(input: {
       refresh();
     });
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures reply heights in the DOM after the replies or the composer inset change.
   useEffect(() => {
     scheduleRefresh();
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Settled replies and the composer inset change which replies count as tall.
   }, [scheduleRefresh, replies, composerInset]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- cancels the pending measurement frame on unmount.
   useEffect(
     () => () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);

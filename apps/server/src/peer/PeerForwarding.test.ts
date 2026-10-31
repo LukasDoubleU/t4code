@@ -1,3 +1,4 @@
+import * as DocumentText from "../provider/DocumentText.ts";
 import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -17,7 +18,6 @@ import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -113,14 +113,21 @@ const boxThreads = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>, wait?: Bo
           `${command.type} ${"threadId" in command ? command.threadId : ""}`,
         ],
       })).pipe(
-        // The stop interrupts the thread's running run.
+        // The stop asks the provider to interrupt the thread's running turn.
         Effect.as({
           sequence: 0,
           storedEvents: [
             {
               sequence: 1,
               commandId: command.commandId,
-              event: { type: "run.updated", runId: boxRun },
+              event: {
+                type: "turn-item.updated",
+                runId: boxRun,
+                payload: {
+                  type: "run_interrupt_request",
+                  providerTurnId: "provider-turn:box-auto",
+                },
+              },
             },
           ],
         } as never),
@@ -170,8 +177,7 @@ const boxLaunches = (seen: Ref.Ref<Seen>) =>
 const boxProjects = (seen: Ref.Ref<Seen>) =>
   Layer.merge(
     Layer.mock(ProjectService.ProjectService)({
-      // A launch with no calling thread reads the project's defaults.
-      getById: () => Effect.succeed(Option.none()),
+      getById: () => Effect.succeedNone,
       create: (input) =>
         Ref.update(seen, (current) => ({
           ...current,
@@ -214,6 +220,7 @@ const serveBox = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>, wait?: BoxW
       McpHttpServer.layerProjectRegistration,
       McpHttpServer.layerThreadToolkit,
     ).pipe(
+      Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
       Layer.provide(NodeCrypto.layer),
       Layer.provide(boxThreads(seen, linkSession, wait)),
       Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
@@ -267,6 +274,7 @@ const makeLaptop = Effect.gen(function* () {
     McpHttpServer.layerProjectRegistration,
     McpHttpServer.layerThreadToolkit,
   ).pipe(
+    Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
     Layer.provideMerge(McpServer.McpServer.layer),
     Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
     Layer.provide(Layer.mock(ThreadLaunch.ThreadLaunchService)({})),
@@ -723,7 +731,7 @@ it.effect("runs any tool that takes a linked environment there", () =>
       yield* linkTo(a.links, b, "auto");
       yield* Ref.set(linkSession, (yield* b.linkedSessions)[0]!.sessionId);
 
-      const there = yield* a.call("thread:laptop-full", "t3_thread_configuration", {
+      const there = yield* a.call("thread:laptop-full", "t3_thread_configure", {
         environmentId: box.environmentId,
         threadId: boxThread,
       });
@@ -737,7 +745,7 @@ it.effect("runs any tool that takes a linked environment there", () =>
       expect((yield* Ref.get(seen)).stops).toEqual([`thread.archive ${boxThread}`]);
 
       // This environment's own id keeps the call here.
-      const own = yield* a.call("thread:laptop-full", "t3_thread_configuration", {
+      const own = yield* a.call("thread:laptop-full", "t3_thread_configure", {
         environmentId: laptop.environmentId,
       });
       expect(own.structuredContent).toMatchObject({

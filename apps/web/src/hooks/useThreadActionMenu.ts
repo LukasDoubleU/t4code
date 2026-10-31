@@ -5,6 +5,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
 import { requestThreadIcon } from "../components/ThreadIconDialog";
+import { openGuestShareDialog } from "../components/chat/guestShareDialogState";
 import {
   type AtomCommandResult,
   isAtomCommandInterrupted,
@@ -27,7 +28,7 @@ import {
   resolveSidebarTopicOf,
   sidebarTopicLinks,
 } from "../components/Sidebar.logic";
-import { resolveSnoozePresets } from "../components/Sidebar.snooze";
+import { pickSnoozePreset, resolveSnoozePresets } from "../components/Sidebar.snooze";
 import { resolveSidebarStatusGroup } from "../components/Sidebar.viewOptions";
 import {
   buildThreadActionMenuItems,
@@ -35,18 +36,17 @@ import {
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
+import { copyThreadReference } from "../lib/copyThreadReference";
+import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { threadEnvironment } from "../state/threads";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { readEnvironmentScope } from "../state/session";
 import {
+  readEnvironmentServerConfigLoaded,
   readEnvironmentSupportsAccountFailover,
   readEnvironmentSupportsAutoSettleOptOut,
-  readEnvironmentSupportsPinning,
-  readEnvironmentSupportsSettlement,
-  readEnvironmentSupportsSnooze,
   readEnvironmentSupportsThreadIcons,
   readEnvironmentSupportsThreadTopics,
-  readEnvironmentSupportsTitleRegeneration,
   readThreadShell,
   readThreadShells,
   useDelegatedUnderParent,
@@ -58,7 +58,7 @@ import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKey,
   selectProjectGroupingSettings,
-} from "../logicalProject";
+} from "@t3tools/client-runtime/state/project-grouping";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { useUiStateStore } from "../uiStateStore";
 import {
@@ -73,7 +73,12 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { useStartThreadTopic } from "./useStartThreadTopic";
-import { useDismissThreadAttention, useSetThreadIcon, useThreadActions } from "./useThreadActions";
+import {
+  canTurnThreadIntoProject,
+  useDismissThreadAttention,
+  useSetThreadIcon,
+  useThreadActions,
+} from "./useThreadActions";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -89,8 +94,9 @@ export function useThreadActionMenu(input: {
   readonly threadRef: ScopedThreadRef | null;
   readonly projectCwd: string | null;
   readonly onStartRename: () => void;
+  readonly canShareWithGuest: boolean;
 }) {
-  const { threadRef, projectCwd, onStartRename } = input;
+  const { threadRef, projectCwd, onStartRename, canShareWithGuest } = input;
   const router = useRouter();
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -112,6 +118,7 @@ export function useThreadActionMenu(input: {
     archiveThread,
     deleteThread,
     markThreadUnread,
+    turnThreadIntoProject,
   } = useThreadActions();
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
@@ -156,18 +163,19 @@ export function useThreadActionMenu(input: {
       const thread = readThreadShell(threadRef);
       if (!thread) return;
       const now = new Date();
+      const configLoaded = readEnvironmentServerConfigLoaded(threadRef.environmentId);
       const supports = {
-        settlement: readEnvironmentSupportsSettlement(threadRef.environmentId),
+        settlement: configLoaded,
         autoSettleOptOut: readEnvironmentSupportsAutoSettleOptOut(threadRef.environmentId),
         accountFailover: readEnvironmentSupportsAccountFailover(threadRef.environmentId),
-        snooze: readEnvironmentSupportsSnooze(threadRef.environmentId),
-        pinning: readEnvironmentSupportsPinning(threadRef.environmentId),
-        titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
+        snooze: configLoaded,
+        pinning: configLoaded,
+        titleRegeneration: configLoaded,
         freshStart: readEnvironmentSupportsFreshStart(threadRef.environmentId),
         icons: readEnvironmentSupportsThreadIcons(threadRef.environmentId),
       };
       const isRegeneratingTitle = thread.titleRegeneration != null;
-      const snoozePresets = resolveSnoozePresets(now, timestampFormat);
+      const snoozePresets = resolveSnoozePresets(now, timestampFormat, threadRef.environmentId);
       const isPinned = thread.pinnedAt != null;
       const memoryPath = readThreadMemoryPath(threadRef, isUserPinnedThread(thread));
       const isSettled = supports.settlement && thread.settledOverride === "settled";
@@ -187,10 +195,10 @@ export function useThreadActionMenu(input: {
                 resolveSidebarThreadSection({
                   pinned: shell.pinnedAt != null,
                   settled:
-                    readEnvironmentSupportsSettlement(shell.environmentId) &&
+                    readEnvironmentServerConfigLoaded(shell.environmentId) &&
                     shell.settledOverride === "settled",
                   snoozed:
-                    readEnvironmentSupportsSnooze(shell.environmentId) &&
+                    readEnvironmentServerConfigLoaded(shell.environmentId) &&
                     effectiveSnoozed(shell, { now: now.toISOString() }),
                 }) === "pinned",
             )
@@ -234,6 +242,8 @@ export function useThreadActionMenu(input: {
         isRunning: !threadRuntimeCanArchive(thread.runtime),
         supports,
         snoozePresets,
+        canShareWithGuest,
+        canTurnIntoProject: canTurnThreadIntoProject(threadRef),
       });
       const clicked = await settlePromise(() => api.contextMenu.show(items, position));
       if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -252,7 +262,12 @@ export function useThreadActionMenu(input: {
         const preset =
           action === "snooze:custom"
             ? await requestCustomSnooze()
-            : snoozePresets.find((candidate) => `snooze:${candidate.id}` === action);
+            : pickSnoozePreset(
+                snoozePresets,
+                action.slice("snooze:".length),
+                timestampFormat,
+                threadRef.environmentId,
+              );
         if (!preset) return;
         const result = await snoozeThread(threadRef, preset.snoozedUntil);
         if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -382,6 +397,22 @@ export function useThreadActionMenu(input: {
         case "dismiss-attention":
           dismissAttention(threadRef);
           return;
+        case "share-guest":
+          openGuestShareDialog(threadRef);
+          return;
+        case "turn-into-project": {
+          const result = await turnThreadIntoProject(threadRef);
+          if (result._tag === "Success") {
+            toastManager.add({
+              type: "success",
+              title: "Project created",
+              description: thread.title,
+            });
+          } else if (!isAtomCommandInterrupted(result)) {
+            failureToast("Could not turn thread into a project", squashAtomCommandFailure(result));
+          }
+          return;
+        }
         case "copy-path": {
           const workspacePath = thread.worktreePath ?? projectCwd;
           if (!workspacePath) {
@@ -401,6 +432,9 @@ export function useThreadActionMenu(input: {
           if (thread.branch) {
             copyBranchToClipboard(thread.branch, { branch: thread.branch });
           }
+          return;
+        case "copy-thread":
+          void copyThreadReference(threadChipCopyTarget(threadRef, thread.title));
           return;
         case "copy-thread-id":
           copyThreadIdToClipboard(thread.id, { threadId: thread.id });
@@ -443,9 +477,7 @@ export function useThreadActionMenu(input: {
           if (
             deleted._tag === "Failure" &&
             !isAtomCommandInterrupted(deleted) &&
-            // A failure with the thread already gone is worktree cleanup
-            // failing after a successful delete — deleteThread has toasted
-            // that itself, and "Failed to delete thread" would be a lie.
+            // A missing thread means cleanup failed after deletion; deleteThread already toasted that failure.
             readThreadShell(threadRef) !== null
           ) {
             failureToast("Failed to delete thread", squashAtomCommandFailure(deleted));

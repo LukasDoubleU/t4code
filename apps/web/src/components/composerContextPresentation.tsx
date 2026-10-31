@@ -1,4 +1,5 @@
 import ChatMarkdown from "./ChatMarkdown";
+import { isSvgAttachment } from "@t3tools/shared/image";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import type {
   EnvironmentContextRecord,
@@ -37,6 +38,7 @@ import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { EnvironmentContextChip } from "./EnvironmentContextChip";
 import { ThreadContextChip } from "./ThreadContextChip";
+import { useLinkedEnvironments } from "~/state/peerLinks";
 import {
   createContextPresentationRegistry,
   type ContextPresentationCapability,
@@ -235,6 +237,15 @@ function FileContextChip(props: {
   return (
     <FileChip
       name={props.record.name}
+      svgPreview={
+        isSvgAttachment(props.record)
+          ? {
+              file: props.record.file,
+              environmentId: props.record.uploadEnvironmentId,
+              attachmentId: props.record.uploadedAttachmentId,
+            }
+          : undefined
+      }
       size={size}
       isVideo={isVideo}
       theme={resolvedTheme}
@@ -338,10 +349,15 @@ function ComposerPreviewAnnotationDetails({
 
 function ComposerThreadContextChip(props: { record: ThreadContextRecord }) {
   const { environmentId } = use(ComposerContextActionsContext);
+  const linkedEnvironments = useLinkedEnvironments(environmentId);
   return (
     <ThreadContextChip
       record={props.record}
-      unreadable={environmentId !== null && props.record.environmentId !== environmentId}
+      unreadable={
+        environmentId !== null &&
+        props.record.environmentId !== environmentId &&
+        !linkedEnvironments.has(props.record.environmentId)
+      }
     />
   );
 }

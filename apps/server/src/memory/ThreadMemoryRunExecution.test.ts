@@ -32,6 +32,7 @@ import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
 import * as CheckpointService from "../orchestration-v2/CheckpointService.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as ProviderEventIngestor from "../orchestration-v2/ProviderEventIngestor.ts";
+import * as PreviewAgentActivity from "../preview/PreviewAgentActivity.ts";
 import * as RunExecutionService from "../orchestration-v2/RunExecutionService.ts";
 import * as TurnItemPositionStore from "../orchestration-v2/TurnItemPositionStore.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -41,6 +42,7 @@ const layerTest = RunExecutionService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       McpAppModelContext.layerEmpty,
+      PreviewAgentActivity.layer,
       Layer.mock(CheckpointService.CheckpointServiceV2)({ captureBaseline: () => Effect.void }),
       Layer.mock(TurnItemPositionStore.TurnItemPositionStoreV2)({
         allocate: () => Effect.succeed(1),

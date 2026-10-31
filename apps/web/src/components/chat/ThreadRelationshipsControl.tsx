@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
-import { CollapsibleSectionHeader, SectionHeaderStatus } from "../ui/collapsible-section-header";
+import { SectionHeaderStatus } from "../ui/collapsible-section-header";
 import { SubagentTooltipContent } from "./SubagentTooltipContent";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -32,6 +32,7 @@ import {
   isProviderNativeSubagentThread,
   NodeId,
   type EnvironmentId,
+  type OrchestrationV2DelegatedFrom,
   type OrchestrationV2RemoteTaskChild,
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadShell,
@@ -45,6 +46,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowRightIcon,
   BotIcon,
+  ChevronDownIcon,
   CornerLeftUpIcon,
   GitForkIcon,
   LoaderCircleIcon,
@@ -59,6 +61,7 @@ import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
   useProjects,
+  useQuietThreadShell,
   useThreadProjection,
   useThreadRelationshipShells,
 } from "../../state/entities";
@@ -73,7 +76,11 @@ import { ThreadLineageWorkflowRow } from "./ThreadLineageWorkflowRow";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
+import { cn } from "~/lib/utils";
 import {
+  THREAD_DETAILS_PANEL_CHEVRON_CLASS,
+  THREAD_DETAILS_PANEL_ICON_CLASS,
+  THREAD_DETAILS_PANEL_LABEL_CLASS,
   THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS,
   THREAD_DETAILS_PANEL_ROW_CONTENT_CLASS,
   THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS,
@@ -97,11 +104,7 @@ function ThreadLineageRowList(props: {
 }) {
   return (
     <>
-      {/*
-        Plain overflow, not a ScrollArea
-        component: this sits inside an already scrolling panel, where a
-        max-height-only virtual viewport measures badly.
-      */}
+      {/* ScrollArea's max-height viewport measures badly inside this scrolling panel. */}
       <ul
         aria-label="Related threads"
         className="m-0 max-h-[13.5rem] list-none overflow-y-auto overscroll-contain p-0 has-data-workflow-expanded:max-h-[min(28rem,55dvh)]"
@@ -138,17 +141,26 @@ function ThreadLineageGroup(props: {
   return (
     <div>
       {props.label ? (
-        <CollapsibleSectionHeader
-          variant="panel"
-          expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
-          accessory={
-            failedCount > 0 ? <SectionHeaderStatus>{failedCount} failed</SectionHeaderStatus> : null
-          }
-        >
-          {props.label}
-          {!expanded && ` (${props.rows.length})`}
-        </CollapsibleSectionHeader>
+        <ThreadDetailsControl aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+          <BotIcon aria-hidden className={THREAD_DETAILS_PANEL_ICON_CLASS} />
+          <span className={cn(THREAD_DETAILS_PANEL_LABEL_CLASS, "min-w-0 flex-1 truncate")}>
+            {props.label}
+          </span>
+          {failedCount > 0 ? <SectionHeaderStatus>{failedCount} failed</SectionHeaderStatus> : null}
+          {expanded ? null : (
+            <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
+              {props.rows.length}
+            </span>
+          )}
+          <ChevronDownIcon
+            aria-hidden
+            className={cn(
+              THREAD_DETAILS_PANEL_CHEVRON_CLASS,
+              "transition-transform",
+              !expanded && "-rotate-90",
+            )}
+          />
+        </ThreadDetailsControl>
       ) : null}
       {expanded ? (
         <ThreadLineageRowList
@@ -251,7 +263,8 @@ function RemoteSubagentRow(props: {
           }
         >
           <ThreadRelationshipIcon
-            driver={props.agent.driver}
+            // The task's own driver here is only a "remote" label.
+            driver={props.provider?.driver}
             provider={props.provider}
             fallbackIcon={BotIcon}
             status={status}
@@ -271,6 +284,62 @@ function RemoteSubagentRow(props: {
           {environment === null
             ? `Runs on ${remoteChild.label}. Connect to it to open the thread there.`
             : `Open on ${remoteChild.label}`}
+        </TooltipPopup>
+      </Tooltip>
+    </li>
+  );
+}
+
+/**
+ * The thread on a linked environment whose agent delegated this one. It opens
+ * there when this client is connected to that environment.
+ */
+function DelegatedFromRow(props: {
+  readonly delegatedFrom: OrchestrationV2DelegatedFrom;
+  readonly fallbackLabel: string | undefined;
+}) {
+  const navigate = useNavigate();
+  const { delegatedFrom } = props;
+  const environment = useEnvironment(delegatedFrom.environmentId);
+  const parentRef = scopeThreadRef(delegatedFrom.environmentId, delegatedFrom.threadId);
+  // The title it had at delegation, until this client sees the parent itself.
+  const parent = useQuietThreadShell(parentRef);
+  const label = environment?.label ?? props.fallbackLabel;
+  const title = parent?.title ?? delegatedFrom.title;
+  return (
+    <li className="group relative flex h-8 items-center rounded-lg">
+      <Tooltip>
+        <TooltipTrigger
+          delay={200}
+          render={
+            <ThreadDetailsControl
+              size="sm"
+              variant="ghost"
+              part="row"
+              disabled={environment === null}
+              onClick={() =>
+                void navigate({
+                  to: "/$environmentId/$threadId",
+                  params: buildThreadRouteParams(parentRef),
+                })
+              }
+            />
+          }
+        >
+          <ThreadRelationshipIcon fallbackIcon={CornerLeftUpIcon} status={null} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-left text-sm font-medium leading-4 text-foreground/85">
+              {title}
+            </span>
+          </span>
+          {label ? (
+            <span className="shrink-0 text-2xs text-muted-foreground">on {label}</span>
+          ) : null}
+        </TooltipTrigger>
+        <TooltipPopup side="left">
+          {environment === null
+            ? `Delegated from ${label ?? "a linked environment"}. Connect to it to open the parent thread.`
+            : "Open parent agent"}
         </TooltipPopup>
       </Tooltip>
     </li>
@@ -317,8 +386,7 @@ export function ThreadRelationshipsPanel(props: {
   );
   const [busyAction, setBusyAction] = useState<"merge" | "detach" | null>(null);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
-  // These lookups and the graph walk every subagent and thread, so they sit below
-  // the panel's hooks where the compiler can cache them.
+  // Derive graphs after hooks to preserve their compiler cache.
   const providers = providersByEnvironment.get(props.environmentId);
   const projects = allProjects.filter((project) => project.environmentId === props.environmentId);
   const parentNativeStatus = parentProjection
@@ -403,7 +471,15 @@ export function ThreadRelationshipsPanel(props: {
       (agent) => agent.childThreadId === null && agent.status === "running",
     ).length ?? 0) + active.filter(({ edge }) => edge.status === "running").length;
 
-  if (relationshipRows.length === 0 && runningCount === 0 && remoteSubagents.length === 0) {
+  // A linked environment's agent may have delegated this thread from there.
+  const delegatedFrom = currentThread?.delegatedFrom;
+
+  if (
+    relationshipRows.length === 0 &&
+    runningCount === 0 &&
+    remoteSubagents.length === 0 &&
+    delegatedFrom === undefined
+  ) {
     return null;
   }
 
@@ -477,6 +553,14 @@ export function ThreadRelationshipsPanel(props: {
     <ThreadDetailsSection
       headingId="thread-details-lineage-heading"
       title={runningCount > 0 ? `Lineage · ${runningCount} running` : "Lineage"}
+      // A lone "Previous agents" row names itself; the heading returns for status or actions.
+      showHeading={
+        runningCount > 0 ||
+        canDetach ||
+        related.length > 0 ||
+        active.length > 0 ||
+        delegatedFrom !== undefined
+      }
       data-thread-relationships-panel
       actions={
         canDetach ? (
@@ -504,6 +588,14 @@ export function ThreadRelationshipsPanel(props: {
         ) : null
       }
     >
+      {delegatedFrom === undefined ? null : (
+        <ThreadLineageRowList hiddenCount={0} onShowMore={() => {}}>
+          <DelegatedFromRow
+            delegatedFrom={delegatedFrom}
+            fallbackLabel={currentThread?.linkOrigin?.label}
+          />
+        </ThreadLineageRowList>
+      )}
       {groups.map((group) => (
         <ThreadLineageGroup key={`${scopedThreadKey(ref)}:${group.id}`} {...group}>
           {(visibleRows) =>

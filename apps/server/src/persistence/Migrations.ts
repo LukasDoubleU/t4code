@@ -1,7 +1,6 @@
 import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
-import { reconcileForkMigrations } from "./reconcileForkMigrations.ts";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -77,7 +76,7 @@ import Migration0070 from "./Migrations/070_PeerLinks.ts";
 import Migration0071 from "./Migrations/071_PeerLinkFence.ts";
 import Migration0072 from "./Migrations/072_WaitingLinkRequestIndex.ts";
 
-export const migrationEntries = [
+const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
   [2, "OrchestrationCommandReceipts", Migration0002],
   [3, "CheckpointDiffBlobs", Migration0003],
@@ -148,7 +147,6 @@ export const migrationEntries = [
   [67, "WebhookDedupe", Migration0067],
   [68, "ShellStopRequestIndex", Migration0068],
   [69, "ThreadMessageSearch", Migration0069],
-  // This fork's own migrations stay after upstream's: see reconcileForkMigrations.ts.
   [70, "PeerLinks", Migration0070],
   [71, "PeerLinkFence", Migration0071],
   [72, "WaitingLinkRequestIndex", Migration0072],
@@ -156,16 +154,10 @@ export const migrationEntries = [
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
 
-type MigrationEntry = readonly [
-  id: number,
-  name: string,
-  migration: (typeof migrationEntries)[number][2],
-];
-
-const makeMigrationLoader = (entries: ReadonlyArray<MigrationEntry>, throughId?: number) =>
+const makeMigrationLoader = (throughId?: number) =>
   Migrator.fromRecord(
     Object.fromEntries(
-      entries
+      migrationEntries
         .filter(([id]) => throughId === undefined || id <= throughId)
         .map(([id, name, migration]) => [`${id}_${name}`, migration]),
     ),
@@ -173,14 +165,8 @@ const makeMigrationLoader = (entries: ReadonlyArray<MigrationEntry>, throughId?:
 
 const FIRST_V2_MIGRATION_ID = 55;
 
-/**
- * Fail before migrating when the migrator would skip one of V2's own
- * migrations. It skips every id up to the highest recorded one, whatever name
- * was recorded, so a database that took a V2 id for another migration would
- * start without V2's schema and fail on first use.
- */
+// Migrators skip ids up to the highest recorded; reject collisions that would skip V2 schema.
 const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function* (
-  entries: ReadonlyArray<MigrationEntry>,
   throughId?: number,
 ) {
   const sql = yield* SqlClient.SqlClient;
@@ -194,7 +180,7 @@ const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function*
   }>`SELECT migration_id, name FROM effect_sql_migrations`;
   const latestRecordedId = Math.max(0, ...recorded.map((row) => row.migration_id));
   const recordedNames = new Map(recorded.map((row) => [row.migration_id, row.name]));
-  const skipped = entries.flatMap(([id, name]) => {
+  const skipped = migrationEntries.flatMap(([id, name]) => {
     if (
       id < FIRST_V2_MIGRATION_ID ||
       id > latestRecordedId ||
@@ -216,48 +202,32 @@ const run = Migrator.make({});
 
 export interface RunMigrationsOptions {
   readonly toMigrationInclusive?: number | undefined;
-  /** Replaces this build's migrations, for tests. */
-  readonly entries?: ReadonlyArray<MigrationEntry> | undefined;
 }
 
 export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
-  entries = migrationEntries,
 }: RunMigrationsOptions = {}) {
-  const sql = yield* SqlClient.SqlClient;
   const includesV2 =
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
-  // The fork's rows are forgotten only together with the migrations that
-  // replace them, so a refused or failed start leaves the history as it was.
-  const [reconciled, migrated] = yield* sql.withTransaction(
-    Effect.gen(function* () {
-      const reconciled = yield* reconcileForkMigrations(
-        entries.map(([id, name]) => [id, name] as const),
-      );
-      if (includesV2) {
-        yield* assertV2MigrationsCanRun(entries, toMigrationInclusive);
-      }
-      const migrated = yield* run({ loader: makeMigrationLoader(entries, toMigrationInclusive) });
-      return [reconciled, migrated] as const;
-    }),
-  );
-  if (reconciled.length > 0) {
-    yield* Effect.log("Fork migrations recorded at older ids ran again after upstream's").pipe(
-      Effect.annotateLogs({ previous: reconciled.map(([id, name]) => `${id}_${name}`) }),
-    );
+  if (includesV2) {
+    yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }
-  const executedMigrations = [...previewMigrations, ...migrated];
+  const executedMigrations = [
+    ...previewMigrations,
+    ...(yield* run({ loader: makeMigrationLoader(toMigrationInclusive) })),
+  ];
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
   yield* migrations.length === 0
     ? Effect.logDebug("Database schema is current")
     : Effect.log("Migrations ran successfully").pipe(Effect.annotateLogs({ migrations }));
 
+  const sql = yield* SqlClient.SqlClient;
   const recorded = yield* sql<{
     readonly migration_id: number;
     readonly name: string;
   }>`SELECT migration_id, name FROM effect_sql_migrations`;
-  const manifestNames = new Map<number, string>(entries.map(([id, name]) => [id, name]));
+  const manifestNames = new Map<number, string>(migrationEntries.map(([id, name]) => [id, name]));
   const divergent = recorded.flatMap((row) => {
     const expected = manifestNames.get(row.migration_id);
     if (expected === undefined) {

@@ -53,7 +53,7 @@ const decodeTranscript = Schema.decodeUnknownEffect(
 const now = DateTime.makeUnsafe("2026-09-29T00:00:00.000Z");
 const environmentId = EnvironmentId.make("source-بيئة");
 const output = "Full tool output. ".repeat(4_000);
-const thread = Schema.decodeUnknownSync(OrchestrationV2AppThread)({
+const thread = Schema.decodeSync(OrchestrationV2AppThread)({
   id: "source-thread",
   projectId: "source-project",
   title: "Source 界\nconversation",
@@ -98,81 +98,82 @@ const items = Schema.decodeUnknownSync(Schema.Array(OrchestrationV2TurnItem))(
   })),
 );
 
-const serveOrchestrationHttp = Effect.fnUntraced(function* (name: string) {
-  const access = { allowed: true };
-  const runtime = ProviderReplayHarness.layerWithRegistry(
-    { name },
-    ProviderAdapterRegistry.layerFromAdapters([]),
-    { runEffectWorker: false },
-  );
-  const services = yield* Layer.build(
-    Layer.mergeAll(
-      runtime,
-      ThreadManagementService.layer.pipe(
-        Layer.provide(
-          Layer.mergeAll(runtime, CommandReceiptStore.layer, ServerSettings.layerTest({})),
+// Serves the orchestration HTTP routes over real stores; `allowed` gates the read scope.
+const serveOrchestrationHttp = (allowed: () => boolean) =>
+  Effect.gen(function* () {
+    const runtime = ProviderReplayHarness.layerWithRegistry(
+      { name: "thread-transcript" },
+      ProviderAdapterRegistry.layerFromAdapters([]),
+      { runEffectWorker: false },
+    );
+    const services = yield* Layer.build(
+      Layer.mergeAll(
+        runtime,
+        ThreadManagementService.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(runtime, CommandReceiptStore.layer, ServerSettings.layerTest({})),
+          ),
         ),
+        OrchestrationEventStore.layer,
+        ProjectStore.layer,
+      ).pipe(Layer.provideMerge(SqlitePersistence.layerMemory)),
+    );
+    const eventSink = Context.get(services, EventSinkV2);
+    yield* eventSink.write({
+      events: [
+        {
+          id: EventId.make("create-source"),
+          type: "thread.created",
+          threadId: thread.id,
+          occurredAt: now,
+          payload: thread,
+        },
+      ],
+    });
+    const routes = HttpApiBuilder.layer(TranscriptTestApi).pipe(
+      Layer.provide(OrchestrationHttp.layer),
+      Layer.provide(
+        Layer.succeed(ServerEnvironment.ServerEnvironmentIdentity, {
+          getEnvironmentId: Effect.succeed(environmentId),
+        }),
       ),
-      OrchestrationEventStore.layer,
-      ProjectStore.layer,
-    ).pipe(Layer.provideMerge(SqlitePersistence.layerMemory)),
-  );
-  const eventSink = Context.get(services, EventSinkV2);
-  yield* eventSink.write({
-    events: [
-      {
-        id: EventId.make("create-source"),
-        type: "thread.created",
-        threadId: thread.id,
-        occurredAt: now,
-        payload: thread,
-      },
-    ],
-  });
-  const routes = HttpApiBuilder.layer(TranscriptTestApi).pipe(
-    Layer.provide(OrchestrationHttp.layer),
-    Layer.provide(
-      Layer.succeed(ServerEnvironment.ServerEnvironmentIdentity, {
-        getEnvironmentId: Effect.succeed(environmentId),
-      }),
-    ),
-    Layer.provide(
-      Layer.succeed(EnvironmentAuthenticatedAuth, (effect) =>
-        Effect.suspend(() =>
-          effect.pipe(
-            Effect.provideService(EnvironmentAuthenticatedPrincipal, {
-              sessionId: AuthSessionId.make("test-session"),
-              subject: "test",
-              method: "bearer-access-token",
-              scopes: new Set<AuthEnvironmentScope>(access.allowed ? ["orchestration:read"] : []),
-            }),
+      Layer.provide(
+        Layer.succeed(EnvironmentAuthenticatedAuth, (effect) =>
+          Effect.suspend(() =>
+            effect.pipe(
+              Effect.provideService(EnvironmentAuthenticatedPrincipal, {
+                sessionId: AuthSessionId.make("test-session"),
+                subject: "test",
+                method: "bearer-access-token",
+                scopes: new Set<AuthEnvironmentScope>(allowed() ? ["orchestration:read"] : []),
+              }),
+            ),
           ),
         ),
       ),
-    ),
-    Layer.provide(Layer.succeedContext(services)),
-    Layer.provide(Layer.mock(ProjectEnrichmentService)({})),
-    Layer.provide(HttpPlatform.layer),
-    Layer.provide(Etag.layerWeak),
-    Layer.provide(NodeServices.layer),
-  );
-  const { handler, dispose } = HttpRouter.toWebHandler(routes, { disableLogger: true });
-  yield* Effect.addFinalizer(() => Effect.promise(dispose));
-  const get = (path: string) =>
-    Effect.promise(() =>
-      handler(
-        new Request(`http://localhost${path}`, {
-          headers: { [ORCHESTRATION_PROTOCOL_HEADER]: ORCHESTRATION_PROTOCOL_VERSION_TEXT },
-        }),
-      ),
+      Layer.provide(Layer.succeedContext(services)),
+      Layer.provide(Layer.mock(ProjectEnrichmentService)({})),
+      Layer.provide(HttpPlatform.layer),
+      Layer.provide(Etag.layerWeak),
+      Layer.provide(NodeServices.layer),
     );
-  return { access, services, eventSink, get };
-});
+    const { handler, dispose } = HttpRouter.toWebHandler(routes, { disableLogger: true });
+    yield* Effect.addFinalizer(() => Effect.promise(dispose));
+    return { services, eventSink, handler };
+  });
 
 it.effect("exports full history with size, scope, and missing-thread checks", () =>
   Effect.gen(function* () {
-    const { access, services, eventSink, get } = yield* serveOrchestrationHttp("thread-transcript");
-    const read = (threadId: ThreadId) => get(`/api/orchestration/threads/${threadId}/transcript`);
+    let allowed = true;
+    const { services, eventSink, handler } = yield* serveOrchestrationHttp(() => allowed);
+    const read = (threadId: ThreadId) =>
+      Effect.promise(() =>
+        handler(
+          new Request(`http://localhost/api/orchestration/threads/${threadId}/transcript`, {
+            headers: { [ORCHESTRATION_PROTOCOL_HEADER]: ORCHESTRATION_PROTOCOL_VERSION_TEXT },
+          }),
+        ),
+      );
 
     const emptyResponse = yield* read(thread.id);
     expect(emptyResponse.status).toBe(200);
@@ -246,8 +247,53 @@ it.effect("exports full history with size, scope, and missing-thread checks", ()
     }
 
     expect((yield* read(ThreadId.make("missing"))).status).toBe(404);
-    access.allowed = false;
+    allowed = false;
     expect((yield* read(thread.id)).status).toBe(403);
+  }),
+);
+
+it.effect("leaves older settled threads out of the HTTP shell only when asked", () =>
+  Effect.gen(function* () {
+    const { eventSink, handler } = yield* serveOrchestrationHttp(() => true);
+    yield* eventSink.write({
+      events: Array.from({ length: 26 }, (_, index) => {
+        const id = ThreadId.make(`settled-${index}`);
+        return {
+          id: EventId.make(`create-${id}`),
+          type: "thread.created" as const,
+          threadId: id,
+          occurredAt: now,
+          payload: {
+            ...thread,
+            id,
+            lineage: { ...thread.lineage, rootThreadId: id },
+            settledOverride: "settled" as const,
+            settledAt: DateTime.makeUnsafe(Date.UTC(2026, 8, 1 + index)),
+          },
+        };
+      }),
+    });
+    const shell = (query: string) =>
+      Effect.promise(async () => {
+        const response = await handler(
+          new Request(`http://localhost/api/orchestration/shell${query}`, {
+            headers: { [ORCHESTRATION_PROTOCOL_HEADER]: ORCHESTRATION_PROTOCOL_VERSION_TEXT },
+          }),
+        );
+        return (await response.json()) as {
+          readonly threads: ReadonlyArray<{ readonly id: string }>;
+          readonly olderSettled?: { readonly counts: ReadonlyArray<unknown> };
+        };
+      });
+
+    const full = yield* shell("");
+    expect(full.threads).toHaveLength(27);
+    expect(full.olderSettled).toBeUndefined();
+    const cut = yield* shell("?omitOlderSettled=1");
+    expect(cut.threads.map((row) => row.id).toSorted()).toEqual(
+      [thread.id, ...Array.from({ length: 25 }, (_, index) => `settled-${index + 1}`)].toSorted(),
+    );
+    expect(cut.olderSettled?.counts).toEqual([{ projectId: thread.projectId, count: 1 }]);
   }),
 );
 
@@ -304,7 +350,16 @@ const tailNotes = Schema.decodeUnknownSync(Schema.Array(OrchestrationV2TurnItem)
 
 it.effect("reads a thread's last messages and replies, clamped and capped", () =>
   Effect.gen(function* () {
-    const { access, eventSink, get } = yield* serveOrchestrationHttp("thread-tail");
+    let allowed = true;
+    const { eventSink, handler } = yield* serveOrchestrationHttp(() => allowed);
+    const get = (path: string) =>
+      Effect.promise(() =>
+        handler(
+          new Request(`http://localhost${path}`, {
+            headers: { [ORCHESTRATION_PROTOCOL_HEADER]: ORCHESTRATION_PROTOCOL_VERSION_TEXT },
+          }),
+        ),
+      );
     yield* eventSink.write({
       events: tailTimeline.map((item) => ({
         id: EventId.make(`tail-${item.id}`),
@@ -358,7 +413,7 @@ it.effect("reads a thread's last messages and replies, clamped and capped", () =
     expect((yield* readTail("?limit=1000")).messages).toHaveLength(THREAD_TAIL_MAX_MESSAGES);
 
     expect((yield* get("/api/orchestration/threads/missing/tail")).status).toBe(404);
-    access.allowed = false;
+    allowed = false;
     expect((yield* get(`/api/orchestration/threads/${thread.id}/tail`)).status).toBe(403);
   }),
 );

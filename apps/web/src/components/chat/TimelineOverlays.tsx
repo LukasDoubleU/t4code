@@ -27,10 +27,13 @@ export function TimelineFloatingButtons(props: {
 }) {
   return (
     <div
-      className="chat-scroll-to-bottom pointer-events-none absolute z-30 flex justify-center gap-1.5 py-1.5"
+      className="chat-scroll-to-bottom pointer-events-none absolute z-30 flex justify-center py-1.5"
       style={{ bottom: props.bottom }}
     >
-      {props.children}
+      {/* The composer reads this row's span to keep it clear of attached banners. */}
+      <div data-scroll-to-end="true" className="flex gap-1.5">
+        {props.children}
+      </div>
     </div>
   );
 }
@@ -39,10 +42,11 @@ function TimelineFloatingButton(props: {
   readonly label: string;
   readonly icon: ReactNode;
   readonly onClick: () => void;
+  /** Trails the label in muted text. */
+  readonly detail?: string | null;
 }) {
   return (
     <Button
-      aria-label={props.label}
       // Keeps focus, and so the caret, in the composer.
       onPointerDown={(event) => event.preventDefault()}
       onClick={props.onClick}
@@ -52,15 +56,26 @@ function TimelineFloatingButton(props: {
     >
       {props.icon}
       {props.label}
+      {props.detail == null ? null : (
+        <span className="text-muted-foreground">
+          <span aria-hidden>· </span>
+          {props.detail}
+        </span>
+      )}
     </Button>
   );
 }
 
-export function ScrollToEndButton(props: { readonly onScrollToEnd: () => void }) {
+/** The summary names what waits at the end of the timeline, which is out of view while it shows. */
+export function ScrollToEndButton(props: {
+  readonly summary: string | null;
+  readonly onScrollToEnd: () => void;
+}) {
   return (
     <TimelineFloatingButton
       label="Scroll to end"
       icon={<ChevronDownIcon className="size-3.5" />}
+      detail={props.summary}
       onClick={props.onScrollToEnd}
     />
   );

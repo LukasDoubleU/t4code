@@ -3,18 +3,22 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   cliArchiveTarCommand,
   cliReleaseDownloadBaseUrl,
+  cliReleasePageUrl,
   cliReleaseIndexPageUrl,
   newestCliReleaseVersion,
   parseChecksums,
 } from "./cliRelease.ts";
 
 describe("cliRelease", () => {
-  it("resolves download URLs under the fork's tagged release, honoring a mirror", () => {
+  it("resolves download and page URLs under the fork's tagged release, honoring a mirror", () => {
     expect(cliReleaseDownloadBaseUrl("0.1.2-t4.1")).toBe(
       "https://github.com/LukasDoubleU/t4code/releases/download/t4-v0.1.2-t4.1",
     );
     expect(cliReleaseDownloadBaseUrl("1.2.3", "https://mirror.example/t3/")).toBe(
       "https://mirror.example/t3/t4-v1.2.3",
+    );
+    expect(cliReleasePageUrl("0.1.6-t4.1")).toBe(
+      "https://github.com/LukasDoubleU/t4code/releases/tag/t4-v0.1.6-t4.1",
     );
   });
 

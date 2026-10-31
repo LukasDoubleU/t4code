@@ -1,8 +1,10 @@
 import { type EnvironmentId, SourceControlProviderKind } from "@t3tools/contracts";
 import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
+import { isForkReleaseVersion } from "@t3tools/shared/cliRelease";
 import * as Schema from "effect/Schema";
 import { StarIcon } from "lucide-react";
 
+import { APP_VERSION } from "../branding";
 import { getLocalStorageItem, setLocalStorageItem } from "../hooks/useLocalStorage";
 import { readLocalApi } from "../localApi";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -69,10 +71,10 @@ async function alreadyStarred(environmentId: EnvironmentId) {
 
 /**
  * Counts a sent prompt. After more than five, asks once per session for a star until dismissed,
- * unless the environment's GitHub account already starred the repo.
+ * unless the environment's GitHub account already starred the repo. Fork builds never ask.
  */
 export async function recordPromptSent(environmentId: EnvironmentId): Promise<void> {
-  if (shownThisSession) return;
+  if (shownThisSession || isForkReleaseVersion(APP_VERSION)) return;
   try {
     if (getLocalStorageItem(DISMISSED_KEY, Schema.Boolean)) return;
     const sent = (getLocalStorageItem(SENT_KEY, Schema.Number) ?? 0) + 1;

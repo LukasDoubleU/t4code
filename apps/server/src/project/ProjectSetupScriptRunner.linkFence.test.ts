@@ -56,6 +56,7 @@ it.effect("skips the project's setup script for work a link below full access st
         }),
         Layer.mock(TerminalManager.TerminalManager)({
           open,
+          getShell: () => Effect.succeed("/bin/sh"),
           write: () => Effect.void,
           subscribe: () => Effect.succeed(() => undefined),
           closeIdle: () => Effect.void,

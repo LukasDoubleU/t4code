@@ -868,7 +868,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       {ctx.alwaysShowMessageTimes ? null : (
         <MessageTime
           isoDate={row.message.createdAt}
-          style="clock"
+          style={ctx.alwaysShowMessageTimes ? ctx.messageTimeStyle : "clock"}
           timestampFormat={ctx.timestampFormat}
           className="text-muted-foreground text-xs"
         />

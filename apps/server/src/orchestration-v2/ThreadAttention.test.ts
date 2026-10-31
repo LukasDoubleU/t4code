@@ -43,7 +43,14 @@ const layerTest = Layer.mergeAll(
 type ThreadCommandInput =
   Extract<
     OrchestrationV2Command,
-    { readonly type: "thread.metadata.update" | "message.dispatch" | "message.reaction.set" }
+    {
+      readonly type:
+        | "thread.metadata.update"
+        | "message.dispatch"
+        | "message.reaction.set"
+        | "thread.settle"
+        | "thread.auto-settle";
+    }
   > extends infer Command
     ? Command extends OrchestrationV2Command
       ? Omit<Command, "commandId" | "threadId">
@@ -111,6 +118,24 @@ it.layer(layerTest)("thread attention", (it) => {
       assert.deepEqual(marked.updatedAt, before.updatedAt);
       yield* mark(null);
       assert.isNull((yield* shell()).attention);
+    }),
+  );
+
+  it.effect("the mark brings a settled thread back and keeps it from settling again", () =>
+    Effect.gen(function* () {
+      const { dispatch, mark, shell } = yield* setup(ThreadId.make("thread:attention-settled"));
+      yield* dispatch({ type: "thread.settle" });
+      assert.equal((yield* shell()).settledOverride, "settled");
+      yield* mark("Approve the release");
+      const marked = yield* shell();
+      assert.isNull(marked.settledOverride);
+      assert.isNull(marked.settledAt);
+      const refused = yield* dispatch({
+        type: "thread.auto-settle",
+        snapshotAt: marked.updatedAt,
+      }).pipe(Effect.flip);
+      assert.instanceOf(refused, Orchestrator.OrchestratorDispatchError);
+      assert.isNull((yield* shell()).settledOverride);
     }),
   );
 

@@ -4,6 +4,7 @@ import {
   MessageId,
   NodeId,
   type OrchestrationV2AppThread,
+  type OrchestrationV2ConversationMessage,
   type OrchestrationV2Run,
   type OrchestrationV2RunOrigin,
   ProjectId,
@@ -12,6 +13,7 @@ import {
   ProviderThreadId,
   RunId,
   RuntimeRequestId,
+  ScheduledTaskId,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
@@ -276,7 +278,7 @@ it.effect(
             ...settings,
             thread: {
               ...expected,
-              latestUserAuthoredMessageAt: candidate.latestUserAuthoredMessageAt,
+              latestUserOrThreadMessageAt: candidate.latestUserOrThreadMessageAt,
             },
           }),
         );
@@ -292,16 +294,16 @@ it.effect(
     }).pipe(Effect.provide(layerSql)),
 );
 
-it.effect("sql: the user-authored message time ignores agent notifications", () =>
+it.effect("sql: settlement anchors on the user's and other threads' messages, not deliveries", () =>
   Effect.gen(function* () {
     const store = yield* ProjectionStore.ProjectionStoreV2;
     const threadId = yield* createThread("agent-woken");
     yield* createRun(threadId);
     const message = (
       id: string,
-      createdBy: "user" | "agent",
-      creationSource: "web" | "provider",
       at: DateTime.Utc,
+      sender: Pick<OrchestrationV2ConversationMessage, "createdBy" | "creationSource"> &
+        Partial<OrchestrationV2ConversationMessage>,
     ) =>
       store.apply({
         id: EventId.make(`event:settlement:${id}`),
@@ -309,8 +311,7 @@ it.effect("sql: the user-authored message time ignores agent notifications", () 
         threadId,
         occurredAt: at,
         payload: {
-          createdBy,
-          creationSource,
+          ...sender,
           id: MessageId.make(`message:settlement:${id}`),
           threadId,
           runId: null,
@@ -323,23 +324,45 @@ it.effect("sql: the user-authored message time ignores agent notifications", () 
           updatedAt: at,
         },
       });
-    const written = DateTime.subtract(now, { hours: 2 });
-    yield* message("written", "user", "web", written);
-    yield* message("notification", "agent", "provider", now);
+    const minutesAgo = (minutes: number) => DateTime.subtract(now, { minutes });
+    const written = minutesAgo(120);
+    const sent = minutesAgo(60);
+    const other = ThreadId.make("thread:settlement:sender");
+    yield* message("written", written, { createdBy: "user", creationSource: "web" });
+    yield* message("sent", sent, {
+      createdBy: "agent",
+      creationSource: "mcp",
+      senderThreadId: other,
+    });
+    yield* message("watch-wake", minutesAgo(40), {
+      createdBy: "agent",
+      creationSource: "server",
+      notification: { source: { kind: "system" }, outcome: "updated", summary: "Checks passed" },
+    });
+    yield* message("delegated-completion", minutesAgo(30), {
+      createdBy: "agent",
+      creationSource: "mcp",
+      senderThreadId: other,
+      delegatedCompletion: {
+        parentRunId: RunId.make("run:settlement:parent"),
+        generation: 1,
+        taskIds: [NodeId.make("node:settlement:task")],
+      },
+    });
+    // A scheduled run carries its task's creator.
+    yield* message("scheduled", minutesAgo(20), {
+      createdBy: "user",
+      creationSource: "web",
+      scheduledTaskId: ScheduledTaskId.make("scheduled:settlement"),
+    });
+    yield* message("notification", now, { createdBy: "agent", creationSource: "provider" });
 
     const [candidate] = yield* store.getSettlementCandidates(threadId);
     assert.isDefined(candidate);
     assert.equal(DateTime.formatIso(candidate.latestUserMessageAt!), DateTime.formatIso(now));
     assert.equal(
-      DateTime.formatIso(candidate.latestUserAuthoredMessageAt!),
-      DateTime.formatIso(written),
-    );
-    const shellThread = (yield* store.getShellSnapshot()).threads.find(
-      (thread) => thread.id === threadId,
-    );
-    assert.equal(
-      DateTime.formatIso(shellThread!.latestUserAuthoredMessageAt!),
-      DateTime.formatIso(written),
+      DateTime.formatIso(candidate.latestUserOrThreadMessageAt!),
+      DateTime.formatIso(sent),
     );
   }).pipe(Effect.provide(layerSql)),
 );

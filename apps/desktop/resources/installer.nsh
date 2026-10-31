@@ -23,19 +23,32 @@
 !macroend
 
 !ifndef BUILD_UNINSTALLER
+  Var t4DesktopLinkBefore
+
   ; Fork-only: the first install under T4 Code's product code takes over the
   ; folder and shortcut settings of an install under T3 Code's, as an update
-  ; would. The installer is per-user, so both live in HKCU.
+  ; would. Per-user, so HKCU, in the view the rest of the installer uses.
   !macro preInit
+    SetRegView 64
     ReadRegStr $0 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
     ReadRegStr $1 HKCU "${T3CODE_INSTALL_KEY}" InstallLocation
     ${If} $0 == ""
     ${AndIf} $1 != ""
       WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation $1
-      ReadRegStr $1 HKCU "${T3CODE_INSTALL_KEY}" KeepShortcuts
-      WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" KeepShortcuts $1
-      ReadRegStr $1 HKCU "${T3CODE_INSTALL_KEY}" ShortcutName
-      WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" ShortcutName $1
+      ReadRegStr $0 HKCU "${T3CODE_INSTALL_KEY}" KeepShortcuts
+      WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" KeepShortcuts $0
+      ReadRegStr $0 HKCU "${T3CODE_INSTALL_KEY}" ShortcutName
+      WriteRegStr HKCU "${INSTALL_REGISTRY_KEY}" ShortcutName $0
+      ; electron-builder adds a desktop shortcut when it takes this for a fresh
+      ; install; an app installed there without one keeps none (customInstall).
+      ${If} $0 == ""
+        StrCpy $0 "${PRODUCT_FILENAME}"
+      ${EndIf}
+      ${If} ${FileExists} "$1\${APP_EXECUTABLE_FILENAME}"
+      ${AndIfNot} ${FileExists} "$DESKTOP\$0.lnk"
+      ${AndIfNot} ${FileExists} "$DESKTOP\${SHORTCUT_NAME}.lnk"
+        StrCpy $t4DesktopLinkBefore "none"
+      ${EndIf}
     ${EndIf}
   !macroend
 !endif
@@ -50,9 +63,14 @@
     ${EndIf}
   !endif
 
+  ${If} $t4DesktopLinkBefore == "none"
+    Delete "$DESKTOP\${SHORTCUT_NAME}.lnk"
+  ${EndIf}
+
   ; Fork-only: once this folder is registered under T4 Code's product code,
-  ; drop T3 Code's entries for it without running their uninstaller, whose
-  ; files this install replaced. Entries for another folder stay.
+  ; drop T3 Code's uninstall entry for it without running its uninstaller,
+  ; whose files this install replaced. T3 Code's install key stays, so an
+  ; installer under that code later treats this folder as an update.
   ReadRegStr $0 HKCU "${T3CODE_UNINSTALL_KEY}" UninstallString
   !insertmacro GetInQuotes $0 "$0"
   Push $0
@@ -60,9 +78,5 @@
   Pop $0
   ${If} $0 == $INSTDIR
     DeleteRegKey HKCU "${T3CODE_UNINSTALL_KEY}"
-  ${EndIf}
-  ReadRegStr $0 HKCU "${T3CODE_INSTALL_KEY}" InstallLocation
-  ${If} $0 == $INSTDIR
-    DeleteRegKey HKCU "${T3CODE_INSTALL_KEY}"
   ${EndIf}
 !macroend

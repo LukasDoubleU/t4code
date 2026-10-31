@@ -4049,6 +4049,29 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       occurredAt: now,
       payload: updatedThread,
     });
+    // A call for the user must not stay buried in Settled; it brings the thread back like a message.
+    if (
+      command.type === "thread.metadata.update" &&
+      command.attention != null &&
+      updatedThread.settledOverride === "settled"
+    ) {
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "thread.unsettled",
+        threadId: command.threadId,
+        providerInstanceId: updatedThread.providerInstanceId,
+        occurredAt: now,
+        payload: {
+          ...updatedThread,
+          settledOverride: null,
+          settledAt: null,
+          unsettledAt: now,
+          updatedAt: now,
+        },
+      });
+    }
     // Archiving ends the guest share, so its waiting files go too.
     yield* releaseGuestAttachments(command, thread.guestShare, updatedThread.guestShare, effects);
 
@@ -13128,6 +13151,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           );
         if (
           thread.settledOverride !== null ||
+          thread.attention != null ||
           DateTime.toEpochMillis(thread.updatedAt) > DateTime.toEpochMillis(command.snapshotAt)
         ) {
           return yield* new OrchestratorDispatchError({

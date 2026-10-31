@@ -305,6 +305,19 @@ it.effect("marks only requested forks as supervised side chats", () =>
     assert.isUndefined(sideChat.targetThread.launchedBy);
     assert.isUndefined(sideChat.targetThread.continuedIn);
     assert.isNull(sideChat.targetThread.attention);
+    const fork = yield* planFork(sourceRun, {
+      ...topicSource,
+      thread: {
+        ...topicSource.thread,
+        continuedFrom: ThreadId.make("thread:predecessor"),
+        continuedIn: ThreadId.make("thread:continued"),
+        attention: { reason: "Pick a plan", requestedAt: snoozedAt },
+      },
+    });
+    // The parent's fresh-start links and call for the user stay with the parent.
+    assert.isUndefined(fork.targetThread.continuedFrom);
+    assert.isUndefined(fork.targetThread.continuedIn);
+    assert.isNull(fork.targetThread.attention);
 
     const sideChatSource = makeSourceProjection(sourceRun);
     const sideChatProjection = {

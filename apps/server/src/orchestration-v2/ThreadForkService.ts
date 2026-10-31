@@ -111,16 +111,17 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         title: input.title ?? `${input.sourceProjection.thread.title} fork`,
         // The source's title job completes only on the source thread.
         titleRegeneration: null,
+        // The source's fresh-start links and call for the user stay with the source.
+        continuedFrom: undefined,
+        continuedIn: undefined,
+        attention: null,
         // Side chats share the parent's worktree, so they start supervised. They live in the
-        // parent's view, so none is a topic, a continuation or a call for the user.
+        // parent's view, so none is a topic of the parent's expert.
         ...(input.sideChat
           ? {
               runtimeMode: "approval-required" as const,
               launchedBy: undefined,
-              continuedFrom: undefined,
-              continuedIn: undefined,
               memoryUnchangedTurns: undefined,
-              attention: null,
             }
           : {}),
         activeProviderThreadId: null,

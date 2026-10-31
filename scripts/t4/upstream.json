@@ -1,7 +1,7 @@
 {
   "upstream": "pingdotgg/t3code",
   "issue": 13,
-  "base": "v0.1.5",
+  "base": "v0.1.6",
   "carried": [
     { "name": "Tray", "issue": 2, "pulls": { "19176": "closed" } },
     { "name": "Last-message sort", "issue": 8, "pulls": { "22032": "open" } }

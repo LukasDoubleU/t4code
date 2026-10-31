@@ -4,7 +4,7 @@
 
 T4 Code is a personal fork of [T3 Code](https://github.com/pingdotgg/t3code), the open-source GUI for Claude Code, Codex and other coding agents. It is built for running many agents across several machines and subscriptions: threads that reach across machines, an app that keeps running in the tray, a sidebar made for long-lived threads, and a hint which account to use next.
 
-It is based on upstream `v0.1.5` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
+It is based on upstream `v0.1.6` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
 
 > [!NOTE]
 > T4 Code is not affiliated with T3 Tools or the T3 Code team. Please don't report its problems upstream.
@@ -40,7 +40,7 @@ It is based on upstream `v0.1.5` and follows upstream releases. Releases have Wi
 - **Catch up.** A **Since your last visit** line marks what is new, **My last message** above the composer scrolls back to what you last wrote, and **Catch me up** writes a short brief (what needs you, what happened, what's next) without starting a turn, on web and mobile. [Catch up on a thread](./docs/user/thread-sidebar.md#catch-up-on-a-thread)
 - In long threads the minimap beside the chat groups turns that agents and scheduled tasks started, so its marks stay readable and easy to hit. Your own messages keep a mark each; hovering a group shows its first and last message.
 - A message from an agent on a linked machine folds into one line that names the sending thread and its machine. [Link another environment](./docs/user/remote-access.md#link-another-environment)
-- The new-thread picker (<kbd>Ctrl</kbd>+<kbd>N</kbd>) lists projects by name.
+- <kbd>Ctrl</kbd>+<kbd>N</kbd> opens a new thread dialog: machine, then project, folder or clone. The command palette's **New thread in…** lists pinned projects first, then by name. [The new thread dialog](./docs/user/thread-sidebar.md#the-new-thread-dialog)
 - Classic emoticons like `:D` show as emoji; the message itself keeps what you typed.
 
 **Windows desktop**
@@ -60,7 +60,7 @@ It is based on upstream `v0.1.5` and follows upstream releases. Releases have Wi
 
 From a clone, `pwsh -File scripts/t4/install-t4.ps1` does the same in one step: it checks the download against `SHA256SUMS`, quits the app, backs up your data and installs. Each release also has the `t3` command-line tool as `t3-<version>-win32-x64.zip`.
 
-Versions read `0.1.6-t4.N`: the upstream patch after the base, plus the fork's build number.
+Versions read `0.1.7-t4.N`: the upstream patch after the base, plus the fork's build number.
 
 ### Linux server
 

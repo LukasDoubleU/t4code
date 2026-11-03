@@ -1186,7 +1186,14 @@ describe("OrchestratorMcpService provider resolution", () => {
           Layer.mock(ThreadManagementService.ThreadManagementService)({
             getThreadRecords: () => Effect.succeed(parentProjection([])),
           }),
-          ServerSettings.layerTest(),
+          ServerSettings.layerTest({
+            providerInstances: Object.fromEntries(
+              ["pi", "acpRegistry", "antigravity"].map((driver) => [
+                driver,
+                { driver, enabled: true },
+              ]),
+            ),
+          }),
           Layer.mock(ProviderRegistry.ProviderRegistry)({
             getProviders: Effect.sync(() => providers),
           }),

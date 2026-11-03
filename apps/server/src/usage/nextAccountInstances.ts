@@ -50,16 +50,14 @@ function environmentAccounts(input: AccountReadings) {
 function rankProviderInstances(input: {
   readonly environmentId: EnvironmentId;
   readonly providers: ReadonlyArray<ServerProvider>;
+  readonly eligible: Iterable<ProviderInstanceId>;
   readonly usageLimitSources: ReadonlyArray<UsageLimitSourceSnapshot>;
   readonly now: number;
 }): ReadonlyMap<ProviderInstanceId, NextAccount> {
   const accounts = environmentAccounts(input);
-  const ranks = rankEnvironmentInstances(
-    accounts,
-    input.environmentId,
-    input.providers.map((provider) => provider.instanceId),
-    { now: input.now },
-  );
+  const ranks = rankEnvironmentInstances(accounts, input.environmentId, input.eligible, {
+    now: input.now,
+  });
   return new Map(
     [...ranks].map(([instanceId, rank]) => [
       instanceId,
@@ -75,15 +73,20 @@ function rankProviderInstances(input: {
   );
 }
 
-/** Hub readings count when the server reads hubs; without them each instance's own reading ranks. */
+/**
+ * Hub readings count when the server reads hubs; without them each instance's own reading ranks.
+ * Only `eligible` instances get a place, and an account counts only through one of them.
+ */
 export const loadNextAccounts = Effect.fn("NextAccountInstances.load")(function* (
   environmentId: EnvironmentId,
   providers: ReadonlyArray<ServerProvider>,
+  eligible: Iterable<ProviderInstanceId>,
   usageLimitSources: Option.Option<UsageLimitSources.UsageLimitSources["Service"]>,
 ) {
   return rankProviderInstances({
     environmentId,
     providers,
+    eligible,
     usageLimitSources: Option.isSome(usageLimitSources)
       ? yield* usageLimitSources.value.current
       : [],

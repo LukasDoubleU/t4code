@@ -63,6 +63,7 @@ import {
   ThreadId,
   isOrchestrationV2WorkActive,
   isUserPinnedThread,
+  resolveProjectProviderInstanceEnabled,
 } from "@t3tools/contracts";
 import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
@@ -2214,9 +2215,19 @@ const make = Effect.gen(function* () {
       const settings = yield* serverSettings.getSettings.pipe(
         Effect.mapError(() => failure("orchestration_error", "Unable to read server settings.")),
       );
+      // Hydration marks project-enabled instances enabled, so the caller's project decides here.
+      const projectId = parent?.thread.projectId ?? null;
+      const allowed = new Set(
+        providers
+          .map((provider) => provider.instanceId)
+          .filter((instanceId) =>
+            resolveProjectProviderInstanceEnabled(settings, projectId, instanceId),
+          ),
+      );
       const nextAccounts = yield* loadNextAccounts(
         scope.environmentId,
         providers,
+        allowed,
         usageLimitSources,
       );
       const inherited = parent?.thread.modelSelection;
@@ -2229,10 +2240,19 @@ const make = Effect.gen(function* () {
         runtimeMode: limits.runtimeMode,
         interactionMode: limits.interactionMode,
         providers: providers.map((provider) => {
-          const constraints = providerConstraints(
-            provider,
-            orchestrationCapableInstanceIds.has(provider.instanceId),
-          );
+          const constraints = [
+            ...providerConstraints(
+              provider,
+              orchestrationCapableInstanceIds.has(provider.instanceId),
+            ),
+            ...(provider.enabled && !allowed.has(provider.instanceId)
+              ? [
+                  projectId === null
+                    ? "Provider instance is disabled."
+                    : "Disabled for this project.",
+                ]
+              : []),
+          ];
           const nextAccount = nextAccounts.get(provider.instanceId);
           const { listed, omitted } = listCapabilityModels({
             provider,
@@ -2267,7 +2287,7 @@ const make = Effect.gen(function* () {
               : { runtimeModes: [...provider.supportedRuntimeModes] }),
             canRunChildTask: constraints.length === 0,
             canRunCrossProviderChildTask: constraints.length === 0,
-            constraints: [...constraints],
+            constraints,
             ...(nextAccount === undefined ? {} : { nextAccount }),
           };
         }),

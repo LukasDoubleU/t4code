@@ -671,7 +671,8 @@ export const OrchestratorMcpProviderCapability = Schema.Struct({
   constraints: Schema.Array(Schema.String),
   /**
    * Where the instance's subscription account stands in Usage → Limits → Use next, among this
-   * environment's accounts of its driver. Absent without a usage reading.
+   * environment's accounts of its driver that the caller's project allows. Absent without a usage
+   * reading or when that project disables the instance.
    */
   nextAccount: Schema.optional(
     Schema.Struct({ place: Schema.Number, recommended: Schema.Boolean, reason: Schema.String }),

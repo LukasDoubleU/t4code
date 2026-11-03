@@ -2,10 +2,14 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
   EnvironmentId,
+  type OrchestrationV2ThreadProjection,
+  type OrchestratorMcpProviderCapability,
+  ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
   type ServerProviderUsageWindow,
+  ThreadId,
   type UsageLimitSourceSnapshot,
   UsageLimitSourceId,
 } from "@t3tools/contracts";
@@ -95,13 +99,33 @@ const providers = [
   provider("codex", codex, "codex@example.com", windows(10, 10, 24)),
 ];
 
-const capabilitiesFor = (hubSnapshots: ReadonlyArray<UsageLimitSourceSnapshot> | null) =>
+// Snapshot instances come from settings; only the codex and claudeAgent defaults run unconfigured.
+const machineInstances = Object.fromEntries(
+  providers.map((entry) => [entry.instanceId, { driver: entry.driver }]),
+);
+
+const callerIn = (projectId: ProjectId): McpInvocationScope => ({
+  ...scope,
+  thread: {
+    threadId: ThreadId.make(`thread:${projectId}`),
+    providerSessionId: "provider-session:next-account",
+    providerInstanceId: ProviderInstanceId.make("codex"),
+  },
+});
+
+const capabilitiesFor = (
+  hubSnapshots: ReadonlyArray<UsageLimitSourceSnapshot> | null,
+  caller: {
+    readonly projectId?: ProjectId;
+    readonly settings?: Parameters<typeof ServerSettings.layerTest>[0];
+  } = {},
+) =>
   Effect.gen(function* () {
     const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-    const capabilities = yield* service.capabilities(scope);
-    return new Map(
-      capabilities.providers.map((entry) => [entry.providerInstanceId, entry.nextAccount]),
+    const capabilities = yield* service.capabilities(
+      caller.projectId === undefined ? scope : callerIn(caller.projectId),
     );
+    return new Map(capabilities.providers.map((entry) => [entry.providerInstanceId, entry]));
   }).pipe(
     Effect.provide(
       OrchestratorMcpService.layer.pipe(
@@ -110,8 +134,19 @@ const capabilitiesFor = (hubSnapshots: ReadonlyArray<UsageLimitSourceSnapshot> |
             NodeServices.layer,
             Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
             Layer.mock(GitVcsDriver.GitVcsDriver)({}),
-            Layer.mock(ThreadManagementService.ThreadManagementService)({}),
-            ServerSettings.layerTest(),
+            Layer.mock(ThreadManagementService.ThreadManagementService)({
+              getThreadRecords: (threadId) =>
+                Effect.succeed({
+                  thread: {
+                    id: threadId,
+                    projectId: caller.projectId,
+                    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "m" },
+                    runtimeMode: "full-access",
+                    interactionMode: "default",
+                  },
+                } as unknown as OrchestrationV2ThreadProjection),
+            }),
+            ServerSettings.layerTest(caller.settings ?? { providerInstances: machineInstances }),
             Layer.mock(ProviderRegistry.ProviderRegistry)({
               getProviders: Effect.succeed(providers),
             }),
@@ -133,10 +168,18 @@ const capabilitiesFor = (hubSnapshots: ReadonlyArray<UsageLimitSourceSnapshot> |
     ),
   );
 
+const nextAccountsFor = (hubSnapshots: ReadonlyArray<UsageLimitSourceSnapshot> | null) =>
+  capabilitiesFor(hubSnapshots).pipe(
+    Effect.map(
+      (entries) =>
+        new Map([...entries].map(([instanceId, entry]) => [instanceId, entry.nextAccount])),
+    ),
+  );
+
 describe("orchestrator_capabilities next account", () => {
   it.effect("ranks this environment's accounts per provider like Use next", () =>
     Effect.gen(function* () {
-      const byInstance = yield* capabilitiesFor(null);
+      const byInstance = yield* nextAccountsFor(null);
       assert.deepEqual(byInstance.get(ProviderInstanceId.make("claude-urgent")), {
         place: 1,
         recommended: true,
@@ -159,7 +202,7 @@ describe("orchestrator_capabilities next account", () => {
 
   it.effect("pools a fresher hub reading of the same account", () =>
     Effect.gen(function* () {
-      const byInstance = yield* capabilitiesFor([
+      const byInstance = yield* nextAccountsFor([
         {
           id: UsageLimitSourceId.make("hub"),
           kind: "cliproxy",
@@ -184,6 +227,67 @@ describe("orchestrator_capabilities next account", () => {
         place: 1,
         recommended: true,
       });
+    }),
+  );
+
+  it.effect("lists and ranks only the instances the caller's project allows", () =>
+    Effect.gen(function* () {
+      const projectA = ProjectId.make("project:a");
+      const settings = {
+        providerInstances: {
+          ...machineInstances,
+          "claude-roomy": { driver: claude, enabled: false },
+        },
+        projectSettingsOverrides: {
+          [projectA]: {
+            providerInstances: {
+              "claude-roomy": { enabled: true },
+              "claude-urgent": { enabled: false },
+            },
+          },
+        },
+      };
+      const assertRefused = (
+        entry: OrchestratorMcpProviderCapability | undefined,
+        constraint = "Disabled for this project.",
+      ) => {
+        assert.deepInclude(entry, {
+          canRunChildTask: false,
+          canRunCrossProviderChildTask: false,
+          constraints: [constraint],
+        });
+        assert.isUndefined(entry?.nextAccount);
+      };
+
+      const inA = yield* capabilitiesFor(null, { projectId: projectA, settings });
+      assertRefused(inA.get(ProviderInstanceId.make("claude-urgent")));
+      for (const id of ["claude-roomy", "claude-roomy-copy"]) {
+        const entry = inA.get(ProviderInstanceId.make(id));
+        assert.deepInclude(entry, { canRunChildTask: true, constraints: [] });
+        assert.deepInclude(entry?.nextAccount, { place: 1, recommended: true });
+      }
+
+      const inB = yield* capabilitiesFor(null, {
+        projectId: ProjectId.make("project:b"),
+        settings,
+      });
+      assertRefused(inB.get(ProviderInstanceId.make("claude-roomy")));
+      assert.deepInclude(inB.get(ProviderInstanceId.make("claude-urgent"))?.nextAccount, {
+        place: 1,
+        recommended: true,
+      });
+      // Its account still ranks through the copy that project B allows.
+      assert.deepInclude(inB.get(ProviderInstanceId.make("claude-roomy-copy"))?.nextAccount, {
+        place: 2,
+        recommended: false,
+      });
+
+      // Without a calling thread, the machine-wide setting decides.
+      const machine = yield* capabilitiesFor(null, { settings });
+      assertRefused(
+        machine.get(ProviderInstanceId.make("claude-roomy")),
+        "Provider instance is disabled.",
+      );
     }),
   );
 });

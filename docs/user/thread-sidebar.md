@@ -5,9 +5,8 @@ need a separate branch and working directory.
 
 ## Start a thread
 
-On web and desktop, **New thread** opens the project picker when you have multiple
-projects in the default or project-grouped sidebar. The legacy sidebar always
-starts in the current project. **Shift-click** to start in
+On web and desktop, **New thread** opens the [new thread dialog](#the-new-thread-dialog).
+The legacy sidebar always starts in the current project. **Shift-click** to start in
 the current project, or use a project's own new-thread action. A new thread carries
 your model and mode selections, unless the destination project has its own model default.
 Its branch and workspace mode come from your configured defaults. To continue in
@@ -41,8 +40,8 @@ the empty search field or choose **Switch machine**. The same list adds projects
 
 Typing a path or pasting a clone URL into the project search goes straight to the
 matching step. Shift+click the new thread button, or press `mod+shift+n`, to skip
-the dialog and start in the current project. With **Boring Sidebar** on, `mod+n`
-and the button do that too.
+the dialog and start in the current project. In the legacy sidebar, `mod+n` and
+the button do that too.
 
 ### Start without a project
 

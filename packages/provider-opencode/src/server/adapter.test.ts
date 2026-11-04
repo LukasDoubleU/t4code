@@ -155,6 +155,7 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
   turnSettings: {
     readonly options?: ReadonlyArray<ProviderOptionSelection>;
     readonly interactionMode?: ProviderAdapter.ProviderAdapterV2RuntimePolicy["interactionMode"];
+    readonly threadMemory?: ProviderAdapter.ProviderAdapterV2TurnInput["threadMemory"];
   } = {},
 ) {
   const instanceId = ProviderInstanceId.make(`opencode-${suffix}`);
@@ -240,6 +241,9 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
       },
       modelSelection,
       runtimePolicy: turnPolicy,
+      ...(turnSettings.threadMemory === undefined
+        ? {}
+        : { threadMemory: turnSettings.threadMemory }),
     });
   return {
     nativeSessionId,
@@ -1649,7 +1653,11 @@ describe("OpenCodeAdapterV2", () => {
           },
         },
         {},
-        { options: [{ id: "variant", value: "high" }], interactionMode: "plan" },
+        {
+          options: [{ id: "variant", value: "high" }],
+          interactionMode: "plan",
+          threadMemory: { path: "/memory/steer-agent.md", instructions: "MEMORY LINE steer-agent" },
+        },
       );
       yield* harness.startTurn();
       const snapshot = yield* harness.runtime.readThreadSnapshot({
@@ -1673,6 +1681,7 @@ describe("OpenCodeAdapterV2", () => {
       assert.equal(start?.agent, "plan");
       assert.equal(start?.variant, "high");
       assert.include(start?.system ?? "", "OpenCode");
+      assert.include(start?.system ?? "", "MEMORY LINE steer-agent");
       assert.deepEqual(
         { agent: steer?.agent, variant: steer?.variant, system: steer?.system },
         { agent: start?.agent, variant: start?.variant, system: start?.system },

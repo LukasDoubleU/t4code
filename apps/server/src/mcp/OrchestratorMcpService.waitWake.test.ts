@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import {
@@ -348,7 +349,7 @@ const withThreads = <A, E>(
         yield* start(answerer, "Answering agent", steering);
         return yield* body({ service, orchestrator, provider, watching });
       }).pipe(Effect.provide(layerTest));
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layer))),
   );
 
 const queuedRuns = (projection: OrchestrationV2ThreadProjection) =>

@@ -102,8 +102,6 @@ export const SidebarGroupFolderHeader = memo(function SidebarGroupFolderHeader(p
     <li data-testid="sidebar-group-folder" className="relative mt-2 list-none first:mt-0">
       <button
         type="button"
-        role="treeitem"
-        tabIndex={-1}
         data-sidebar-row={sidebarFolderRowId(props.folderKey)}
         aria-expanded={!collapsed}
         onClick={() => props.onToggle(props.folderKey)}

@@ -17,6 +17,7 @@ import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCom
 import { useAssistantCitationSourceLink } from "./AssistantCitationQuote";
 import { observeAssistantCitationCommentSource } from "./AssistantCitationSource";
 import { composerFloatingLayerProps } from "./composerEventScope";
+import { textDirection } from "~/textDirection";
 
 /** A citation in the composer draft. Sent messages render `AssistantCitationQuote` instead. */
 export function AssistantCitationChip({
@@ -102,7 +103,9 @@ export function AssistantCitationChip({
       aria-label={`View cited assistant text: ${label}`}
     >
       <QuoteIcon aria-hidden="true" />
-      <ContextChipLabel className="max-w-[16em]">{label}</ContextChipLabel>
+      <ContextChipLabel className="max-w-[16em]" dir={textDirection(label)}>
+        {label}
+      </ContextChipLabel>
     </Link>
   );
   return (

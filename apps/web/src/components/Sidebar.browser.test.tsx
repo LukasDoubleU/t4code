@@ -1,76 +1,93 @@
-import { createMemoryHistory } from "@tanstack/react-router";
-import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
-import type * as Context from "effect/Context";
-import * as DateTime from "effect/DateTime";
-import { expect, it, vi } from "vite-plus/test";
-import { page, userEvent } from "vite-plus/test/browser";
+import { DEFAULT_CLIENT_SETTINGS, EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { describe, expect, it, vi } from "vite-plus/test";
+import { userEvent } from "vite-plus/test/browser";
 
-import "~/index.css";
-
-import { AppRoot } from "~/AppRoot";
-import { __setClientSettingsForTests } from "~/hooks/useSettings";
-import { getRouter } from "~/router";
-import {
-  emitThreadShell,
-  installFakeEnvironment,
-  threadWithHistory,
-  type FakeDriver,
-} from "../../test/fakeEnvironment";
 import { render } from "../../test/render";
+import { openCommandPalette } from "../commandPaletteBus";
+import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { __setClientSettingsForTests, getClientSettings } from "../hooks/useSettings";
+import { useProjects } from "../state/entities";
+import type { Project } from "../types";
+import { openNewThreadDialog } from "./newThread/newThreadDialogStore";
+import Sidebar from "./Sidebar";
+import { SidebarProvider } from "./ui/sidebar";
 
-// The socket is the only fake layer; see test/appScenarios.renders.tsx.
-vi.mock("../../../../packages/client-runtime/src/connection/driver.ts", async (importOriginal) => {
-  const [actual, { fakeDriver }, Layer] = await Promise.all([
-    importOriginal<{ readonly ConnectionDriver: Context.Key<unknown, FakeDriver> }>(),
-    import("../../test/fakeEnvironment"),
-    import("effect/Layer"),
-  ]);
-  return { ...actual, layer: Layer.succeed(actual.ConnectionDriver, fakeDriver) };
-});
-
-vi.mock(import("~/rpc/requestLatencyState"), async (original) => ({
-  ...(await original()),
-  trackRpcRequestSent: () => {},
+vi.mock("../state/entities", { spy: true });
+vi.mock("../hooks/useHandleNewThread", { spy: true });
+vi.mock("./newThread/newThreadDialogStore", { spy: true });
+vi.mock("../commandPaletteBus", () => ({
+  openCommandPalette: vi.fn(),
+  isCommandPaletteOpen: () => false,
+}));
+vi.mock("./sidebar/SidebarChrome", () => ({
+  SidebarChromeHeader: () => null,
+  SidebarChromeFooter: () => null,
 }));
 
-it("folds quiet experts into one row that opens in place, and lets one out on a message", async () => {
-  // The fixtures' messages and runs are months old, so every expert starts quiet.
-  const experts = ["docs", "release", "triage"].map((name) => ({
-    ...threadWithHistory(`expert-${name}`, 1),
-    title: `Expert ${name}`,
-    pinnedAt: DateTime.makeUnsafe("2026-03-17T19:12:28.000Z"),
-  }));
-  using _environment = installFakeEnvironment([...experts, threadWithHistory("inbox", 1)]);
-  __setClientSettingsForTests({
-    ...DEFAULT_CLIENT_SETTINGS,
-    onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
-  });
-  await page.viewport(1400, 900);
-  const router = getRouter(createMemoryHistory({ initialEntries: ["/"] }));
-  await router.load();
-  await using _app = await render(<AppRoot router={router} />, {
-    // AppRoot brings its own router.
-    router: false,
-  });
+function project(id: string): Project {
+  return {
+    id: ProjectId.make(id),
+    environmentId: EnvironmentId.make("local"),
+    title: id,
+    workspaceRoot: `/projects/${id}`,
+    repositoryIdentity: null,
+    defaultModelSelection: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    scripts: [],
+  };
+}
 
-  const fold = page.getByTestId("sidebar-quiet-experts").getByRole("treeitem");
-  const expertRow = (title: string) =>
-    page.getByTestId("sidebar-row-expert").filter({ hasText: title });
-  const docs = expertRow("Expert docs");
-  await expect.element(fold).toHaveTextContent("3 quiet");
-  await expect.element(docs).not.toBeInTheDocument();
+describe("sidebar header new thread", () => {
+  it.each([
+    { mode: "normal", count: 2, shift: false, picker: true },
+    { mode: "boring", count: 2, shift: false, picker: true },
+    { mode: "boring", count: 2, shift: true, picker: false },
+    { mode: "boring", count: 1, shift: false, picker: true },
+    { mode: "legacy", count: 2, shift: false, picker: false },
+  ] as const)("$mode sidebar, $count projects, shift=$shift: picker=$picker", async (scenario) => {
+    using stack = new DisposableStack();
+    const previousSettings = getClientSettings();
+    stack.defer(() => __setClientSettingsForTests(previousSettings));
+    __setClientSettingsForTests({
+      ...DEFAULT_CLIENT_SETTINGS,
+      boringSidebarEnabled: scenario.mode === "boring",
+      legacySidebarEnabled: scenario.mode === "legacy",
+    });
+    const projects = [project("active"), project("idle")].slice(0, scenario.count);
+    const currentProjectRef = {
+      environmentId: projects[0]!.environmentId,
+      projectId: projects[0]!.id,
+    };
+    const startThread = vi.fn().mockResolvedValue(null);
+    vi.mocked(useProjects).mockReturnValue(projects);
+    vi.mocked(useHandleNewThread).mockReturnValue({
+      activeDraftThread: null,
+      activeThread: null,
+      defaultProjectRef: currentProjectRef,
+      handleNewThread: startThread,
+      routeDraftId: null,
+      routeThreadRef: null,
+    });
+    vi.mocked(openCommandPalette).mockClear();
+    vi.mocked(openNewThreadDialog).mockClear();
+    await using screen = await render(
+      <SidebarProvider>
+        <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
+      </SidebarProvider>,
+    );
 
-  await userEvent.click(fold);
-  await expect.element(docs).toBeVisible();
-  await expect.element(expertRow("Expert triage")).toBeVisible();
-  await userEvent.click(fold);
-  await expect.element(docs).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "New thread", exact: true }), {
+      modifiers: scenario.shift ? ["Shift"] : [],
+    });
 
-  // Later than any clock this runs on, so the message is always within the quiet window.
-  await emitThreadShell({
-    ...experts[0]!,
-    latestUserMessageAt: DateTime.makeUnsafe("2099-01-01T00:00:00.000Z"),
+    expect(openCommandPalette).not.toHaveBeenCalled();
+    if (scenario.picker) {
+      expect(openNewThreadDialog).toHaveBeenCalledOnce();
+      expect(startThread).not.toHaveBeenCalled();
+    } else {
+      expect(openNewThreadDialog).not.toHaveBeenCalled();
+      expect(startThread).toHaveBeenCalledExactlyOnceWith(currentProjectRef);
+    }
   });
-  await expect.element(docs).toBeVisible();
-  await expect.element(fold).toHaveTextContent("2 quiet");
 });

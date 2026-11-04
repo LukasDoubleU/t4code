@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   CommandId,
@@ -60,8 +61,9 @@ const providerInstance = {
   textGeneration: {} as ProviderInstance["textGeneration"],
 } satisfies ProviderInstance;
 
-const layerPlatform = Layer.merge(
+const layerPlatform = Layer.mergeAll(
   NodeServices.layer,
+  NodeCrypto.layer,
   Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
     resolveLink: () => Effect.die("unused title link"),
   }),
@@ -112,7 +114,7 @@ export const layerWithRuntime = <A, E, R>(layer: Layer.Layer<A, E, R>) =>
     Layer.provideMerge(ServerSettings.layerTest({ pinnedThreadsKeepMemory: true })),
     Layer.provideMerge(layerServerConfig),
     Layer.provideMerge(SqlitePersistence.layerMemory),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.merge(NodeServices.layer, NodeCrypto.layer)),
   );
 
 export const seedProject = Effect.flatMap(ProjectStore.ProjectStoreV2, (projects) =>

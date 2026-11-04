@@ -144,8 +144,6 @@ export function SidebarSectionHeader(props: {
       <div className="flex items-center gap-0.5">
         <div className="min-w-0 flex-1">
           <CollapsibleSectionHeader
-            role="treeitem"
-            tabIndex={-1}
             data-sidebar-row={`shelf:${shelf}`}
             onClick={props.toggle.onToggle}
             expanded={props.toggle.expanded}
@@ -172,8 +170,6 @@ export function SidebarQuietExpertsRow(props: {
     <SortableSidebarMarker marker="quiet-experts" data-testid="sidebar-quiet-experts">
       <button
         type="button"
-        role="treeitem"
-        tabIndex={-1}
         data-sidebar-row={SIDEBAR_QUIET_EXPERTS_ROW}
         aria-expanded={props.expanded}
         onClick={props.onToggle}

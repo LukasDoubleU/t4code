@@ -244,7 +244,7 @@ export function TimelineMinimap({
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "group/strip pointer-events-none absolute left-0 w-6 origin-left -translate-y-1/2 rounded-full transition-transform duration-150",
+                    "pointer-events-none absolute left-0 w-6 origin-left -translate-y-1/2 rounded-full transition-transform duration-150 after:absolute after:inset-0 after:rounded-full after:bg-foreground/55 after:opacity-0 after:transition-opacity after:duration-150 data-[in-view=true]:after:opacity-100",
                     mark.items.length > 1 ? "h-1" : "h-0.5",
                     activeDistance === 0 ? "bg-muted-foreground/60" : "bg-muted-foreground/25",
                     activeDistance === 0
@@ -266,9 +266,7 @@ export function TimelineMinimap({
                     }
                   }}
                   style={{ top }}
-                >
-                  <span className="absolute inset-0 rounded-full bg-foreground/55 opacity-0 transition-opacity duration-150 group-data-[in-view=true]/strip:opacity-100" />
-                </span>
+                />
               );
             })}
             {activePreview ? (

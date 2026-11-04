@@ -12,6 +12,7 @@ import {
 } from "../../lib/assistantCitationNavigation";
 import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
+import { textDirection } from "~/textDirection";
 import { Button } from "../ui/button";
 import { findRevealRef } from "./markdownFindContext";
 
@@ -65,6 +66,7 @@ export function AssistantCitationQuote({ citation }: { citation: AssistantCitati
           ref={quoteRef}
           className={cn("block whitespace-pre-wrap wrap-break-word", !expanded && "line-clamp-2")}
           data-thread-find-fold={folded ? "" : undefined}
+          dir={textDirection(citation.text)}
         >
           {citation.text.trim()}
         </span>
@@ -83,7 +85,12 @@ export function AssistantCitationQuote({ citation }: { citation: AssistantCitati
         </Button>
       ) : null}
       {citation.comment ? (
-        <span className="mt-1 block whitespace-pre-wrap wrap-break-word">{citation.comment}</span>
+        <span
+          className="mt-1 block whitespace-pre-wrap wrap-break-word"
+          dir={textDirection(citation.comment)}
+        >
+          {citation.comment}
+        </span>
       ) : null}
     </span>
   );

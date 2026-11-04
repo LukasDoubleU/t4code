@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -132,6 +133,7 @@ const capabilitiesFor = (
         Layer.provide(
           Layer.mergeAll(
             NodeServices.layer,
+            NodeCrypto.layer,
             Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
             Layer.mock(GitVcsDriver.GitVcsDriver)({}),
             Layer.mock(ThreadManagementService.ThreadManagementService)({
@@ -247,14 +249,11 @@ describe("orchestrator_capabilities next account", () => {
           },
         },
       };
-      const assertRefused = (
-        entry: OrchestratorMcpProviderCapability | undefined,
-        constraint = "Disabled for this project.",
-      ) => {
+      const assertRefused = (entry: OrchestratorMcpProviderCapability | undefined) => {
         assert.deepInclude(entry, {
           canRunChildTask: false,
           canRunCrossProviderChildTask: false,
-          constraints: [constraint],
+          constraints: ["Provider instance is disabled."],
         });
         assert.isUndefined(entry?.nextAccount);
       };
@@ -281,13 +280,6 @@ describe("orchestrator_capabilities next account", () => {
         place: 2,
         recommended: false,
       });
-
-      // Without a calling thread, the machine-wide setting decides.
-      const machine = yield* capabilitiesFor(null, { settings });
-      assertRefused(
-        machine.get(ProviderInstanceId.make("claude-roomy")),
-        "Provider instance is disabled.",
-      );
     }),
   );
 });

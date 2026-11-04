@@ -207,7 +207,7 @@ const makeLaptop = (shells: ReadonlyArray<OrchestrationV2ThreadShell>) =>
     const linking = yield* layerLinkingEnvironment(laptop).pipe(Layer.build);
     const here = yield* Layer.build(
       toolkits.pipe(
-        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
         Layer.provide(PeerForwarding.layer),
         Layer.provide(Layer.succeedContext(linking)),
         Layer.provide(

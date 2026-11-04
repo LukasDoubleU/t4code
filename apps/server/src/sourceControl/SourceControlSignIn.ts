@@ -7,10 +7,12 @@ import {
   type SourceControlSignInResult,
   type SourceControlStarredInput,
 } from "@t3tools/contracts";
+import { isForkReleaseVersion } from "@t3tools/shared/cliRelease";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import packageJson from "../../package.json" with { type: "json" };
 import * as SourceControlBuiltInDrivers from "./builtInDrivers.ts";
 
 /** Signs the server in to a forge through the forge's own app, and reads what its account did. */
@@ -32,7 +34,7 @@ export class SourceControlSignIn extends Context.Service<
   }
 >()("t3/sourceControl/SourceControlSignIn") {}
 
-const make = Effect.gen(function* () {
+export const make = Effect.fn("SourceControlSignIn.make")(function* (serverVersion: string) {
   const drivers = yield* SourceControlBuiltInDrivers.SourceControlDrivers;
 
   const signInFor = (input: SourceControlSignInInput) => {
@@ -72,6 +74,8 @@ const make = Effect.gen(function* () {
       return isStarred === undefined ? false : yield* isStarred(input.host, input.repository);
     }),
     star: Effect.fn("SourceControlSignIn.star")(function* (input) {
+      // Fork builds never star upstream's repository with this server's forge account.
+      if (isForkReleaseVersion(serverVersion)) return false;
       const star = drivers.find(({ driver }) => driver.kind === input.provider)?.instance
         .starRepository;
       return star === undefined ? false : yield* star(input.host, input.repository);
@@ -79,4 +83,4 @@ const make = Effect.gen(function* () {
   });
 });
 
-export const layer = Layer.effect(SourceControlSignIn, make);
+export const layer = Layer.effect(SourceControlSignIn, make(packageJson.version));

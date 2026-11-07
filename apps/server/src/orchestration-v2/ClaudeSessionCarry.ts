@@ -12,6 +12,7 @@ import type {
 import { latestRootProviderFailure } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -150,16 +151,41 @@ export function planCarry<Run extends CarryRun>(input: {
     : NONE;
 }
 
-function isBytePrefix(prefix: Uint8Array, bytes: Uint8Array): boolean {
-  if (prefix.length > bytes.length) return false;
-  for (let index = 0; index < prefix.length; index += 1) {
-    if (prefix[index] !== bytes[index]) return false;
+/** Session folders reach gigabytes, so files are compared a chunk at a time and never read whole. */
+export const CARRY_CHUNK_BYTES = 1024 * 1024;
+
+const sameStart = Effect.fn("ClaudeSessionCarry.sameStart")(function* (
+  left: string,
+  right: string,
+  length: number,
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const leftFile = yield* fileSystem.open(left);
+  const rightFile = yield* fileSystem.open(right);
+  const leftChunk = new Uint8Array(Math.min(CARRY_CHUNK_BYTES, length));
+  const rightChunk = new Uint8Array(leftChunk.length);
+  for (let position = 0; position < length;) {
+    const size = Math.min(leftChunk.length, length - position);
+    const options = { position: BigInt(position) };
+    const leftRead = yield* leftFile.read(leftChunk.subarray(0, size), options);
+    const rightRead = yield* rightFile.read(rightChunk.subarray(0, size), options);
+    const read = Math.min(leftRead, rightRead);
+    if (read === 0) return false;
+    for (let index = 0; index < read; index += 1) {
+      if (leftChunk[index] !== rightChunk[index]) return false;
+    }
+    position += read;
   }
   return true;
-}
+}, Effect.scoped);
 
 export type CopyResult =
-  | { readonly type: "copied"; readonly hasWorkflows: boolean }
+  | {
+      readonly type: "copied";
+      readonly hasWorkflows: boolean;
+      readonly files: number;
+      readonly bytes: number;
+    }
   | { readonly type: "failed"; readonly reason: string };
 
 /**
@@ -197,57 +223,63 @@ export const copySession = Effect.fn("ClaudeSessionCarry.copySession")(
           });
     if (folder === null) return failed("the old account holds no single copy of the session");
 
-    const listFiles = Effect.fn("ClaudeSessionCarry.listFiles")(function* (home: string) {
-      const directory = path.join(home, "projects", folder, input.sessionId);
-      const files = (yield* fileSystem.exists(path.join(home, "projects", folder, transcript)))
-        ? [transcript]
-        : [];
-      if (!(yield* fileSystem.exists(directory))) return files;
-      for (const entry of yield* fileSystem.readDirectory(directory, { recursive: true })) {
-        if ((yield* fileSystem.stat(path.join(directory, entry))).type === "File") {
-          files.push(path.join(input.sessionId, entry));
-        }
-      }
-      return files;
-    });
     const sourceFolder = path.join(sourceProjects, folder);
     const targetFolder = path.join(input.targetHome, "projects", folder);
-    const live = new Map<string, Uint8Array>();
-    for (const file of yield* listFiles(input.sourceHome)) {
-      live.set(file, yield* fileSystem.readFile(path.join(sourceFolder, file)));
-    }
-    const stale = new Map<string, Uint8Array>();
-    for (const file of yield* listFiles(input.targetHome)) {
-      const liveBytes = live.get(file);
-      const staleBytes = yield* fileSystem.readFile(path.join(targetFolder, file));
+    const sizeOf = (file: string) =>
+      fileSystem.stat(file).pipe(Effect.map((info) => Number(info.size)));
+    const listFiles = Effect.fn("ClaudeSessionCarry.listFiles")(function* (root: string) {
+      const sizes = new Map<string, number>();
+      if (yield* fileSystem.exists(path.join(root, transcript))) {
+        sizes.set(transcript, yield* sizeOf(path.join(root, transcript)));
+      }
+      const directory = path.join(root, input.sessionId);
+      if (!(yield* fileSystem.exists(directory))) return sizes;
+      for (const entry of yield* fileSystem.readDirectory(directory, { recursive: true })) {
+        const info = yield* fileSystem.stat(path.join(directory, entry));
+        if (info.type === "File") sizes.set(path.join(input.sessionId, entry), Number(info.size));
+      }
+      return sizes;
+    });
+    const live = yield* listFiles(sourceFolder);
+    const stale = yield* listFiles(targetFolder);
+    for (const [file, staleSize] of stale) {
+      const liveSize = live.get(file);
       if (
-        liveBytes === undefined ||
-        (file.endsWith(".jsonl") && !isBytePrefix(staleBytes, liveBytes))
+        liveSize === undefined ||
+        (file.endsWith(".jsonl") &&
+          (staleSize > liveSize ||
+            !(yield* sameStart(
+              path.join(targetFolder, file),
+              path.join(sourceFolder, file),
+              staleSize,
+            ))))
       ) {
         return failed(`the new account's copy of ${file} differs from the live session`);
       }
-      stale.set(file, staleBytes);
     }
-    const writes = [...live].flatMap(([file, bytes]) => {
-      const existing = stale.get(file);
-      return existing !== undefined &&
-        existing.length === bytes.length &&
-        isBytePrefix(existing, bytes)
-        ? []
-        : [file];
-    });
+    const writes: Array<string> = [];
+    for (const [file, size] of live) {
+      const unchanged =
+        stale.get(file) === size &&
+        (file.endsWith(".jsonl") ||
+          (yield* sameStart(path.join(targetFolder, file), path.join(sourceFolder, file), size)));
+      if (!unchanged) writes.push(file);
+    }
     // The transcript goes last: a resume finds it only once its directory is complete.
     writes.sort((left, right) => Number(left === transcript) - Number(right === transcript));
+    const copied = new Map(live);
+    let bytes = 0;
     for (const file of writes) {
       const target = path.join(targetFolder, file);
-      const { mode } = yield* fileSystem.stat(path.join(sourceFolder, file));
       yield* fileSystem.makeDirectory(path.dirname(target), { recursive: true });
-      yield* fileSystem.writeFile(`${target}.t3-carry`, live.get(file)!, { mode: mode & 0o777 });
+      yield* fileSystem.copyFile(path.join(sourceFolder, file), `${target}.t3-carry`);
+      const size = yield* sizeOf(`${target}.t3-carry`);
       yield* fileSystem.rename(`${target}.t3-carry`, target);
+      copied.set(file, size);
+      bytes += size;
     }
-    for (const [file, bytes] of live) {
-      const after = yield* fileSystem.stat(path.join(sourceFolder, file));
-      if (Number(after.size) !== bytes.length) {
+    for (const [file, size] of copied) {
+      if ((yield* sizeOf(path.join(sourceFolder, file))) !== size) {
         return failed(`the old account was still writing ${file}`);
       }
     }
@@ -258,6 +290,8 @@ export const copySession = Effect.fn("ClaudeSessionCarry.copySession")(
           file.startsWith(path.join(input.sessionId, "subagents", "workflows")) ||
           file.startsWith(path.join(input.sessionId, "workflows")),
       ),
+      files: writes.length,
+      bytes,
     } satisfies CopyResult;
   },
   Effect.catch((error) =>
@@ -350,15 +384,21 @@ export const layer = Layer.effect(
             return yield* fallback("the old account's Claude process is still running");
           }
         }
-        const copied = yield* copySession({
+        const [duration, copied] = yield* copySession({
           sourceHome: homes.source,
           targetHome: homes.target,
           sessionId,
           cwd: input.cwd,
-        }).pipe(Effect.provide(services));
-        return copied.type === "failed"
-          ? yield* fallback(copied.reason)
-          : ({ type: "carried", note: copied.hasWorkflows ? CARRY_WORKFLOW_NOTE : "" } as const);
+        }).pipe(Effect.provide(services), Effect.timed);
+        if (copied.type === "failed") return yield* fallback(copied.reason);
+        yield* Effect.logInfo("Carried the Claude session to the new account", {
+          threadId: input.threadId,
+          runId: input.run.id,
+          files: copied.files,
+          bytes: copied.bytes,
+          durationMs: Duration.toMillis(duration),
+        });
+        return { type: "carried", note: copied.hasWorkflows ? CARRY_WORKFLOW_NOTE : "" } as const;
       },
       Effect.catchCause((cause) =>
         Effect.logWarning("Could not carry the Claude session to the new account", { cause }).pipe(

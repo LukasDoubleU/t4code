@@ -133,7 +133,7 @@ const writeFiles = Effect.fn("writeFiles")(function* (
   for (const [relative, content] of Object.entries(files)) {
     const file = path.join(root, relative);
     yield* fileSystem.makeDirectory(path.dirname(file), { recursive: true });
-    yield* fileSystem.writeFileString(file, content);
+    yield* fileSystem.writeFileString(file, content, { mode: 0o600 });
   }
 });
 
@@ -159,6 +159,13 @@ const liveSession = {
   [`projects/${folder}/${sessionId}/workflows/wf_1.json`]: '{"status":"done"}',
   [`projects/${folder}/${sessionId}/tool-results/out.txt`]: "output\n",
 };
+const transcriptPath = `projects/${folder}/${sessionId}.jsonl`;
+// A log over two chunks, and a stale copy of it that ends after the first chunk.
+const longLog = '{"type":"assistant","text":"chunked"}\n'.repeat(
+  Math.ceil((ClaudeSessionCarry.CARRY_CHUNK_BYTES * 2.5) / 38),
+);
+const longPrefix = longLog.slice(0, ClaudeSessionCarry.CARRY_CHUNK_BYTES + 4096);
+const divergeAt = ClaudeSessionCarry.CARRY_CHUNK_BYTES + 100;
 
 it.layer(NodeServices.layer)("copySession", (it) => {
   it.effect("names the cwd's folder the way Claude Code does", () =>
@@ -219,6 +226,20 @@ it.layer(NodeServices.layer)("copySession", (it) => {
       expected: { type: "failed" },
     },
     {
+      name: "compares and copies a log longer than one chunk",
+      source: { [transcriptPath]: longLog },
+      target: { [transcriptPath]: longPrefix },
+      expected: { type: "copied", hasWorkflows: false },
+    },
+    {
+      name: "refuses a stale log that diverges after the first chunk",
+      source: { [transcriptPath]: longLog },
+      target: {
+        [transcriptPath]: `${longPrefix.slice(0, divergeAt)}#${longPrefix.slice(divergeAt + 1)}`,
+      },
+      expected: { type: "failed" },
+    },
+    {
       name: "fails when the old account has no copy of the session",
       source: {},
       target: {},
@@ -241,12 +262,23 @@ it.layer(NodeServices.layer)("copySession", (it) => {
         cwd,
       });
 
-      assert.deepEqual(result.type === "failed" ? { type: result.type } : result, expected);
+      assert.deepEqual(
+        result.type === "failed"
+          ? { type: result.type }
+          : { type: result.type, hasWorkflows: result.hasWorkflows },
+        expected,
+      );
       assert.deepEqual(yield* readTree(sourceHome), source);
       assert.deepEqual(
         yield* readTree(targetHome),
         result.type === "copied" ? { ...target, ...source } : target,
       );
+      if (result.type === "copied") {
+        for (const file of Object.keys(source)) {
+          const sourceMode = (yield* fileSystem.stat(path.join(sourceHome, file))).mode;
+          assert.equal((yield* fileSystem.stat(path.join(targetHome, file))).mode, sourceMode);
+        }
+      }
     }).pipe(Effect.scoped),
   );
 });

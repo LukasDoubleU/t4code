@@ -169,6 +169,8 @@ account is ready, the turn stops as before and the thread names the account that
 If the used-up account still runs background agents or commands, moving would end them, so the
 thread stays and says so. It moves when a finished background task wakes it and nothing else is
 still running; otherwise it waits for the reset like any limited thread.
+A Claude thread takes its session to the new account, and the agent is asked to resume workflows
+that did not finish; see [separate accounts](./providers-claude.md#separate-accounts-or-configurations).
 This also covers turns that agents and scheduled tasks start, and each environment uses its own
 accounts. Delegated tasks stop as before, so the agent that started one can choose how to go on.
 To keep a thread on its account, open its menu, choose **At the usage limit**, and pick **Stay on

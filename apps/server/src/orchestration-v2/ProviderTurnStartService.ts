@@ -36,6 +36,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import { makeIsManagedWorktreePath } from "../worktreesDirectory.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
+import * as ClaudeSessionCarry from "./ClaudeSessionCarry.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
 import { isActiveRun } from "./CommandPolicy.ts";
 import {
@@ -165,6 +166,7 @@ export const layer: Layer.Layer<
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
     const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
+    const sessionCarry = yield* Effect.serviceOption(ClaudeSessionCarry.ClaudeSessionCarry);
 
     const resolveRecreateBase = Effect.fn("ProviderTurnStartService.resolveRecreateBase")(
       function* (cwd: string) {
@@ -1119,6 +1121,7 @@ export const layer: Layer.Layer<
       let resumedRetryHandoff: ReadonlyArray<OrchestrationV2ContextHandoff> | undefined;
       let resumedHandoffContext: ReturnType<typeof handoffContextForThread> | undefined;
       let portableForkFallback: OrchestrationV2ContextHandoff | undefined;
+      let carry = ClaudeSessionCarry.noCarry;
       const loadedProviderThread = yield* Effect.gen(function* () {
         if (nativeForkTransfer !== undefined) {
           const sourceProjection = yield* projectionStore.getThreadRecords(
@@ -1264,15 +1267,27 @@ export const layer: Layer.Layer<
             handoff.delivery?.nativeThreadId === providerThread.nativeThreadRef?.nativeId &&
             handoff.delivery?.status === "pending",
         );
+        if (Option.isSome(sessionCarry)) {
+          carry = yield* sessionCarry.value.prepareResume({
+            threadId: projection.thread.id,
+            projection,
+            run,
+            providerThread,
+            cwd: resolvedRuntimePolicy.cwd ?? null,
+          });
+        }
         const resumed = yield* Effect.result(
-          uncertainDelivery
+          uncertainDelivery || carry.type === "fallback"
             ? Effect.fail(
                 new ProviderAdapter.ProviderAdapterTurnStartError({
                   driver: session.driver,
                   threadId: projection.thread.id,
                   providerThreadId: providerThread.id,
                   runId,
-                  cause: "Uncertain native history injection",
+                  cause:
+                    carry.type === "fallback"
+                      ? `Session carry: ${carry.reason}`
+                      : "Uncertain native history injection",
                 }),
               )
             : session.resumeThread({
@@ -1352,9 +1367,11 @@ export const layer: Layer.Layer<
           runId,
           reason: uncertainDelivery
             ? "uncertain_history_delivery"
-            : resumed._tag === "Success"
-              ? "handoff_budget_exhausted"
-              : "resume_failed",
+            : carry.type === "fallback"
+              ? "session_carry_failed"
+              : resumed._tag === "Success"
+                ? "handoff_budget_exhausted"
+                : "resume_failed",
           errorTag: resumed._tag === "Failure" ? resumed.failure._tag : "ContextHandoffBudgetError",
         });
         const replacement = yield* loadFromProvider(
@@ -1410,6 +1427,19 @@ export const layer: Layer.Layer<
                 consumedAt: null,
               },
             },
+            ...(carry.type === "none"
+              ? []
+              : [
+                  ClaudeSessionCarry.fallbackNoticeEvent({
+                    id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
+                    itemId: idAllocator.derive.runSignalTurnItem({
+                      runId: run.id,
+                      signal: "notice:session-carry",
+                    }),
+                    run,
+                    occurredAt: createdAt,
+                  }),
+                ]),
           ],
         });
         return replacement;
@@ -1608,7 +1638,8 @@ export const layer: Layer.Layer<
             sideChatHandoff === undefined || compact || goalCommand
               ? ""
               : sideChatHandoff.summaryText;
-          const context = [delivery.context, sideChatContext, restartNote]
+          const carryNote = carry.type === "carried" && !resumeFellBack ? carry.note : "";
+          const context = [delivery.context, sideChatContext, restartNote, carryNote]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;
@@ -1676,6 +1707,7 @@ export const layer: Layer.Layer<
         retryHandoff.length === 0 &&
         sideChatHandoff === undefined &&
         restartNote === "" &&
+        !(carry.type === "carried" && carry.note !== "") &&
         !noteContinuation
           ? session
           : makeDeliverySession(session, startWithHandoffs);

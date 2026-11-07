@@ -1,6 +1,7 @@
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as AccountFailover from "./AccountFailover.ts";
+import * as ClaudeSessionCarry from "./ClaudeSessionCarry.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -164,9 +165,20 @@ const layerRunExecutionServiceProvided = RunExecutionService.layer.pipe(
   ),
 );
 
+const layerClaudeSessionCarryProvided = ClaudeSessionCarry.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
+      layerProviderSessionManagerProvided,
+      ProjectionStore.layer,
+    ),
+  ),
+);
+
 const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
+      layerClaudeSessionCarryProvided,
       layerContextHandoffServiceProvided,
       layerEventSink,
       IdAllocator.layer,

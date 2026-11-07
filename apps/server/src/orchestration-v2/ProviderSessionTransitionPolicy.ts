@@ -9,6 +9,8 @@ import { modelSelectionsEqual } from "@t3tools/shared/model";
 import type { ProviderContinuationIdentity } from "@t3tools/provider-core/server/driver";
 import type { ProviderSelectionTransitionPlan } from "@t3tools/provider-core/server/selectionTransition";
 
+import { canCarrySession } from "./ClaudeSessionCarry.ts";
+
 export type ProviderSessionTransition =
   | { readonly type: "reuse" }
   | { readonly type: "switch_model_in_session" }
@@ -45,7 +47,12 @@ export function decideProviderSessionTransition(input: {
   const target = input.target;
   const continuationCompatible =
     current.continuationIdentity.driverKind === target.continuationIdentity.driverKind &&
-    current.continuationIdentity.continuationKey === target.continuationIdentity.continuationKey;
+    (current.continuationIdentity.continuationKey === target.continuationIdentity.continuationKey ||
+      // Fork: turn start copies a Claude session into the new account's home.
+      canCarrySession(
+        current.continuationIdentity.continuationKey,
+        target.continuationIdentity.continuationKey,
+      ));
   if (!continuationCompatible || current.driver !== target.driver) {
     return { type: "create_with_handoff" };
   }

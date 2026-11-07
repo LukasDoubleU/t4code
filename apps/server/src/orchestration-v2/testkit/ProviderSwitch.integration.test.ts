@@ -22,11 +22,14 @@ import {
   TurnItemId,
   ProviderDriverKind,
 } from "@t3tools/contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -34,6 +37,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
+import { CARRY_FALLBACK_NOTICE, claudeProjectFolder } from "../ClaudeSessionCarry.ts";
 import { CommandPolicyCapabilityUnsupportedError } from "../CommandPolicy.ts";
 import {
   ClaudeAgentSdkQueryRunnerError,
@@ -2398,6 +2402,169 @@ describe("orchestration v2 provider switching", () => {
         );
       }),
     ),
+  );
+
+  it.live.each(["carried", "missing"] as const)(
+    "moves a thread between Claude homes with its session (%s)",
+    (session) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const cwd = yield* checkpointWorkspace("claude-session-carry");
+          const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+          const secondSelection: ModelSelection = {
+            ...CLAUDE_MODEL_SELECTION,
+            instanceId: ProviderInstanceId.make("claude-second-account"),
+          };
+          const carryThreadId = ThreadId.make("thread:claude-session-carry");
+          const nativeId = `${CLAUDE_DRIVER}:${carryThreadId}`;
+          const homes = yield* Effect.gen(function* () {
+            const fileSystem = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-carry-" });
+            const homes = { first: path.join(root, "first"), second: path.join(root, "second") };
+            if (session === "carried") {
+              const folder = path.join(homes.first, "projects", claudeProjectFolder(cwd));
+              const journal = path.join(folder, nativeId, "subagents/workflows/wf_1/journal.jsonl");
+              yield* fileSystem.makeDirectory(path.dirname(journal), { recursive: true });
+              yield* fileSystem.writeFileString(journal, "agent-1 done\n");
+              yield* fileSystem.writeFileString(
+                path.join(folder, `${nativeId}.jsonl`),
+                '{"type":"user"}\n',
+              );
+            }
+            return homes;
+          }).pipe(Effect.provide(NodeServices.layer));
+          const adapters = [
+            makeTestAdapter({
+              instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+              driver: CLAUDE_DRIVER,
+              capabilities: ClaudeProviderCapabilitiesV2,
+              modelSelection: CLAUDE_MODEL_SELECTION,
+              responseByRunOrdinal: { 1: "First account complete" },
+              capturedTurns,
+            }),
+            makeTestAdapter({
+              instanceId: secondSelection.instanceId,
+              driver: CLAUDE_DRIVER,
+              capabilities: ClaudeProviderCapabilitiesV2,
+              modelSelection: secondSelection,
+              responseByRunOrdinal: { 2: "Second account complete" },
+              capturedTurns,
+              nativeThreadGeneration: yield* Ref.make(0),
+            }),
+          ];
+          const layerRegistry = Layer.succeed(
+            ProviderAdapterRegistry.ProviderAdapterRegistryV2,
+            ProviderAdapterRegistry.ProviderAdapterRegistryV2.of({
+              get: (instanceId) => {
+                const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
+                return adapter === undefined
+                  ? Effect.fail(
+                      new ProviderAdapterRegistry.ProviderAdapterRegistryLookupError({
+                        instanceId,
+                      }),
+                    )
+                  : Effect.succeed(adapter);
+              },
+              list: () => Effect.succeed(adapters.map((adapter) => adapter.instanceId)),
+              getMetadata: (instanceId) =>
+                Effect.succeed({
+                  driver: CLAUDE_DRIVER,
+                  continuationKey: `claude:home:${
+                    instanceId === secondSelection.instanceId ? homes.second : homes.first
+                  }`,
+                  enabled: true,
+                  capabilities: ClaudeProviderCapabilitiesV2,
+                }),
+            }),
+          );
+          const projection = yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            const send = (ordinal: number, modelSelection: ModelSelection) =>
+              orchestrator.dispatch({
+                type: "message.dispatch",
+                createdBy: "user",
+                creationSource: "web",
+                commandId: CommandId.make(`command:claude-session-carry:${ordinal}`),
+                threadId: carryThreadId,
+                messageId: MessageId.make(`message:claude-session-carry:${ordinal}`),
+                text: `Prompt ${ordinal}`,
+                attachments: [],
+                modelSelection,
+                dispatchMode: { type: "start_immediately" },
+              });
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              createdBy: "user",
+              creationSource: "web",
+              commandId: CommandId.make("command:claude-session-carry:create"),
+              threadId: carryThreadId,
+              projectId: ProjectId.make("project:claude-session-carry"),
+              title: "Claude session carry",
+              modelSelection: CLAUDE_MODEL_SELECTION,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: cwd,
+            });
+            yield* send(1, CLAUDE_MODEL_SELECTION);
+            yield* worker.drain();
+            yield* waitForIdle(carryThreadId);
+            yield* send(2, secondSelection);
+            yield* worker.drain();
+            yield* waitForIdle(carryThreadId);
+            return yield* orchestrator.getThreadProjection(carryThreadId);
+          }).pipe(
+            Effect.provide(
+              ProviderReplayHarness.layerWithRegistry(
+                {
+                  name: "claude-session-carry",
+                  runtimePolicyOverride: {
+                    cwd,
+                    approvalPolicy: "never",
+                    sandboxPolicy: {
+                      type: "readOnly",
+                      access: { type: "fullAccess" },
+                      networkAccess: false,
+                    },
+                  },
+                },
+                layerRegistry,
+              ),
+            ),
+          );
+          const [first, second] = yield* Ref.get(capturedTurns);
+          const notices = projection.turnItems.flatMap((item) =>
+            item.type === "system_notice" ? [item.message] : [],
+          );
+          assert.deepEqual(
+            projection.runs.map((run) => [run.providerInstanceId, run.status]),
+            [
+              [CLAUDE_MODEL_SELECTION.instanceId, "completed"],
+              [secondSelection.instanceId, "completed"],
+            ],
+          );
+          if (session === "carried") {
+            assert.equal(second?.nativeThreadId, first?.nativeThreadId);
+            assert.lengthOf(projection.contextHandoffs, 0);
+            assert.include(second?.text, "resumeFromRunId");
+            assert.deepEqual(notices, []);
+            const copied = yield* Effect.gen(function* () {
+              const fileSystem = yield* FileSystem.FileSystem;
+              const path = yield* Path.Path;
+              return yield* fileSystem.readFileString(
+                path.join(homes.second, "projects", claudeProjectFolder(cwd), `${nativeId}.jsonl`),
+              );
+            }).pipe(Effect.provide(NodeServices.layer));
+            assert.equal(copied, '{"type":"user"}\n');
+            return;
+          }
+          assert.notEqual(second?.nativeThreadId, first?.nativeThreadId);
+          assert.include(second?.text, "First account complete");
+          assert.deepEqual(notices, [CARRY_FALLBACK_NOTICE]);
+        }),
+      ),
   );
 
   it.live("finishes earlier queued Codex turns before handing context to queued Claude", () =>

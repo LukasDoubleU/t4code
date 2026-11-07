@@ -39,6 +39,7 @@ import * as EventSink from "../EventSink.ts";
 import * as EventStore from "../EventStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Orchestrator from "../Orchestrator.ts";
+import * as ClaudeSessionCarry from "../ClaudeSessionCarry.ts";
 import * as ProjectionStore from "../ProjectionStore.ts";
 import * as ProjectStore from "../ProjectStore.ts";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
@@ -416,6 +417,11 @@ export function layerWithRegistry<Error>(
   const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        ClaudeSessionCarry.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(layerProvidedRegistry, layerProviderSessionManagerProvided, layerStores),
+          ),
+        ),
         layerContextHandoffServiceProvided,
         layerEventSinkProvided,
         IdAllocator.layer,

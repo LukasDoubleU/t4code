@@ -101,3 +101,20 @@ it("uses portable handoff for incompatible continuation identities", () => {
     { type: "create_with_handoff" },
   );
 });
+
+it("resumes across Claude accounts, whose sessions carry over between homes", () => {
+  const claude = ProviderDriverKind.make("claudeAgent");
+  const account = (instance: string, home: string) => ({
+    ...base,
+    driver: claude,
+    continuationIdentity: { driverKind: claude, continuationKey: `claude:home:${home}` },
+    modelSelection: { instanceId: ProviderInstanceId.make(instance), model: "claude-opus-4-7" },
+  });
+  assert.deepEqual(
+    decideProviderSessionTransition({
+      current: account("claude", "/home/user/.claude"),
+      target: { ...account("claude_two", "/home/user/.claude-two"), available: true },
+    }),
+    { type: "restart_and_resume" },
+  );
+});

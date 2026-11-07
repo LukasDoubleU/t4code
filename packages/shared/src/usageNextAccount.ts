@@ -32,6 +32,8 @@ export type NextAccountStatus =
       readonly atRiskPerDay: number;
       /** What puts the account ahead of the next ready one when their weekly risk reads the same. */
       readonly tieBreak: "sessionRoom" | "sessionReset" | null;
+      /** An ultracode session is at work on the account: it ranks after the idle ready ones. */
+      readonly busy: boolean;
     }
   | {
       readonly kind: "blocked";
@@ -65,6 +67,13 @@ export interface NextAccountOptions {
    * Unset, every model's allowance counts, so none can stop the recommended account.
    */
   readonly model?: string | null | undefined;
+  /** Whether an ultracode session is at work on the account. */
+  readonly busy?: ((account: LimitAccount) => boolean) | undefined;
+}
+
+export interface EnvironmentRankOptions extends Omit<NextAccountOptions, "busy"> {
+  /** The environment's instances an ultracode session is at work on. */
+  readonly busyInstances?: ReadonlySet<ProviderInstanceId> | undefined;
 }
 
 export interface WeeklyModelScope {
@@ -137,6 +146,7 @@ function evaluate(
   now: number,
   minSessionPercent: number,
   model: string | null | undefined,
+  busy: boolean,
 ): NextAccountCandidate {
   const session = account.limits.windows.find((window) => window.kind === "session") ?? null;
   const weeklies = account.limits.windows.filter((window) => {
@@ -194,6 +204,7 @@ function evaluate(
           ? 0
           : (100 - Math.max(0, Math.min(100, weekly.usedPercent))) / ((weeklyReset - now) / DAY),
       tieBreak: null,
+      busy,
     },
   };
 }
@@ -204,6 +215,7 @@ const shownRisk = (candidate: Ready) => Math.round(candidate.status.atRiskPerDay
 
 function compareReady(left: Ready, right: Ready): number {
   return (
+    Number(left.status.busy) - Number(right.status.busy) ||
     shownRisk(right) - shownRisk(left) ||
     remainingPercent(right.session) - remainingPercent(left.session) ||
     resetOrder(left.session) - resetOrder(right.session) ||
@@ -212,16 +224,22 @@ function compareReady(left: Ready, right: Ready): number {
 }
 
 function tieBreak(ahead: Ready, behind: Ready | undefined): Ready["status"]["tieBreak"] {
-  if (!behind || shownRisk(ahead) !== shownRisk(behind)) return null;
+  if (
+    !behind ||
+    ahead.status.busy !== behind.status.busy ||
+    shownRisk(ahead) !== shownRisk(behind)
+  ) {
+    return null;
+  }
   if (remainingPercent(ahead.session) > remainingPercent(behind.session)) return "sessionRoom";
   return resetOrder(ahead.session) < resetOrder(behind.session) ? "sessionReset" : null;
 }
 
 /**
  * Orders one provider's accounts by which to use next. Ready accounts have enough session room
- * and weekly quota left; they come first, the most weekly quota at risk of expiring unused
- * first. Blocked accounts follow, the soonest ready again first. Accounts whose limits are
- * missing or out of date come last.
+ * and weekly quota left; they come first, idle before busy, the most weekly quota at risk of
+ * expiring unused first. Blocked accounts follow, the soonest ready again first. Accounts whose
+ * limits are missing or out of date come last.
  */
 export function rankNextAccounts(
   accounts: readonly LimitAccount[],
@@ -232,7 +250,13 @@ export function rankNextAccounts(
     Math.min(100, options.minSessionPercent ?? DEFAULT_MIN_SESSION_PERCENT),
   );
   const candidates = accounts.map((account) =>
-    evaluate(account, options.now, minSessionPercent, options.model),
+    evaluate(
+      account,
+      options.now,
+      minSessionPercent,
+      options.model,
+      options.busy?.(account) ?? false,
+    ),
   );
   const ready = candidates
     .filter((candidate): candidate is Ready => candidate.status.kind === "ready")
@@ -270,7 +294,7 @@ export function rankEnvironmentInstances(
   accounts: readonly LimitAccount[],
   environmentId: EnvironmentId,
   instanceIds: Iterable<ProviderInstanceId>,
-  options: NextAccountOptions,
+  { busyInstances, ...options }: EnvironmentRankOptions,
 ): ReadonlyMap<ProviderInstanceId, NextInstanceRank> {
   const eligible = new Set(instanceIds);
   const instancesHere = (account: LimitAccount) =>
@@ -279,12 +303,19 @@ export function rankEnvironmentInstances(
         ? [instance.instanceId]
         : [],
     );
+  // Any of the account's instances here counts, eligible or not: the session draws on the account.
+  const busy = (account: LimitAccount) =>
+    account.instances.some(
+      (instance) =>
+        instance.environmentId === environmentId &&
+        busyInstances?.has(instance.instanceId) === true,
+    );
   const ranks = new Map<ProviderInstanceId, NextInstanceRank>();
   for (const driver of NEXT_ACCOUNT_DRIVERS) {
     const members = accounts.filter(
       (account) => account.driver === driver && instancesHere(account).length > 0,
     );
-    rankNextAccounts(members, options).forEach((candidate, index) => {
+    rankNextAccounts(members, { ...options, busy }).forEach((candidate, index) => {
       const recommended = index === 0 && candidate.status.kind === "ready";
       for (const instanceId of instancesHere(candidate.account)) {
         ranks.set(instanceId, { place: index + 1, recommended, candidate });
@@ -325,7 +356,7 @@ export function describeNextAccount(
         at === null
           ? `${window.label}: not started, nothing at risk yet`
           : `${window.label}: ${remainingPercent(window)}% left, resets in ${formatDuration(at - options.now)} · ${formatRisk(status.atRiskPerDay)} at risk`;
-      return `${risk}${status.tieBreak ? TIE_BREAK_TEXT[status.tieBreak] : ""}${banked}`;
+      return `${status.busy ? "busy: ultracode session · " : ""}${risk}${status.tieBreak ? TIE_BREAK_TEXT[status.tieBreak] : ""}${banked}`;
     }
     case "blocked": {
       const left = remainingPercent(status.window);

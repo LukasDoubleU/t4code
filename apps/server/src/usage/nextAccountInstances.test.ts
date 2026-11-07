@@ -70,6 +70,7 @@ const plan = (
     readonly from?: string;
     readonly usedUpUntil?: number | null;
     readonly unusable?: ReadonlyArray<string>;
+    readonly busy?: ReadonlyArray<string>;
   } = {},
 ) =>
   planAccountMove({
@@ -83,6 +84,9 @@ const plan = (
     },
     usable: (instanceId) => !options.unusable?.includes(instanceId),
     ...(options.usedUpUntil === undefined ? {} : { usedUpUntil: options.usedUpUntil }),
+    ...(options.busy === undefined
+      ? {}
+      : { busyInstances: new Set(options.busy.map((id) => ProviderInstanceId.make(id))) }),
   });
 
 describe("planAccountMove", () => {
@@ -106,6 +110,32 @@ describe("planAccountMove", () => {
       to: ProviderInstanceId.make("c3"),
       usedUpUntil: HOUR,
     });
+  });
+
+  it("moves to an idle ready account before one carrying an ultracode session", () => {
+    const providers = [
+      provider("used-up", "used-up@example.com", windows({ session: 10, weekly: 10 })),
+      provider(
+        "urgent",
+        "urgent@example.com",
+        windows({ session: 10, weekly: 40, weeklyResetsIn: 24 }),
+      ),
+      provider("roomy", "roomy@example.com", windows({ session: 10, weekly: 10 })),
+    ];
+    const target = (busy?: ReadonlyArray<string>) => {
+      const move = plan(providers, {
+        from: "used-up",
+        usedUpUntil: HOUR,
+        ...(busy === undefined ? {} : { busy }),
+      });
+      const to: string | null = move?.type === "move" ? move.to : null;
+      return to;
+    };
+    assert.equal(target(), "urgent");
+    assert.equal(target([]), "urgent");
+    assert.equal(target(["urgent"]), "roomy");
+    // Busy lowers the rank without blocking: with every ready account busy, the turn still moves.
+    assert.equal(target(["urgent", "roomy"]), "urgent");
   });
 
   it("does not move to another instance signed in to the same account", () => {

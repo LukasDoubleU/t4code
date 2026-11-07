@@ -113,6 +113,7 @@ function layerExecutorFor(input: {
         detach: () => record("detach"),
         otherWorkingThreads: () => Effect.succeed([]),
         releaseUnlessBusy: () => Effect.succeed(true),
+        busyInstances: Effect.succeed(new Set()),
       }),
     ),
     Layer.succeed(

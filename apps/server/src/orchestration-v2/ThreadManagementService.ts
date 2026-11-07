@@ -815,7 +815,7 @@ const make = Effect.gen(function* () {
       Effect.andThen(
         accountFailover === null || command.type !== "message.dispatch"
           ? Effect.succeed<AccountFailover.MovedCommand>({ command, notice: null })
-          : AccountFailover.moveOffUsedUpAccount(accountFailover, orchestrator, command),
+          : AccountFailover.moveOffUsedUpAccount(accountFailover, orchestrator, sessions, command),
       ),
       Effect.flatMap((moved) =>
         assertDispatchTargetEnabled(moved.command).pipe(

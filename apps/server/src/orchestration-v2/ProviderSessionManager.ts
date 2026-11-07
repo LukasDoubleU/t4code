@@ -1,5 +1,6 @@
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
+import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   isOrchestrationV2WorkActive,
@@ -63,6 +64,8 @@ export const PROVIDER_INTERRUPT_TIMEOUT_MS = 15 * 1000;
 const busyTurnPrefix = (providerThreadId: ProviderThreadId) => `${providerThreadId}#`;
 const busyTurnKey = (providerThreadId: ProviderThreadId, runOrdinal: number) =>
   `${busyTurnPrefix(providerThreadId)}${runOrdinal}`;
+const isUltracode = (selection: ModelSelection) =>
+  getModelSelectionStringOptionValue(selection, "effort") === "ultracode";
 const UNLOAD_THREAD_TIMEOUT_MS = 10 * 1000;
 const WORKING_RUN_STATUSES: ReadonlySet<string> = new Set([
   "preparing",
@@ -208,6 +211,11 @@ export interface ProviderSessionManagerV2Shape {
     readonly providerSessionId: ProviderSessionId;
     readonly threadId: ThreadId;
   }) => Effect.Effect<ReadonlyArray<ThreadId>>;
+  /**
+   * Instances an ultracode session is at work on: its latest turn ran at effort ultracode, and a
+   * turn or background work still runs. Such a session can use up its account within one turn.
+   */
+  readonly busyInstances: Effect.Effect<ReadonlySet<ProviderInstanceId>>;
 }
 
 export class ProviderSessionManagerV2 extends Context.Service<
@@ -230,6 +238,8 @@ interface LiveSessionEntry {
   readonly scope: Scope.Closeable;
   readonly idleGeneration: number;
   readonly busyTurns: ReadonlySet<string>;
+  /** Whether the latest turn, or the open before any turn, ran at effort ultracode. */
+  readonly ultracode: boolean;
   readonly idleFiber: Fiber.Fiber<void, never> | null;
   readonly pinnedSinceMs: number | null;
   readonly idleThreadUnloads: ReadonlyMap<ThreadId, IdleThreadUnload>;
@@ -1424,6 +1434,7 @@ export const layerWithOptions = (
         providerSessionId: ProviderSessionId,
         turnKey: string,
         runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime,
+        ultracode: boolean,
       ) =>
         withActivityError(
           providerSessionId,
@@ -1438,6 +1449,7 @@ export const layerWithOptions = (
               updated.set(key, {
                 ...entry,
                 busyTurns: new Set(entry.busyTurns).add(turnKey),
+                ultracode,
                 idleFiber: null,
                 pinnedSinceMs: null,
               });
@@ -1835,6 +1847,7 @@ export const layerWithOptions = (
                     providerSessionId,
                     busyTurnKey(input.providerThread.id, input.runOrdinal),
                     runtime,
+                    isUltracode(input.modelSelection),
                   ).pipe(
                     Effect.catchCause((cause) =>
                       Effect.logWarning("orchestration-v2.driver-session.activity-failed", {
@@ -2250,6 +2263,7 @@ export const layerWithOptions = (
                 scope: sessionScope,
                 idleGeneration: 0,
                 busyTurns: new Set(),
+                ultracode: isUltracode(input.modelSelection),
                 idleFiber: null,
                 pinnedSinceMs: null,
                 idleThreadUnloads: new Map(),
@@ -2393,6 +2407,23 @@ export const layerWithOptions = (
             );
           },
         ),
+        busyInstances: Effect.gen(function* () {
+          const busy = new Set<ProviderInstanceId>();
+          for (const entry of (yield* Ref.get(sessions)).values()) {
+            const { runtime } = entry;
+            if (!entry.ultracode || busy.has(runtime.instanceId)) continue;
+            if (
+              entry.busyTurns.size > 0 ||
+              (runtime.hasPendingBackgroundWork !== undefined &&
+                (yield* runtime.hasPendingBackgroundWork.pipe(
+                  Effect.catchCause(() => Effect.succeed(false)),
+                )))
+            ) {
+              busy.add(runtime.instanceId);
+            }
+          }
+          return busy;
+        }).pipe(Effect.withSpan("ProviderSessionManager.busyInstances")),
         detach: Effect.fn("ProviderSessionManager.detach")(
           function* (input) {
             const key = sessionKey(input.providerSessionId);

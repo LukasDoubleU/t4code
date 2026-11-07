@@ -215,6 +215,10 @@ export class OrchestratorDispatchError extends Schema.TaggedError<OrchestratorDi
   }
 }
 
+/** The cause of a message refused because switching providers would end background work. */
+export const SWITCH_ENDS_BACKGROUND_WORK =
+  "The previous provider is still running background agents or commands, and switching would end them. Wait for them to finish, or press Stop, then send the message again.";
+
 export class OrchestratorThreadAlreadyExistsError extends Schema.TaggedError<OrchestratorThreadAlreadyExistsError>()(
   "OrchestratorThreadAlreadyExistsError",
   { commandId: CommandId, threadId: ThreadId },
@@ -899,9 +903,9 @@ function followsCurrentConversation(
 }
 
 /**
- * A message that was waiting when its account hit its usage limit follows the thread once the
- * server moved the thread to the next account, instead of taking it back. A thread the user
- * moved keeps each queued message's own selection.
+ * A message that waited on its account's usage limit follows the thread once the server moved
+ * the thread to the next account, instead of taking it back. A thread the user moved keeps each
+ * queued message's own selection.
  */
 function queuedForFailedOverAccount(
   projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs" | "turnItems">,
@@ -914,14 +918,15 @@ function queuedForFailedOverAccount(
     projection.turnItems,
     null,
   );
-  if (
-    limited?.completedAt == null ||
-    DateTime.toEpochMillis(run.requestedAt) > DateTime.toEpochMillis(limited.completedAt)
-  ) {
-    return false;
-  }
-  const continuation = accountFailoverMessageId(limited.id);
-  return projection.runs.some((candidate) => candidate.userMessageId === continuation);
+  if (limited === null) return false;
+  const continuationMessageId = accountFailoverMessageId(limited.id);
+  const continuation = projection.runs.find(
+    (candidate) => candidate.userMessageId === continuationMessageId,
+  );
+  return (
+    continuation !== undefined &&
+    DateTime.toEpochMillis(run.requestedAt) <= DateTime.toEpochMillis(continuation.requestedAt)
+  );
 }
 
 function followsThread(
@@ -957,6 +962,20 @@ function usageLimitHoldsQueue(
     usageLimitBlockedRun(projection.runs, projection.turnItems, latestSession?.lastError ?? null)
       ?.providerInstanceId === providerInstanceId
   );
+}
+
+/** The run that found the account used up, while its reported reset is still ahead. */
+function usedUpUntilReset(
+  projection: Pick<OrchestrationV2ThreadProjection, "runs" | "turnItems" | "providerSessions">,
+  providerInstanceId: ModelSelection["instanceId"],
+  now: DateTime.Utc,
+): OrchestrationV2Run | undefined {
+  if (!usageLimitHoldsQueue(projection, providerInstanceId)) return undefined;
+  const run = latestExecutedRun(projection.runs);
+  const resetAt = latestRootProviderFailure(run, projection.turnItems)?.resetAt;
+  return run !== null && resetAt != null && Date.parse(resetAt) > DateTime.toEpochMillis(now)
+    ? run
+    : undefined;
 }
 
 function latestStableRun(
@@ -6125,7 +6144,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       projection.thread.worktreePath === null
         ? latestRun
         : undefined;
-    const queueBehindRun = activeRun ?? worktreeMissingRun;
+    // A wake on an account used up until its reset waits behind the limited run, so the limit's
+    // continuation still resumes the thread and the wake follows it. Started now, the turn would
+    // end at once on the used-up account and replace the limited outcome.
+    const usedUpRun =
+      activeRun === undefined && automaticWake
+        ? usedUpUntilReset(projection, modelSelection.instanceId, yield* DateTime.now)
+        : undefined;
+    const queueBehindRun = activeRun ?? worktreeMissingRun ?? usedUpRun;
     const pendingMergeBackTransfers = pendingMergeBackTransfersForThread(projection);
     const startsOrQueuesRun =
       dispatchMode.type === "defer_start" ||
@@ -6536,8 +6562,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
           commandType: command.type,
-          cause:
-            "The previous provider is still running background agents or commands, and switching would end them. Wait for them to finish, or press Stop, then send the message again.",
+          cause: SWITCH_ENDS_BACKGROUND_WORK,
         });
       }
     }

@@ -51,20 +51,27 @@ export function formatResetTime(at: number, now: number, timeZone?: string): str
   }).format(at);
 }
 
-/** The line a thread shows when its turn moves, or stays because no other account is ready. */
+/**
+ * The line a thread shows when its turn moves, stays because moving would end the used-up
+ * account's background work, or stays because no other account is ready.
+ */
 export function accountMoveNotice(
   move: AccountMove,
   options: {
     readonly now: number;
     readonly label: (instanceId: ProviderInstanceId) => string;
     readonly formatTime?: (at: number, now: number) => string;
+    readonly waitsForBackgroundWork?: boolean;
   },
 ): string {
   const time = (at: number) => (options.formatTime ?? formatResetTime)(at, options.now);
   const from = options.label(move.from);
   if (move.type === "move") {
     const until = move.usedUpUntil === null ? "" : ` until ${time(move.usedUpUntil)}`;
-    return `Moved from ${from} to ${options.label(move.to)}: ${from}'s usage limit is reached${until}.`;
+    const to = options.label(move.to);
+    return options.waitsForBackgroundWork === true
+      ? `Stays on ${from} for now: moving to ${to} would end ${from}'s running background agents and commands. ${from}'s usage limit is reached${until}.`
+      : `Moved from ${from} to ${to}: ${from}'s usage limit is reached${until}.`;
   }
   return move.freesUp === null
     ? "No other account is ready."
@@ -74,6 +81,8 @@ export function accountMoveNotice(
 export interface AccountPlan {
   readonly move: AccountMove;
   readonly notice: string;
+  /** For a move refused because it would end background work on the used-up account. */
+  readonly waitingNotice: string;
 }
 
 export interface AccountFailoverPolicyShape {
@@ -122,7 +131,11 @@ export const layerPolicy = Layer.effect(
         const label = (instanceId: ProviderInstanceId) =>
           providers.find((provider) => provider.instanceId === instanceId)?.displayName ??
           instanceId;
-        return { move, notice: accountMoveNotice(move, { now, label }) };
+        return {
+          move,
+          notice: accountMoveNotice(move, { now, label }),
+          waitingNotice: accountMoveNotice(move, { now, label, waitsForBackgroundWork: true }),
+        };
       }),
     };
   }),
@@ -204,27 +217,44 @@ export class AccountFailoverReactor extends Context.Service<
   }
 >()("t3/orchestration-v2/AccountFailover/AccountFailoverReactor") {}
 
+// Switching accounts would end the used-up account's background work; the move waits for it.
+const endsBackgroundWork = (error: Orchestrator.OrchestratorV2Error) =>
+  error._tag === "OrchestratorDispatchError" &&
+  error.cause === Orchestrator.SWITCH_ENDS_BACKGROUND_WORK;
+
 const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const eventSink = yield* EventSink.EventSinkV2;
   const policy = yield* AccountFailoverPolicy;
 
-  // Runs for every run update; all but a failed run return at once.
+  // Runs for every run update and creation; all but a failed or a queued run return at once.
+  // A run queued behind the limited one is a wake, often from background work ending: that work
+  // may have held the move back, so the move is tried again.
   const handle: AccountFailoverReactor["Service"]["handle"] = Effect.fnUntraced(
     function* (event) {
-      if (policy === null || event.type !== "run.updated" || event.payload.status !== "failed") {
-        return;
-      }
+      if (policy === null) return;
+      const failedRunId =
+        event.type === "run.updated" && event.payload.status === "failed"
+          ? event.payload.id
+          : undefined;
+      const queuedRunId =
+        event.type === "run.created" && event.payload.status === "queued"
+          ? event.payload.id
+          : undefined;
+      if (failedRunId === undefined && queuedRunId === undefined) return;
       const projection = yield* orchestrator.getThreadRecords(
         event.threadId,
         ["runs", "runtimeRequests", "turnItems"],
-        { turnItemTypes: ["error"], turnItemRunIds: [event.payload.id] },
+        {
+          turnItemTypes: ["error"],
+          ...(failedRunId === undefined ? {} : { turnItemRunIds: [failedRunId] }),
+        },
       );
       const run = latestExecutedRun(projection.runs);
       const failure = latestRootProviderFailure(run, projection.turnItems);
       if (
         run === null ||
-        run.id !== event.payload.id ||
+        (failedRunId !== undefined && run.id !== failedRunId) ||
         failure?.class !== "usage_limit" ||
         projection.thread.deletedAt !== null ||
         !threadMoves(projection.thread) ||
@@ -240,26 +270,43 @@ const make = Effect.gen(function* () {
         selection: run.modelSelection,
         usedUpUntil: Number.isFinite(resetAt) ? resetAt : null,
       });
-      if (plan === null) return;
-      if (plan.move.type === "move") {
-        yield* orchestrator.dispatch({
-          type: "message.dispatch",
-          commandId: CommandId.make(`server:account-failover:${run.id}`),
+      if (plan === null) {
+        yield* Effect.logInfo("no account to move a used-up thread to", {
           threadId: event.threadId,
-          messageId: accountFailoverMessageId(run.id),
-          text: "Continue where you left off.",
-          attachments: [],
-          modelSelection: { ...run.modelSelection, instanceId: plan.move.to },
-          manualContinuationOfRunId: run.id,
-          dispatchMode: { type: "start_immediately" },
-          createdBy: "agent",
-          creationSource: "server",
+          runId: run.id,
+          instanceId: run.providerInstanceId,
         });
-        // As Resume does after a limit: messages waiting behind the failed turn follow it.
-        if (projection.runs.some((candidate) => candidate.status === "queued")) {
+        return;
+      }
+      // A refused attempt's command id stays refused, so each retry needs its own.
+      const attempt = queuedRunId === undefined ? run.id : `${run.id}:${queuedRunId}`;
+      let notice = plan.notice;
+      if (plan.move.type === "move") {
+        const moved = yield* orchestrator
+          .dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make(`server:account-failover:${attempt}`),
+            threadId: event.threadId,
+            messageId: accountFailoverMessageId(run.id),
+            text: "Continue where you left off.",
+            attachments: [],
+            modelSelection: { ...run.modelSelection, instanceId: plan.move.to },
+            manualContinuationOfRunId: run.id,
+            dispatchMode: { type: "start_immediately" },
+            createdBy: "agent",
+            creationSource: "server",
+          })
+          .pipe(
+            Effect.as(true),
+            Effect.catchIf(endsBackgroundWork, () => Effect.succeed(false)),
+          );
+        if (!moved) {
+          notice = plan.waitingNotice;
+        } else if (projection.runs.some((candidate) => candidate.status === "queued")) {
+          // As Resume does after a limit: messages waiting behind the failed turn follow it.
           yield* orchestrator.dispatch({
             type: "queue.resume",
-            commandId: CommandId.make(`server:account-failover:queue:${run.id}`),
+            commandId: CommandId.make(`server:account-failover:queue:${attempt}`),
             threadId: event.threadId,
           });
         }
@@ -268,7 +315,7 @@ const make = Effect.gen(function* () {
         threadId: event.threadId,
         runId: run.id,
         key: NOTICE_KEY,
-        message: plan.notice,
+        message: notice,
       });
     },
     (effect, event) =>
@@ -289,7 +336,10 @@ const make = Effect.gen(function* () {
           .latestSequence()
           .pipe(
             Effect.map((latest) =>
-              eventSink.stream({ afterSequence: latest, eventType: "run.updated" }),
+              Stream.merge(
+                eventSink.stream({ afterSequence: latest, eventType: "run.updated" }),
+                eventSink.stream({ afterSequence: latest, eventType: "run.created" }),
+              ),
             ),
           ),
       ).pipe(

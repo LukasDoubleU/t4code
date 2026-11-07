@@ -5332,8 +5332,31 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           return;
         }
         yield* orchestrator.resumeQueuedRuns;
+        // A background task ending before the reset wakes the thread; the used-up account
+        // would end that turn at once and leave nothing for auto-resume to continue.
+        const wakeMessageId = MessageId.make(`${threadId}:wake`);
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          createdBy: "agent",
+          creationSource: "provider",
+          commandId: CommandId.make(`${threadId}:wake`),
+          threadId,
+          messageId: wakeMessageId,
+          text: "Background task completed.",
+          notification: {
+            source: { kind: "background_task" },
+            outcome: "completed",
+            summary: "Subagent finished",
+          },
+          attachments: [],
+          dispatchMode: { type: "queue_after_active" },
+        });
         const after = yield* orchestrator.getThreadProjection(threadId);
         assert.equal(after.runs.find((run) => run.id === queuedRun.id)?.status, "queued");
+        assert.equal(
+          after.runs.find((run) => run.userMessageId === wakeMessageId)?.status,
+          "queued",
+        );
         assert.isFalse(after.turnItems.some((item) => item.runId === queuedRun.id));
         const shell = (yield* orchestrator.getShellSnapshot()).threads.find(
           (thread) => thread.id === threadId,
@@ -5341,6 +5364,16 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         assert.equal(shell?.latestRunId, activeRun.id);
         assert.equal(shell?.status, "failed");
         assert.equal(shell?.lastErrorClass, "usage_limit");
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        const candidates = yield* projections.getLimitRecoveryCandidates({
+          now,
+          autoResume: true,
+          snooze: false,
+        });
+        assert.equal(
+          candidates.find((candidate) => candidate.id === threadId)?.latestRunId,
+          activeRun.id,
+        );
       }),
   );
 

@@ -160,6 +160,9 @@ were waiting behind that turn follow it. A turn about to start on an account who
 shows a used-up window starts on the recommended account instead. The thread stays on its new
 account when the old one resets, and nothing moves threads for any other reason. If no other
 account is ready, the turn stops as before and the thread names the account that frees up first.
+If the used-up account still runs background agents or commands, moving would end them, so the
+thread stays and says so. It moves when a finished background task wakes it and nothing else is
+still running; otherwise it waits for the reset like any limited thread.
 This also covers turns that agents and scheduled tasks start, and each environment uses its own
 accounts. Delegated tasks stop as before, so the agent that started one can choose how to go on.
 To keep a thread on its account, open its menu, choose **At the usage limit**, and pick **Stay on

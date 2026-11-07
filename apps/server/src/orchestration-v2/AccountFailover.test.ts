@@ -24,7 +24,9 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as ServerConfig from "../config.ts";
@@ -172,7 +174,7 @@ const layerRuntime = (sessionUsed: number) =>
     Layer.provideMerge(
       Layer.mergeAll(RuntimeLayer.layer, RuntimeLayer.layerEventSink, ProjectStore.layer),
     ),
-    Layer.provide(AccountFailover.layerPolicy),
+    Layer.provideMerge(AccountFailover.layerPolicy),
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ProviderRegistry.ProviderRegistry)({
@@ -410,6 +412,121 @@ it.layer(layerRuntime(10))("a turn that hits its account's usage limit", (it) =>
             (stored) =>
               stored.event.type === "run.updated" &&
               stored.event.runId === queued.id &&
+              stored.event.payload.status !== "queued",
+          ),
+          Stream.runHead,
+        );
+      assert.equal(Option.getOrThrow(started).event.providerInstanceId, alternateInstanceId);
+    }),
+  );
+
+  it.effect("waits for the used-up account's background work, then moves on its wake", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const backgroundWork = yield* Ref.make(true);
+      // The orchestrator refuses a switch that would end the replaced session's background work.
+      const reactor = yield* AccountFailover.AccountFailoverReactor.pipe(
+        Effect.provide(
+          Layer.fresh(AccountFailover.layerReactor).pipe(
+            Layer.provide(
+              Layer.succeed(Orchestrator.OrchestratorV2, {
+                ...orchestrator,
+                dispatch: (command) =>
+                  Effect.flatMap(Ref.get(backgroundWork), (running) =>
+                    running &&
+                    command.type === "message.dispatch" &&
+                    command.manualContinuationOfRunId !== undefined
+                      ? Effect.fail(
+                          new Orchestrator.OrchestratorDispatchError({
+                            commandId: command.commandId,
+                            commandType: command.type,
+                            cause: Orchestrator.SWITCH_ENDS_BACKGROUND_WORK,
+                          }),
+                        )
+                      : orchestrator.dispatch(command),
+                  ),
+              }),
+            ),
+          ),
+        ),
+      );
+      const threadId = yield* createThread("background-work");
+      yield* sendMessage(threadId, "Start work.", "defer_start");
+      const [source] = (yield* orchestrator.getThreadProjection(threadId)).runs as [
+        OrchestrationV2Run,
+      ];
+      const until = AccountFailover.formatResetTime(HOUR, 0);
+
+      yield* reactor.handle(yield* failOnUsageLimit(source));
+
+      assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 1);
+      assert.deepStrictEqual(yield* notices(threadId), [
+        {
+          runId: source.id,
+          message: `Stays on c2 for now: moving to c5 would end c2's running background agents and commands. c2's usage limit is reached until ${until}.`,
+        },
+      ]);
+
+      // The work ends, and its wake waits behind the limit until the move.
+      yield* TestClock.adjust("1 second");
+      yield* Ref.set(backgroundWork, false);
+      const wake = yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make(`${threadId}:wake`),
+        threadId,
+        messageId: MessageId.make(`${threadId}:wake`),
+        text: "Background task completed.",
+        notification: {
+          source: { kind: "background_task" },
+          outcome: "completed",
+          summary: "Subagent finished",
+        },
+        attachments: [],
+        dispatchMode: { type: "queue_after_active" },
+        createdBy: "agent",
+        creationSource: "provider",
+      });
+      const queued = wake.storedEvents.find((stored) => stored.event.type === "run.created")!;
+      assert.isTrue(
+        queued.event.type === "run.created" && queued.event.payload.status === "queued",
+      );
+      yield* reactor.handle(queued.event);
+
+      const moved = yield* orchestrator.getThreadProjection(threadId);
+      const continuation = moved.runs.find(
+        (run) => run.status !== "queued" && run.id !== source.id,
+      )!;
+      assert.equal(continuation.providerInstanceId, alternateInstanceId);
+      assert.deepStrictEqual(yield* notices(threadId), [
+        {
+          runId: source.id,
+          message: `Moved from c2 to c5: c2's usage limit is reached until ${until}.`,
+        },
+      ]);
+
+      // The wake follows the thread to the new account instead of taking it back.
+      const events = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      yield* events.write({
+        events: [
+          {
+            id: EventId.make(`${continuation.id}:completed`),
+            type: "run.updated",
+            threadId,
+            runId: continuation.id,
+            occurredAt: now,
+            payload: { ...continuation, status: "completed", completedAt: now },
+          },
+        ],
+      });
+      const started = yield* orchestrator
+        .streamStoredEventsFrom({ threadId, eventType: "run.updated" })
+        .pipe(
+          Stream.filter(
+            (stored) =>
+              stored.event.type === "run.updated" &&
+              queued.event.type === "run.created" &&
+              stored.event.runId === queued.event.payload.id &&
               stored.event.payload.status !== "queued",
           ),
           Stream.runHead,

@@ -34,6 +34,7 @@ import {
 import { isNativeMaintenanceCommand } from "./CommandPolicy.ts";
 import * as EventSink from "./EventSink.ts";
 import * as Orchestrator from "./Orchestrator.ts";
+import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 
 type MessageDispatch = Extract<OrchestrationV2ServerCommand, { readonly type: "message.dispatch" }>;
 
@@ -91,6 +92,7 @@ export interface AccountFailoverPolicyShape {
     readonly selection: ModelSelection;
     /** From the turn's usage-limit failure; omitted, the account's reading decides. */
     readonly usedUpUntil?: number | null;
+    readonly busyInstances: ReadonlySet<ProviderInstanceId>;
   }) => Effect.Effect<AccountPlan | null>;
 }
 
@@ -126,6 +128,7 @@ export const layerPolicy = Layer.effect(
           usable: (instanceId) =>
             resolveProjectProviderInstanceEnabled(settings, input.projectId, instanceId),
           ...(input.usedUpUntil === undefined ? {} : { usedUpUntil: input.usedUpUntil }),
+          busyInstances: input.busyInstances,
         });
         if (move === null) return null;
         const label = (instanceId: ProviderInstanceId) =>
@@ -182,6 +185,7 @@ export const moveOffUsedUpAccount = Effect.fn("AccountFailover.moveOffUsedUpAcco
   function* (
     policy: AccountFailoverPolicyShape | null,
     orchestrator: Orchestrator.OrchestratorV2["Service"],
+    sessions: ProviderSessionManager.ProviderSessionManagerV2["Service"],
     command: OrchestrationV2ServerCommand,
   ) {
     const unchanged: MovedCommand = { command, notice: null };
@@ -191,14 +195,18 @@ export const moveOffUsedUpAccount = Effect.fn("AccountFailover.moveOffUsedUpAcco
     const shell = yield* orchestrator.getThreadShell(command.threadId);
     if (shell === null || shell.activeRunId !== null || !threadMoves(shell)) return unchanged;
     const selection = command.modelSelection ?? shell.modelSelection;
-    const plan = yield* policy.plan({ projectId: shell.projectId, selection });
+    const plan = yield* policy.plan({
+      projectId: shell.projectId,
+      selection,
+      busyInstances: yield* sessions.busyInstances,
+    });
     if (plan?.move.type !== "move") return unchanged;
     return {
       command: { ...command, modelSelection: { ...selection, instanceId: plan.move.to } },
       notice: plan.notice,
     } satisfies MovedCommand;
   },
-  (effect, _policy, _orchestrator, command) =>
+  (effect, _policy, _orchestrator, _sessions, command) =>
     effect.pipe(
       Effect.catchCause((cause) =>
         Effect.logWarning("checking the account of a new turn failed", {
@@ -225,6 +233,7 @@ const endsBackgroundWork = (error: Orchestrator.OrchestratorV2Error) =>
 const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const eventSink = yield* EventSink.EventSinkV2;
+  const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
   const policy = yield* AccountFailoverPolicy;
 
   // Runs for every run update and creation; all but a failed or a queued run return at once.
@@ -269,6 +278,7 @@ const make = Effect.gen(function* () {
         projectId: projection.thread.projectId,
         selection: run.modelSelection,
         usedUpUntil: Number.isFinite(resetAt) ? resetAt : null,
+        busyInstances: yield* sessions.busyInstances,
       });
       if (plan === null) {
         yield* Effect.logInfo("no account to move a used-up thread to", {

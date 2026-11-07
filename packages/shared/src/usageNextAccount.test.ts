@@ -381,6 +381,69 @@ describe("rankEnvironmentInstances", () => {
     });
   });
 
+  it("ranks a ready account carrying an ultracode session after the idle ready ones", () => {
+    const busy = ProviderInstanceId.make("busy");
+    const accounts = [
+      // Its other instance runs the ultracode session; the account is busy all the same.
+      account("urgent", ready, { instances: [instance(here, "busy"), instance(here, "busy-2")] }),
+      account("roomy", [session(10, 2), weekly(10, 150)], { instances: [instance(here, "idle")] }),
+      account("spent", [session(90, 2), weekly(40, 24)], { instances: [instance(here, "spent")] }),
+    ];
+    const places = (busyInstances?: readonly string[]) =>
+      [
+        ...rankEnvironmentInstances(
+          accounts,
+          here,
+          ["busy", "idle", "spent"].map((id) => ProviderInstanceId.make(id)),
+          {
+            now,
+            ...(busyInstances === undefined
+              ? {}
+              : { busyInstances: new Set(busyInstances.map((id) => ProviderInstanceId.make(id))) }),
+          },
+        ),
+      ].map(([id, rank]) => [id, rank.place, rank.recommended] as const);
+
+    expect(places()).toEqual([
+      ["busy", 1, true],
+      ["idle", 2, false],
+      ["spent", 3, false],
+    ]);
+    expect(places([])).toEqual(places());
+    expect(places(["busy-2"])).toEqual([
+      ["idle", 1, true],
+      ["busy", 2, false],
+      ["spent", 3, false],
+    ]);
+    const ranks = rankEnvironmentInstances(accounts, here, [busy], {
+      now,
+      busyInstances: new Set([busy]),
+    });
+    expect(reason(ranks.get(busy)?.candidate)).toBe(
+      "busy: ultracode session · Weekly: 60% left, resets in 1d 0h · 60%/day at risk",
+    );
+  });
+
+  it("still recommends a busy account when it is the only one ready", () => {
+    const busy = ProviderInstanceId.make("busy");
+    const ranks = rankEnvironmentInstances(
+      [
+        account("urgent", ready, { instances: [instance(here, "busy")] }),
+        account("spent", [session(90, 2), weekly(40, 24)], {
+          instances: [instance(here, "spent")],
+        }),
+      ],
+      here,
+      [busy, ProviderInstanceId.make("spent")],
+      { now, busyInstances: new Set([busy]) },
+    );
+    expect(ranks.get(busy)).toMatchObject({
+      place: 1,
+      recommended: true,
+      candidate: { status: { kind: "ready", busy: true } },
+    });
+  });
+
   it("recommends nothing when no account is ready", () => {
     const ranks = rankEnvironmentInstances(
       [account("spent", [session(90, 2), weekly(40, 24)], { instances: [instance(here, "c1")] })],

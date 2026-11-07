@@ -26,6 +26,8 @@ interface AccountReadings {
   readonly environmentId: EnvironmentId;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly usageLimitSources: ReadonlyArray<UsageLimitSourceSnapshot>;
+  /** Instances an ultracode session is at work on: their accounts rank after idle ready ones. */
+  readonly busyInstances?: ReadonlySet<ProviderInstanceId> | undefined;
 }
 
 function environmentAccounts(input: AccountReadings) {
@@ -47,16 +49,16 @@ function environmentAccounts(input: AccountReadings) {
  * readings it already holds. Agents choose before any client's session-room or model choice
  * applies, so the defaults rank: 25% session room, every model's allowance counted.
  */
-function rankProviderInstances(input: {
-  readonly environmentId: EnvironmentId;
-  readonly providers: ReadonlyArray<ServerProvider>;
-  readonly eligible: Iterable<ProviderInstanceId>;
-  readonly usageLimitSources: ReadonlyArray<UsageLimitSourceSnapshot>;
-  readonly now: number;
-}): ReadonlyMap<ProviderInstanceId, NextAccount> {
+function rankProviderInstances(
+  input: AccountReadings & {
+    readonly eligible: Iterable<ProviderInstanceId>;
+    readonly now: number;
+  },
+): ReadonlyMap<ProviderInstanceId, NextAccount> {
   const accounts = environmentAccounts(input);
   const ranks = rankEnvironmentInstances(accounts, input.environmentId, input.eligible, {
     now: input.now,
+    busyInstances: input.busyInstances,
   });
   return new Map(
     [...ranks].map(([instanceId, rank]) => [
@@ -82,6 +84,7 @@ export const loadNextAccounts = Effect.fn("NextAccountInstances.load")(function*
   providers: ReadonlyArray<ServerProvider>,
   eligible: Iterable<ProviderInstanceId>,
   usageLimitSources: Option.Option<UsageLimitSources.UsageLimitSources["Service"]>,
+  busyInstances: ReadonlySet<ProviderInstanceId>,
 ) {
   return rankProviderInstances({
     environmentId,
@@ -90,6 +93,7 @@ export const loadNextAccounts = Effect.fn("NextAccountInstances.load")(function*
     usageLimitSources: Option.isSome(usageLimitSources)
       ? yield* usageLimitSources.value.current
       : [],
+    busyInstances,
     now: yield* Clock.currentTimeMillis,
   });
 });
@@ -162,7 +166,7 @@ export function planAccountMove(
     accounts.filter((account) => account !== current),
     input.environmentId,
     candidates,
-    { now: input.now, model: input.selection.model },
+    { now: input.now, model: input.selection.model, busyInstances: input.busyInstances },
   );
   const ranked = candidates.flatMap((instanceId) => {
     const rank = ranks.get(instanceId);

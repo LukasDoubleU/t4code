@@ -402,7 +402,13 @@ export const layerProduction = Layer.mergeAll(
     }),
   ).pipe(
     Layer.provide(AccountFailover.layerReactor),
-    Layer.provide(Layer.merge(layerOrchestratorProvided, layerEventSink)),
+    Layer.provide(
+      Layer.mergeAll(
+        layerOrchestratorProvided,
+        layerEventSink,
+        layerProviderSessionManagerProvided,
+      ),
+    ),
   ),
   layerAgentSessionImporterProvided,
   EffectOutbox.layerPruneWorker.pipe(Layer.provide(EffectOutbox.layer)),

@@ -152,6 +152,12 @@ API key, stays as it is. Turn off **Start new threads on the recommended account
 next** to keep your usual default; like the session room, the choice is remembered per device.
 Agents see the same ranking at the default 25% session room:
 `orchestrator_capabilities` gives each account its place, whether it is recommended, and why.
+There, and for the moves at the usage limit below, an account with an ultracode session at work
+(a turn at effort ultracode, or background agents and commands it left running) ranks after the
+ready accounts that are idle, with the reason "busy: ultracode session". Such a session can use up
+its account within one turn. Busy only lowers the place: with no idle account ready, the busy one
+is still recommended. **Use next** in **Usage → Limits** and new threads do not take this into
+account.
 
 A thread that already exists keeps its account until the account runs out. When a turn stops on
 the account's usage limit, T3 continues it once on the account **Use next** recommends, ranked for

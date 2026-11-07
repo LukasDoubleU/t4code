@@ -86,6 +86,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
+import * as ProviderSessionManager from "../orchestration-v2/ProviderSessionManager.ts";
 import {
   subagentResultForRun,
   delegatedTaskProgress,
@@ -1082,6 +1083,10 @@ const make = Effect.gen(function* () {
   // Optional like the routing of tools to linked environments: without it, listings stay here.
   const forwarding = yield* Effect.serviceOption(PeerForwarding.PeerForwarding);
   const usageLimitSources = yield* Effect.serviceOption(UsageLimitSources.UsageLimitSources);
+  // Without live sessions, as in most tests, no account ranks as busy.
+  const providerSessions = yield* Effect.serviceOption(
+    ProviderSessionManager.ProviderSessionManagerV2,
+  );
 
   const requireProject = (projectId: ProjectId) =>
     projects.getById(projectId).pipe(
@@ -2335,6 +2340,7 @@ const make = Effect.gen(function* () {
         providers,
         eligible,
         usageLimitSources,
+        Option.isSome(providerSessions) ? yield* providerSessions.value.busyInstances : new Set(),
       );
       const inherited = parent?.thread.modelSelection;
       const searchTerms = input.search?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];

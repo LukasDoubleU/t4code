@@ -3,6 +3,12 @@
   "iconPath": "assets/prod/t4/icon-32.svg",
   "scripts": [
     {
+      "name": "Dev",
+      "command": "vp run dev",
+      "icon": "play",
+      "stopOnSettle": true
+    },
+    {
       "name": "Setup Worktree",
       "command": "node scripts/setup-worktree.ts",
       "icon": "configure",

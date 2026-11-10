@@ -117,15 +117,8 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         continuedFrom: undefined,
         continuedIn: undefined,
         attention: null,
-        // Side chats share the parent's worktree, so they start supervised. They live in the
-        // parent's view, so none is a topic of the parent's expert.
-        ...(input.sideChat
-          ? {
-              runtimeMode: "approval-required" as const,
-              launchedBy: undefined,
-              memoryUnchangedTurns: undefined,
-            }
-          : {}),
+        // Side chats live in the parent's view, so none is a topic of the parent's expert.
+        ...(input.sideChat ? { launchedBy: undefined, memoryUnchangedTurns: undefined } : {}),
         activeProviderThreadId: null,
         lineage: {
           parentThreadId: input.sourceProjection.thread.id,

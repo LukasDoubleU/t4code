@@ -275,6 +275,9 @@ vi.mock("./copyTextWithHaptic", () => ({}));
 vi.mock("./openExternalUrl", () => ({}));
 vi.mock("./attachmentDownload", () => ({}));
 vi.mock("./uuid", () => ({}));
+vi.mock("../state/presentation", () => ({
+  useEnvironmentPresentation: () => ({ isReady: true, presentation: null }),
+}));
 vi.mock("../features/threads/thread-context-divider", () => ({}));
 vi.mock("../features/threads/thread-handoff-row", () => ({ ThreadModelSwitchDivider: () => null }));
 vi.mock("../features/threads/ThreadGuestShareBar", () => ({ useThreadGuestShare: () => null }));

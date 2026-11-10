@@ -1276,6 +1276,7 @@ it.effect("hides tools for links and refuses another environment while the beta 
         );
       const elsewhere = EnvironmentId.make("environment-elsewhere");
 
+      yield* settings.updateSettings({ linkedEnvironmentsEnabled: false });
       expect(yield* listed()).toEqual(["where"]);
       expect(yield* ranIn(elsewhere)).toMatchObject({
         isError: true,

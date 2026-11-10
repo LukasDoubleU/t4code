@@ -52,42 +52,7 @@ const jumpToMyLastMessage = (header: ThreadCatchUpHeader) => () =>
 const catchMeUp = (header: ThreadCatchUpHeader) => () =>
   requestThreadCatchUpAction("catch-up", header.threadKey);
 
-/** The iOS liquid glass header item. */
-export function threadCatchUpHeaderItem(header: ThreadCatchUpHeader) {
-  return {
-    accessibilityLabel: "Catch up",
-    icon: { name: "doc.text", type: "sfSymbol" as const },
-    identifier: "thread-right-catch-up",
-    label: "Catch up",
-    menu: {
-      items: [
-        ...(header.catchUpAvailable
-          ? [
-              {
-                description: "A short brief on what happened",
-                icon: { name: "doc.text", type: "sfSymbol" as const },
-                label: "Catch me up",
-                onPress: catchMeUp(header),
-                type: "action" as const,
-              },
-            ]
-          : []),
-        {
-          icon: { name: "arrow.turn.left.up", type: "sfSymbol" as const },
-          label: "Jump to my last message",
-          onPress: jumpToMyLastMessage(header),
-          type: "action" as const,
-        },
-      ],
-      title: "Catch up",
-    },
-    sharesBackground: true,
-    type: "menu" as const,
-    variant: "plain" as const,
-  };
-}
-
-/** The same menu in Android's app bar and in iOS headers without liquid glass. */
+/** The thread bar's Catch up menu. */
 export function threadCatchUpAppBarMenu(header: ThreadCatchUpHeader): AppBarMenu {
   return {
     title: "Catch up",

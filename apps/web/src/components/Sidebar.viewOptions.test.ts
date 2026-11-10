@@ -86,14 +86,10 @@ describe("selectSidebarViewOptions", () => {
     expect(selectSidebarViewOptions(settings())).toEqual({ sort: "manual", grouping: "none" });
   });
 
-  it("shows project folders while the boring sidebar switch or the legacy opt-in is on", () => {
+  it("shows project folders while the boring sidebar switch is on", () => {
     for (const sidebarThreadGrouping of ["none", "machine", "status"] as const) {
       expect(
         selectSidebarViewOptions(settings({ boringSidebarEnabled: true, sidebarThreadGrouping }))
-          .grouping,
-      ).toBe("project");
-      expect(
-        selectSidebarViewOptions(settings({ legacySidebarEnabled: true, sidebarThreadGrouping }))
           .grouping,
       ).toBe("project");
     }
@@ -115,7 +111,7 @@ describe("selectSidebarViewOptions", () => {
     (sort, grouping) => {
       const starts = [
         settings(),
-        settings({ legacySidebarEnabled: true, sidebarSortByStatus: true }),
+        settings({ sidebarSortByStatus: true }),
         settings({
           boringSidebarEnabled: true,
           sidebarSortByLastMessage: true,
@@ -140,7 +136,6 @@ describe("selectSidebarViewOptions", () => {
   it("writes project folders and the last-message sort to the settings they already had", () => {
     expect(sidebarGroupingPatch("project")).toEqual({
       boringSidebarEnabled: true,
-      legacySidebarEnabled: false,
       sidebarThreadGrouping: "none",
     });
     expect(sidebarGroupingPatch("machine")).toMatchObject({

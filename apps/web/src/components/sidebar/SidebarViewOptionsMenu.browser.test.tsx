@@ -65,7 +65,6 @@ it("leaves the order to the Working section until threads are grouped, and saves
   expect(persistence.setClientSettings).toHaveBeenLastCalledWith(
     expect.objectContaining({
       boringSidebarEnabled: true,
-      legacySidebarEnabled: false,
       sidebarThreadGrouping: "none",
       sidebarSortByStatus: true,
       sidebarSortByLastMessage: false,

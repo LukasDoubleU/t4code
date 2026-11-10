@@ -28,7 +28,6 @@ interface SidebarViewOptions {
 type SidebarViewOptionSettings = Pick<
   ClientSettings,
   | "boringSidebarEnabled"
-  | "legacySidebarEnabled"
   | "sidebarSortByLastMessage"
   | "sidebarSortByStatus"
   | "sidebarThreadGrouping"
@@ -46,10 +45,7 @@ export function selectSidebarViewOptions(settings: SidebarViewOptionSettings): S
       : settings.sidebarSortByLastMessage
         ? "last_message"
         : "manual",
-    grouping:
-      settings.boringSidebarEnabled || settings.legacySidebarEnabled
-        ? "project"
-        : settings.sidebarThreadGrouping,
+    grouping: settings.boringSidebarEnabled ? "project" : settings.sidebarThreadGrouping,
   };
 }
 
@@ -61,10 +57,8 @@ export function sidebarSortPatch(sort: SidebarThreadSort): ClientSettingsPatch {
 }
 
 export function sidebarGroupingPatch(grouping: SidebarGrouping): ClientSettingsPatch {
-  // Like the Beta switch, clear the legacy opt-in that also turns project folders on.
   return {
     boringSidebarEnabled: grouping === "project",
-    legacySidebarEnabled: false,
     sidebarThreadGrouping: grouping === "project" ? "none" : grouping,
   };
 }

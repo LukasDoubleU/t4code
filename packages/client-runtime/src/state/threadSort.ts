@@ -27,7 +27,12 @@ export function resolveSettledThreadTimestamp(thread: SettledThreadTimestampInpu
   if (thread.settledAt != null && toSortableTimestamp(thread.settledAt) !== null) {
     return thread.settledAt;
   }
+  return resolveThreadActivityTimestamp(thread);
+}
 
+export function resolveThreadActivityTimestamp(
+  thread: Pick<EnvironmentThreadShell, "latestUserMessageAt" | "latestRun" | "updatedAt">,
+): string | null {
   let latest: string | null = null;
   let latestMs = Number.NEGATIVE_INFINITY;
   for (const candidate of [
@@ -331,7 +336,7 @@ export function sortActiveThreadsByOrderKey<
 }
 
 /** Message sorting ignores arrangement keys without changing them, so switching
- * back restores the configured order. Match the active row's age label. */
+ * back restores the configured order. It orders by the user's latest message. */
 export function sortActiveThreads<
   T extends {
     readonly id: string;

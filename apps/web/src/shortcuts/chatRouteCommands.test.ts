@@ -70,7 +70,7 @@ describe("new thread commands", () => {
       expect(startLocal).toHaveBeenCalledOnce();
       expect(startLocal.mock.calls[0]![0].defaultProjectRef).toEqual({
         environmentId: "local",
-        projectId: scenario.count === 1 ? "active" : "idle",
+        projectId: "idle",
       });
     }
   });

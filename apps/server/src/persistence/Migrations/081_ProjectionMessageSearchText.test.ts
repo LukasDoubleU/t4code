@@ -38,16 +38,18 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* runMigrations({ toMigrationInclusive: 80 });
-        const insertMessage = (messageId: string, text: unknown) => sql`
+        const insertMessage = (messageId: string, text: unknown, createdBy?: string) => sql`
           INSERT INTO orchestration_v2_projection_messages (
             message_id, thread_id, role, streaming, created_at, updated_at, payload_json
           ) VALUES (
             ${messageId}, 'thread:quote', 'user', 0, ${createdAt}, ${createdAt},
-            ${JSON.stringify({ text })}
+            ${JSON.stringify({ text, createdBy })}
           )
         `;
         yield* insertMessage("quoted", `${quote} quiet silver lantern`);
         yield* insertMessage("plain", "quiet silver lantern");
+        yield* insertMessage("agent-quoted", `${quote} amber harbor lantern`, "agent");
+        yield* insertMessage("agent-plain", "amber harbor lantern", "agent");
         yield* insertMessage("invalid", "[Assistant quote](t3-citation://v1/not-a-citation)");
         yield* insertMessage("unreadable", 20261001);
         yield* insertMessage(
@@ -80,6 +82,7 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))(
         const searchText = new Map(rows.map((row) => [row.message_id, row.search_text]));
         assert.equal(searchText.get("quoted"), `${readable} quiet silver lantern`);
         assert.isNull(searchText.get("plain"));
+        assert.equal(searchText.get("agent-quoted"), `${readable} amber harbor lantern`);
         assert.isNull(searchText.get("invalid"));
         assert.isNull(searchText.get("unreadable"));
         assert.equal(searchText.get("page-000"), readable);
@@ -89,7 +92,12 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))(
         assert.deepEqual(yield* indexed(sql, '"résumé"'), ["accented"]);
         assert.deepEqual(yield* indexed(sql, `"kittiwake's"`), ["accented"]);
         assert.deepEqual(yield* indexed(sql, '"beacon01"'), []);
-        assert.lengthOf(yield* indexed(sql, '"what are you talking about"'), 502);
+        assert.lengthOf(yield* indexed(sql, '"what are you talking about"'), 503);
+        // User-role messages agents wrote stay indexed, re-indexed as they read where that differs.
+        assert.sameMembers(yield* indexed(sql, '"amber harbor lantern"'), [
+          "agent-quoted",
+          "agent-plain",
+        ]);
       }),
     );
   },

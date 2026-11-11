@@ -110,6 +110,7 @@ export interface ThreadCatchUpGenerationInput {
   /** Requests open on the user; the brief's "Needs you" must not leave them out. */
   waitingOnUser: ReadonlyArray<string>;
   modelSelection: ModelSelection;
+  projectId?: ProjectId | null | undefined;
 }
 
 export interface ThreadCatchUpGenerationResult {

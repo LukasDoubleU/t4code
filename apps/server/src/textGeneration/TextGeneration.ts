@@ -191,8 +191,11 @@ export const make = Effect.gen(function* () {
       );
     }),
     generateThreadCatchUp: Effect.fn("TextGeneration.generateThreadCatchUp")(function (input) {
-      return generate("generateThreadCatchUp", input.modelSelection, (service, modelSelection) =>
-        service.generateThreadCatchUp({ ...input, modelSelection }),
+      return generate(
+        "generateThreadCatchUp",
+        input.modelSelection,
+        input.projectId,
+        (service, modelSelection) => service.generateThreadCatchUp({ ...input, modelSelection }),
       );
     }),
     generateTranscriptionPostProcessing: Effect.fn(

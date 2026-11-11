@@ -2584,8 +2584,11 @@ function OpenCommandPaletteDialog(props: {
   const initialHighlightedItemValue = currentView?.initialHighlightedItemValue;
   const scrollToInitialHighlight = useEffectEvent((itemValue: string) => {
     if (itemValue !== highlightedItemValue) return;
-    const rowIndex = resultRows.rowIndexByItemIndex[resultRows.itemValues.indexOf(itemValue)];
-    if (rowIndex !== undefined) scrollCommandPaletteRowIntoView(resultListRef.current, rowIndex);
+    const itemIndex = resultRows.itemValues.indexOf(itemValue);
+    const rowIndex = resultRows.rowIndexByItemIndex[itemIndex];
+    if (rowIndex !== undefined) {
+      scrollCommandPaletteRowIntoView(resultListRef.current, rowIndex, itemIndex === 0);
+    }
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the palette list, a DOM node, to the view's initial highlight once it has laid out.
   useEffect(() => {

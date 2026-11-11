@@ -174,7 +174,7 @@ function selectOpenCodeRuntimeTextGeneration(
         v2: v2.generateReviewGuide(input),
       }),
     generateThreadCatchUp: (input) =>
-      byOpenCodeRuntime(probe.get, {
+      byOpenCodeRuntime(resolve, {
         v1: v1.generateThreadCatchUp(input),
         v2: v2.generateThreadCatchUp(input),
       }),

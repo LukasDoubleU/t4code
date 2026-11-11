@@ -918,6 +918,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       current === nextCurrentIndex ? current : nextCurrentIndex,
     );
     // The exact bottom, not the follow re-arm zone: Next can still scroll inside that zone.
+    const viewport = listRef.current?.getScrollableNode() ?? undefined;
     setMinimapAtEnd(
       viewport !== undefined &&
         viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1,

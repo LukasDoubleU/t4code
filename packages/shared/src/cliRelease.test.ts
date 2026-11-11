@@ -79,6 +79,17 @@ describe("cliRelease", () => {
       { tag_name: "t4-v0.1.2-t4.8" },
     ];
     expect(newestCliReleaseVersion(releases, "stable")).toBe("0.1.2-t4.13");
+    // The patch numbers too, once the base reaches a two-digit patch.
+    expect(
+      newestCliReleaseVersion(
+        [
+          { tag_name: "t4-v0.1.9-t4.12" },
+          { tag_name: "t4-v0.1.10-t4.1" },
+          { tag_name: "t4-v0.1.9-t4.4" },
+        ],
+        "stable",
+      ),
+    ).toBe("0.1.10-t4.1");
   });
 
   it("pages through the fork's release index at the largest page GitHub allows", () => {

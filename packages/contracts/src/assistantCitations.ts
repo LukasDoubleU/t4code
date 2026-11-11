@@ -7,6 +7,8 @@ export const ASSISTANT_CITATION_MAX_TEXT_LENGTH = 8_000;
 export const ASSISTANT_CITATION_MAX_COMMENT_LENGTH = 8_000;
 export const ASSISTANT_CITATION_CONTEXT_LENGTH = 32;
 export const ASSISTANT_REPLY_EXCERPT_LENGTH = 60;
+// Provider message IDs nest and re-encode their thread and turn IDs, so they outgrow a few hundred characters.
+export const ASSISTANT_CITATION_MAX_ID_LENGTH = 4_096;
 
 const AssistantPassageFields = {
   text: Schema.String.check(
@@ -31,9 +33,9 @@ export type AssistantPassage = typeof AssistantPassage.Type;
 
 export const AssistantCitation = Schema.Struct({
   version: Schema.Literal(1),
-  environmentId: EnvironmentId.check(Schema.isMaxLength(512)),
-  threadId: ThreadId.check(Schema.isMaxLength(512)),
-  messageId: MessageId.check(Schema.isMaxLength(512)),
+  environmentId: EnvironmentId.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_ID_LENGTH)),
+  threadId: ThreadId.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_ID_LENGTH)),
+  messageId: MessageId.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_ID_LENGTH)),
   comment: Schema.optional(
     Schema.String.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_COMMENT_LENGTH)),
   ),
@@ -49,9 +51,9 @@ export type AssistantCitation = typeof AssistantCitation.Type;
  */
 export const AssistantReplyReference = Schema.Struct({
   version: Schema.Literal(1),
-  environmentId: EnvironmentId.check(Schema.isMaxLength(512)),
-  threadId: ThreadId.check(Schema.isMaxLength(512)),
-  messageId: MessageId.check(Schema.isMaxLength(512)),
+  environmentId: EnvironmentId.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_ID_LENGTH)),
+  threadId: ThreadId.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_ID_LENGTH)),
+  messageId: MessageId.check(Schema.isMaxLength(ASSISTANT_CITATION_MAX_ID_LENGTH)),
   /** The time the reply's footer shows, as an ISO string. */
   repliedAt: Schema.String.check(Schema.isMaxLength(64)),
   /** The reply's first line, cut to `ASSISTANT_REPLY_EXCERPT_LENGTH` and an ellipsis. */

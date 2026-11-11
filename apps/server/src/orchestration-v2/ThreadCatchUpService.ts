@@ -91,6 +91,7 @@ const make = Effect.gen(function* () {
         items,
         waitingOnUser,
         modelSelection: settings.textGenerationModelSelection,
+        projectId: thread.projectId,
       })
       .pipe(Effect.mapError((error) => failure(error.detail)(error)));
     return {

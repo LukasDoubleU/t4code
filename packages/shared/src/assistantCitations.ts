@@ -1,5 +1,7 @@
 import {
+  ASSISTANT_CITATION_CONTEXT_LENGTH,
   ASSISTANT_CITATION_MAX_COMMENT_LENGTH,
+  ASSISTANT_CITATION_MAX_ID_LENGTH,
   ASSISTANT_CITATION_MAX_TEXT_LENGTH,
   ASSISTANT_REPLY_EXCERPT_LENGTH,
   AssistantCitation,
@@ -11,9 +13,14 @@ import * as Schema from "effect/Schema";
 
 const CITATION_PROTOCOL = "t3-citation:";
 const CITATION_HREF_PREFIX = `${CITATION_PROTOCOL}//v1/`;
-// Percent encoding needs up to nine characters per UTF-16 code unit; 16k covers selectors.
+// Percent encoding needs up to nine characters per UTF-16 code unit; 1k covers keys and offsets.
 const MAX_CITATION_HREF_LENGTH =
-  9 * (ASSISTANT_CITATION_MAX_TEXT_LENGTH + ASSISTANT_CITATION_MAX_COMMENT_LENGTH) + 16_000;
+  9 *
+    (ASSISTANT_CITATION_MAX_TEXT_LENGTH +
+      ASSISTANT_CITATION_MAX_COMMENT_LENGTH +
+      3 * ASSISTANT_CITATION_MAX_ID_LENGTH +
+      2 * ASSISTANT_CITATION_CONTEXT_LENGTH) +
+  1_000;
 const referenceLink = (label: string) =>
   new RegExp(
     String.raw`\[${label}\]\((${CITATION_HREF_PREFIX}[^\s)]{1,${MAX_CITATION_HREF_LENGTH - CITATION_HREF_PREFIX.length}})\)`,

@@ -178,6 +178,9 @@ in an assistant response, like the **Cite** button. It has no default shortcut e
 thread like the **My last message** button above the composer, and `chat.catchUp` opens its **Catch me up** brief, which has no default shortcut. See
 [Catch up on a thread](./thread-sidebar.md#catch-up-on-a-thread).
 
+`thread.regenerateTitle` generates a new title for the focused thread, like
+**Regenerate title** in the thread menu. It has no default shortcut.
+
 `thread.undo` (`mod+z` by default) reverses the actions shown in the notice at the
 bottom of the sidebar, such as unpin, settle, snooze, archive, or discarding a
 draft. Consecutive

@@ -103,9 +103,18 @@ const busy = [
   '"Archived, still starting" (starting)',
 ];
 
-// A server that answers the shell snapshot request as T3 Code does, given the token.
-const withServer = async <A>(body: unknown, run: (home: string) => Promise<A>) => {
+// A server that answers the shell snapshot request as T3 Code does, given the token,
+// and with serverVersion its public environment descriptor.
+const withServer = async <A>(
+  body: unknown,
+  run: (home: string) => Promise<A>,
+  serverVersion?: string,
+) => {
   const server = NodeHttp.createServer((request, response) => {
+    if (serverVersion !== undefined && request.url === "/.well-known/t3/environment") {
+      response.end(JSON.stringify({ environmentId: "e1", serverVersion }));
+      return;
+    }
     const authorized =
       request.headers.authorization === "Bearer test-token" &&
       request.headers["x-t3-orchestration-protocol"] === "2";
@@ -124,7 +133,12 @@ const withServer = async <A>(body: unknown, run: (home: string) => Promise<A>) =
     // No process has this id, so no terminal runs under it.
     await NodeFSP.writeFile(
       NodePath.join(home, "userdata", "server-runtime.json"),
-      JSON.stringify({ version: 1, pid: 2147483646, origin: `http://127.0.0.1:${address.port}` }),
+      JSON.stringify({
+        version: 1,
+        pid: 2147483646,
+        origin: `http://127.0.0.1:${address.port}`,
+        ...(serverVersion === undefined ? {} : { serverVersion }),
+      }),
     );
     return await run(home);
   } finally {
@@ -184,5 +198,118 @@ describe.skipIf(isWindows)("install-t4.sh running work", () => {
     await withServer({ error: "not a snapshot" }, async (home) => {
       expect(await runningWorkSh(home, "test-token")).toEqual(["not asked"]);
     });
+  });
+});
+
+const oldVersion = "0.1.9-t4.1";
+const newVersion = "0.1.10-t4.1";
+
+const stub = (path: string, body: string) =>
+  NodeFSP.writeFile(path, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+
+// Runs install-t4.sh on a T3 home whose service runs oldVersion by its unit
+// and launcher, with newVersion unpacked and the newest release. curl answers
+// GitHub itself; systemctl and t3 only log their calls.
+const installSh = async (home: string) => {
+  const stubs = NodePath.join(home, "stubs");
+  const unit = NodePath.join(home, ".config", "systemd", "user", "t3code.service");
+  const versions = NodePath.join(home, "runtime", "versions");
+  const log = NodePath.join(home, "calls.log");
+  await NodeFSP.mkdir(stubs);
+  await NodeFSP.mkdir(NodePath.dirname(unit), { recursive: true });
+  await NodeFSP.mkdir(NodePath.join(home, "bin"));
+  for (const version of [oldVersion, newVersion]) {
+    await NodeFSP.mkdir(NodePath.join(versions, version), { recursive: true });
+    await NodeFSP.writeFile(NodePath.join(versions, version, ".install-complete"), `${version}\n`);
+    await stub(
+      NodePath.join(versions, version, "t3"),
+      `printf 't3 ${version} %s\\n' "$*" >> "$T3CODE_HOME/calls.log"
+if [ "$1 $2 $3" = "auth session issue" ]; then printf '{\\n  "sessionId": "s1",\\n  "token": "test-token"\\n}\\n'; fi`,
+    );
+  }
+  await NodeFSP.symlink(
+    NodePath.join(versions, oldVersion, "t3"),
+    NodePath.join(home, "bin", "t3"),
+  );
+  await NodeFSP.writeFile(
+    unit,
+    [
+      "[Service]",
+      `Environment=T3CODE_HOME=${home}`,
+      `ExecStart=${versions}/${oldVersion}/t3 __service-launcher`,
+      "",
+    ].join("\n"),
+  );
+  await stub(
+    NodePath.join(stubs, "systemctl"),
+    `printf 'systemctl %s\\n' "$*" >> "$T3CODE_HOME/calls.log"`,
+  );
+  await stub(
+    NodePath.join(stubs, "uname"),
+    `if [ "$1" = -m ]; then echo x86_64; else echo Linux; fi`,
+  );
+  const realCurl = (await execFile("sh", ["-c", "command -v curl"])).stdout.trim();
+  await stub(
+    NodePath.join(stubs, "curl"),
+    `for arg; do url="$arg"; done
+case "$url" in
+  https://api.github.com/*)
+    while [ $# -gt 0 ]; do if [ "$1" = --output ]; then out="$2"; fi; shift; done
+    printf '{"tag_name":"t4-v${newVersion}"}' > "$out"
+    printf 200 ;;
+  *) exec '${realCurl}' "$@" ;;
+esac`,
+  );
+  const { stdout } = await execFile("sh", [shellScript], {
+    env: {
+      ...process.env,
+      HOME: home,
+      PATH: `${stubs}:${process.env.PATH}`,
+      T3CODE_HOME: home,
+      T3CODE_INSTALL_BIN_DIR: NodePath.join(home, "bin"),
+      // Set when this runs inside T3 Code's service, where the script refuses to restart it.
+      T3_BOOT_SERVICE_UNIT: "",
+    },
+    encoding: "utf8",
+  });
+  return {
+    stdout,
+    unit: await NodeFSP.readFile(unit, "utf8"),
+    launcher: await NodeFSP.readlink(NodePath.join(home, "bin", "t3")),
+    calls: (await NodeFSP.readFile(log, "utf8")).trim().split("\n"),
+  };
+};
+
+describe.skipIf(isWindows)("install-t4.sh after a built-in update", () => {
+  it("points the unit and launcher at the version the service already runs, without a restart", async () => {
+    await withServer(
+      snapshot,
+      async (home) => {
+        const result = await installSh(home);
+        const versions = NodePath.join(home, "runtime", "versions");
+        expect(result.unit).toContain(`ExecStart=${versions}/${newVersion}/t3 __service-launcher`);
+        expect(result.unit).not.toContain(oldVersion);
+        expect(result.launcher).toBe(NodePath.join(versions, newVersion, "t3"));
+        expect(result.calls).toEqual([
+          "systemctl --user is-active --quiet t3code.service",
+          "systemctl --user daemon-reload",
+        ]);
+        expect(result.stdout).toContain(`already runs ${newVersion}`);
+      },
+      newVersion,
+    );
+  });
+
+  it("restarts the service when it runs an older version", async () => {
+    await withServer(
+      { threads: [] },
+      async (home) => {
+        const result = await installSh(home);
+        expect(result.calls).toContain("systemctl --user stop t3code.service");
+        expect(result.calls).toContain(`t3 ${newVersion} service install --allow-downgrade`);
+        expect(result.launcher).toBe(NodePath.join(home, "runtime", "versions", newVersion, "t3"));
+      },
+      oldVersion,
+    );
   });
 });

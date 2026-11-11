@@ -54,7 +54,7 @@ sh install-t4.sh --wait 60   # let running turns finish first, for up to an hour
 - Its device approval expires after ten minutes; open the link and confirm the code promptly, or run it again.
 - After the restart, `journalctl --user -u t3code.service` should say that T3 Connect is reachable from other devices.
 
-**Update** by running the script again after a release; it backs up `userdata` first. Unattended, `--wait <minutes>` lets running turns finish instead of stopping them; if they haven't by then, the update stops, or with `--force` goes ahead. `t3 update` on the server, and the update a client offers for a connected server, take this repository's releases as well, never upstream's, but make no backup. The repository and tag prefix they use are set in `packages/shared/src/cliRelease.ts`.
+**Update** by running the script again after a release; it backs up `userdata` first. Unattended, `--wait <minutes>` lets running turns finish instead of stopping them; if they haven't by then, the update stops, or with `--force` goes ahead. `t3 update` on the server, and the update a client offers for a connected server, take this repository's releases as well, never upstream's, but make no backup. When one of them already switched the running service to the release, the script only points the unit and `t3` at it, without a restart. The repository and tag prefix they use are set in `packages/shared/src/cliRelease.ts`.
 
 **Restore a backup:** stop the service (`systemctl --user stop t3code.service`), delete `statev2.sqlite-wal` and `statev2.sqlite-shm` in `userdata`, copy the backup's files over `userdata`, then install the version that wrote them with `--version` and start the service with `t3 service restart`.
 

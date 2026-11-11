@@ -155,6 +155,18 @@ running_work() {
   [ "$shell_status" = 200 ] && running_turns "$work/shell.json" && running_commands "$server_pid"
 }
 
+# The version the server on this T3 home records and, asked at its origin,
+# reports. Fails when it doesn't answer.
+served_version() {
+  state="$(cat "$userdata/server-runtime.json" 2> /dev/null)" || return 1
+  origin="$(printf '%s\n' "$state" | sed -n 's/.*"origin":"\([^"]*\)".*/\1/p')"
+  recorded="$(printf '%s\n' "$state" | sed -n 's/.*"serverVersion":"\([^"]*\)".*/\1/p')"
+  { [ -n "$origin" ] && [ -n "$recorded" ]; } || return 1
+  descriptor="$(curl --silent --max-time 10 "$origin/.well-known/t3/environment")" || return 1
+  [ "$(printf '%s\n' "$descriptor" | sed -n 's/.*"serverVersion": *"\([^"]*\)".*/\1/p')" = "$recorded" ] || return 1
+  printf '%s\n' "$recorded"
+}
+
 # The functions alone, for tests.
 if [ "${INSTALL_T4_FUNCTIONS_ONLY:-}" = 1 ]; then return 0; fi
 
@@ -223,6 +235,16 @@ real_dir() {
   (cd -P -- "$1" 2> /dev/null && pwd) || true
 }
 
+# Points the `t3` launcher at the release. A service finds the launchers it
+# must not prune through the launchers list.
+link_launcher() {
+  mkdir -p "$bin_dir"
+  ln -sfn "$target_dir/t3" "$bin_dir/t3"
+  launcher="$(real_dir "$bin_dir")/t3"
+  launchers="$t3_home/runtime/launchers"
+  grep -qxF "$launcher" "$launchers" 2> /dev/null || printf '%s\n' "$launcher" >> "$launchers"
+}
+
 # --- Find the release -------------------------------------------------------
 
 api="https://api.github.com/repos/$repo/releases"
@@ -283,6 +305,22 @@ if [ "$(cat "$target_dir/.install-complete" 2> /dev/null)" = "$release_version" 
 if [ "$installed" = "$release_version" ] && "$unpacked" &&
   { ! "$service_installed" || [ "$service_version" = "$release_version" ]; }; then
   say "The T4 Code server $release_version is already installed."
+  exit 0
+fi
+# A built-in update (`t3 update`, or one a client starts) switches the running
+# service to the new version but leaves its unit and the launcher on the old
+# one. Pointing them at it needs no restart, so running turns go on.
+if "$service_active" && "$unpacked" && [ "$(served_version)" = "$release_version" ]; then
+  if "$dry_run"; then
+    say "The background service already runs $release_version; would point $bin_dir/t3 and $service_unit at it."
+    exit 0
+  fi
+  link_launcher
+  (umask 077 && sed "s|^\(ExecStart=\"\{0,1\}.*/runtime/versions/\)[^/]*/t3|\1$release_version/t3|" \
+    "$service_unit" > "$work/t3code.service")
+  mv "$work/t3code.service" "$service_unit"
+  systemctl --user daemon-reload
+  say "The background service already runs $release_version; pointed $bin_dir/t3 and its unit at it, without a restart."
   exit 0
 fi
 say "Installing the T4 Code server $release_version ($tag)${installed:+ over $installed}."
@@ -433,12 +471,7 @@ fi
 if "$dry_run"; then
   say "Would point $bin_dir/t3 at $target_dir/t3"
 else
-  mkdir -p "$bin_dir"
-  ln -sfn "$target_dir/t3" "$bin_dir/t3"
-  # A service finds the launchers it must not prune through this list.
-  launcher="$(real_dir "$bin_dir")/t3"
-  launchers="$t3_home/runtime/launchers"
-  grep -qxF "$launcher" "$launchers" 2> /dev/null || printf '%s\n' "$launcher" >> "$launchers"
+  link_launcher
 fi
 
 if "$service_installed"; then

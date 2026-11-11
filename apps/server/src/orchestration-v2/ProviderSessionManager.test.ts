@@ -1485,108 +1485,121 @@ it.effect(
     }),
 );
 
-it.effect("ProviderSessionManagerV2 reports the instances an ultracode session is at work on", () =>
-  Effect.gen(function* () {
-    const state = yield* Ref.make(emptyState);
-    const backgroundWork = yield* Ref.make(false);
-    yield* Effect.gen(function* () {
-      const eventSink = yield* EventSink.EventSinkV2;
-      const idAllocator = yield* IdAllocator.IdAllocatorV2;
-      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
-      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
-      const now = yield* DateTime.now;
-      const threadId = ThreadId.make("thread-provider-session-manager-busy-instances");
-      const providerSessionId = yield* idAllocator.allocate.providerSession({
-        providerInstanceId: modelSelection.instanceId,
-        threadId,
-      });
-      yield* eventSink.write({
-        events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
-      });
-      const runtime = yield* manager.open({
-        threadId,
-        providerSessionId,
-        modelSelection,
-        runtimePolicy,
-      });
-      const providerThread = makeProviderThread({ idAllocator, threadId, providerSessionId, now });
-      const ultracode = {
-        ...modelSelection,
-        options: [{ id: "effort", value: "ultracode" }],
-      } satisfies ModelSelection;
-      const startTurn = (ordinal: number, selection: ModelSelection) =>
-        Effect.gen(function* () {
-          const runId = idAllocator.derive.run({ threadId, ordinal });
-          yield* runtime.startTurn({
-            appThread: (yield* projectionStore.getThreadProjection(threadId)).thread,
-            threadId,
-            runId,
-            runOrdinal: ordinal,
-            providerTurnOrdinal: ordinal,
-            attemptId: idAllocator.derive.runAttempt({ runId, attemptOrdinal: 1 }),
-            rootNodeId: idAllocator.derive.rootNode({ runId }),
-            providerThread,
-            message: {
-              createdBy: "user",
-              creationSource: "web",
-              messageId: yield* idAllocator.allocate.message({ threadId, ordinal }),
-              text: "turn",
-              attachments: [],
-            },
-            modelSelection: selection,
-            runtimePolicy,
+it.effect.each([
+  [
+    "the ultracode toggle",
+    [
+      { id: "effort", value: "xhigh" },
+      { id: "ultracode", value: true },
+    ],
+  ],
+  ["the legacy ultracode effort", [{ id: "effort", value: "ultracode" }]],
+] as const)(
+  "ProviderSessionManagerV2 reports the instances an ultracode session is at work on (%s)",
+  ([, ultracodeOptions]) =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const backgroundWork = yield* Ref.make(false);
+      yield* Effect.gen(function* () {
+        const eventSink = yield* EventSink.EventSinkV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make("thread-provider-session-manager-busy-instances");
+        const providerSessionId = yield* idAllocator.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+        });
+        yield* eventSink.write({
+          events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
+        });
+        const runtime = yield* manager.open({
+          threadId,
+          providerSessionId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const providerThread = makeProviderThread({
+          idAllocator,
+          threadId,
+          providerSessionId,
+          now,
+        });
+        const ultracode = { ...modelSelection, options: ultracodeOptions } satisfies ModelSelection;
+        const startTurn = (ordinal: number, selection: ModelSelection) =>
+          Effect.gen(function* () {
+            const runId = idAllocator.derive.run({ threadId, ordinal });
+            yield* runtime.startTurn({
+              appThread: (yield* projectionStore.getThreadProjection(threadId)).thread,
+              threadId,
+              runId,
+              runOrdinal: ordinal,
+              providerTurnOrdinal: ordinal,
+              attemptId: idAllocator.derive.runAttempt({ runId, attemptOrdinal: 1 }),
+              rootNodeId: idAllocator.derive.rootNode({ runId }),
+              providerThread,
+              message: {
+                createdBy: "user",
+                creationSource: "web",
+                messageId: yield* idAllocator.allocate.message({ threadId, ordinal }),
+                text: "turn",
+                attachments: [],
+              },
+              modelSelection: selection,
+              runtimePolicy,
+            });
           });
-        });
-      const endTurn = Effect.fn("endTurn")(function* (ordinal: number) {
-        const subscription = yield* runtime.subscribeEvents!;
-        const ended = yield* subscription.events.pipe(
-          Stream.take(1),
-          Stream.runCollect,
-          Effect.forkScoped,
-        );
-        const queue = (yield* Ref.get(state)).eventQueues.get(String(providerSessionId));
-        assert.isDefined(queue);
-        yield* Queue.offer(queue!, {
-          type: "turn.terminal",
-          driver: CODEX_DRIVER,
-          providerThreadId: providerThread.id,
-          providerTurnId: idAllocator.derive.providerTurn({
+        const endTurn = Effect.fn("endTurn")(function* (ordinal: number) {
+          const subscription = yield* runtime.subscribeEvents!;
+          const ended = yield* subscription.events.pipe(
+            Stream.take(1),
+            Stream.runCollect,
+            Effect.forkScoped,
+          );
+          const queue = (yield* Ref.get(state)).eventQueues.get(String(providerSessionId));
+          assert.isDefined(queue);
+          yield* Queue.offer(queue!, {
+            type: "turn.terminal",
             driver: CODEX_DRIVER,
-            nativeTurnId: `native-turn-busy-${ordinal}`,
-          }),
-          runOrdinal: ordinal,
-          status: "completed",
-          failure: null,
-          threadDisposition: "reusable",
+            providerThreadId: providerThread.id,
+            providerTurnId: idAllocator.derive.providerTurn({
+              driver: CODEX_DRIVER,
+              nativeTurnId: `native-turn-busy-${ordinal}`,
+            }),
+            runOrdinal: ordinal,
+            status: "completed",
+            failure: null,
+            threadDisposition: "reusable",
+          });
+          yield* Fiber.join(ended);
         });
-        yield* Fiber.join(ended);
-      });
-      const busy = manager.busyInstances.pipe(Effect.map((instances) => [...instances]));
+        const busy = manager.busyInstances.pipe(Effect.map((instances) => [...instances]));
 
-      assert.deepEqual(yield* busy, []);
-      yield* startTurn(1, ultracode);
-      assert.deepEqual(yield* busy, [modelSelection.instanceId]);
-      // The turn ends while the agents it started run on in the background.
-      yield* Ref.set(backgroundWork, true);
-      yield* endTurn(1);
-      assert.deepEqual(yield* busy, [modelSelection.instanceId]);
-      yield* Ref.set(backgroundWork, false);
-      assert.deepEqual(yield* busy, []);
-      // Background work alone is not heavy: a dev server or a running command burns no usage.
-      yield* startTurn(2, modelSelection);
-      yield* Ref.set(backgroundWork, true);
-      assert.deepEqual(yield* busy, []);
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(
-        layerTest({
-          state,
-          idleTimeoutMs: 60_000,
-          hasPendingBackgroundWork: Ref.get(backgroundWork),
-        }),
-      ),
-    );
-  }),
+        assert.deepEqual(yield* busy, []);
+        yield* startTurn(1, ultracode);
+        assert.deepEqual(yield* busy, [modelSelection.instanceId]);
+        // The turn ends while the agents it started run on in the background.
+        yield* Ref.set(backgroundWork, true);
+        yield* endTurn(1);
+        assert.deepEqual(yield* busy, [modelSelection.instanceId]);
+        yield* Ref.set(backgroundWork, false);
+        assert.deepEqual(yield* busy, []);
+        // Background work alone is not heavy: a dev server or a running command burns no usage.
+        yield* startTurn(2, modelSelection);
+        yield* Ref.set(backgroundWork, true);
+        assert.deepEqual(yield* busy, []);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          layerTest({
+            state,
+            idleTimeoutMs: 60_000,
+            hasPendingBackgroundWork: Ref.get(backgroundWork),
+          }),
+        ),
+      );
+    }),
 );
 
 it.effect("ProviderSessionManagerV2 gives up on a provider that never confirms a Stop", () =>

@@ -1,6 +1,9 @@
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
-import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
+import {
+  getModelSelectionBooleanOptionValue,
+  getModelSelectionStringOptionValue,
+} from "@t3tools/shared/model";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   isOrchestrationV2WorkActive,
@@ -66,7 +69,9 @@ export const PROVIDER_INTERRUPT_TIMEOUT_MS = 15 * 1000;
 const busyTurnPrefix = (providerThreadId: ProviderThreadId) => `${providerThreadId}#`;
 const busyTurnKey = (providerThreadId: ProviderThreadId, runOrdinal: number) =>
   `${busyTurnPrefix(providerThreadId)}${runOrdinal}`;
+// An explicit toggle wins over the legacy effort value, as in `withLegacyUltracodeEffort`.
 const isUltracode = (selection: ModelSelection) =>
+  getModelSelectionBooleanOptionValue(selection, "ultracode") ??
   getModelSelectionStringOptionValue(selection, "effort") === "ultracode";
 const UNLOAD_THREAD_TIMEOUT_MS = 10 * 1000;
 /** Suggestions outlive their sessions, so keep only the most recently updated threads. */
@@ -216,7 +221,7 @@ export interface ProviderSessionManagerV2Shape {
     readonly threadId: ThreadId;
   }) => Effect.Effect<ReadonlyArray<ThreadId>>;
   /**
-   * Instances an ultracode session is at work on: its latest turn ran at effort ultracode, and a
+   * Instances an ultracode session is at work on: its latest turn ran with ultracode on, and a
    * turn or background work still runs. Such a session can use up its account within one turn.
    */
   readonly busyInstances: Effect.Effect<ReadonlySet<ProviderInstanceId>>;
@@ -249,7 +254,7 @@ interface LiveSessionEntry {
   readonly scope: Scope.Closeable;
   readonly idleGeneration: number;
   readonly busyTurns: ReadonlySet<string>;
-  /** Whether the latest turn, or the open before any turn, ran at effort ultracode. */
+  /** Whether the latest turn, or the open before any turn, ran with ultracode on. */
   readonly ultracode: boolean;
   readonly idleFiber: Fiber.Fiber<void, never> | null;
   readonly pinnedSinceMs: number | null;

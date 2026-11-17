@@ -1972,7 +1972,7 @@ describe("ThreadSettlementServiceV2 worker", () => {
         snapshot: makeSnapshot([
           makeThread("worked-after-merge", {
             branch: "merged-feature",
-            latestUserAuthoredMessageAt: DateTime.makeUnsafe("2026-08-28T06:00:00.000Z"),
+            latestUserOrThreadMessageAt: DateTime.makeUnsafe("2026-08-28T06:00:00.000Z"),
           }),
         ]),
         settings: { ...DEFAULT_SERVER_SETTINGS, sidebarAutoSettleAfterDays: null },

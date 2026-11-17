@@ -217,9 +217,10 @@ describe("provider projection", () => {
     ]) {
       const projected = projectComposerContextForProvider({ text, records: [] });
       expect(projected).not.toContain("t3-citation:");
-      expect(projected).toContain("See [assistant-quote-1]");
-      expect(projected).toContain('"text": "Use a mutex here"');
-      expect(projected).toContain('"comment": "Why not a channel?"');
+      // The agent reads the quote in place, with the user's comment after it.
+      expect(projected).toContain(
+        "See\n\nQuoted from an earlier assistant reply:\n> Use a mutex here\n\nUser comment: Why not a channel?",
+      );
     }
     const captured = projectComposerContextForProvider({
       text: "[Terminal 1 lines 3-4](t3-context://v1/terminal/ctx_t)",

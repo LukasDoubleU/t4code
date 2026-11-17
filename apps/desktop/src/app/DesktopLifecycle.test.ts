@@ -143,6 +143,7 @@ describe("DesktopLifecycle", () => {
           Layer.provideMerge(
             Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
               platform,
+              appImagePath: Option.none(),
               isDevelopment: false,
             } as DesktopEnvironment.DesktopEnvironment["Service"]),
           ),

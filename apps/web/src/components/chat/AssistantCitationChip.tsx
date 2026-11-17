@@ -1,11 +1,11 @@
-import type { AssistantCitation } from "@t3tools/contracts";
+import type { AssistantCitation, ResponseContextRecord } from "@t3tools/contracts";
 import {
   assistantCitationLabel,
   serializeAssistantCitation,
 } from "@t3tools/shared/assistantCitations";
 import { Link } from "@tanstack/react-router";
 import { PencilIcon, QuoteIcon } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import {
   findAssistantCitationSourceAnchor,
   type AssistantCitationSourceAnchor,
@@ -17,7 +17,102 @@ import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCom
 import { useAssistantCitationSourceLink } from "./AssistantCitationQuote";
 import { observeAssistantCitationCommentSource } from "./AssistantCitationSource";
 import { composerFloatingLayerProps } from "./composerEventScope";
+import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
+
+function useCitationSourceLinkProps(citation: AssistantCitation) {
+  return {
+    ...useAssistantCitationSourceLink(citation),
+    "data-markdown-copy": serializeAssistantCitation(citation),
+  };
+}
+
+const flat = (text: string) => text.replace(/\s+/g, " ");
+
+/**
+ * The card a response shows as inside a message. Clicking it goes to the source; a comment follows
+ * as text. `leading` and `trailing` say it starts or ends its block, which already has spacing.
+ */
+function ResponseCard({
+  citation,
+  copyMarkdown,
+  cardCopyMarkdown = copyMarkdown,
+  label,
+  title,
+  preview,
+  comment,
+  leading,
+  trailing,
+}: {
+  citation: AssistantCitation;
+  copyMarkdown: string;
+  cardCopyMarkdown?: string;
+  label: string;
+  title?: string | undefined;
+  preview: ReactNode;
+  comment?: string | undefined;
+  leading: boolean;
+  trailing: boolean;
+}) {
+  const linkProps = useCitationSourceLinkProps(citation);
+  return (
+    // One copy boundary for the card and its comment, so a copied card carries the comment once.
+    <span
+      data-markdown-copy={copyMarkdown}
+      className={cn("block", !leading && "mt-[0.65rem]", !trailing && "mb-[0.65rem]")}
+    >
+      <Link
+        {...linkProps}
+        // A selection inside the card's boundary copies the card here and the comment as text.
+        data-markdown-copy={cardCopyMarkdown}
+        // The response is findable in its own message; here it is clamped and mostly hidden.
+        data-thread-find-ignore
+        aria-label={label}
+        // The message's markdown styles colour and underline links; a card is neither.
+        className="block min-w-0 rounded-lg bg-black/10 px-2.5 py-1.5 text-start text-sm text-muted-foreground! no-underline! wrap-break-word hover:bg-black/14 focus-visible:outline-2 focus-visible:outline-ring dark:bg-black/35 dark:hover:bg-black/50"
+      >
+        {title ? (
+          <span className="block truncate text-xs font-medium text-foreground/80" dir="auto">
+            {title}
+          </span>
+        ) : null}
+        <span className="line-clamp-2" dir={textDirection(citation.text)}>
+          {preview}
+        </span>
+      </Link>
+      {comment ? (
+        <span className="mt-1.5 block whitespace-pre-wrap" dir={textDirection(comment)}>
+          {comment}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** The response a message replies to: its subagents, when it had any, and how it starts. */
+export function ResponseReplyCard({
+  record,
+  copyMarkdown,
+  leading,
+  trailing,
+}: {
+  record: ResponseContextRecord;
+  copyMarkdown: string;
+  leading: boolean;
+  trailing: boolean;
+}) {
+  return (
+    <ResponseCard
+      citation={record.citation}
+      copyMarkdown={copyMarkdown}
+      label={`Go to the response this replies to: ${record.label}`}
+      title={record.subagents?.map((subagent) => subagent.title).join(", ")}
+      preview={flat(record.citation.text)}
+      leading={leading}
+      trailing={trailing}
+    />
+  );
+}
 
 /** A citation in the composer draft. Sent messages render `AssistantCitationQuote` instead. */
 export function AssistantCitationChip({

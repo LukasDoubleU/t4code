@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -142,6 +143,7 @@ describe("DesktopLifecycle", () => {
           Layer.provideMerge(
             Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
               platform,
+              appImagePath: Option.none(),
               isDevelopment: false,
             } as DesktopEnvironment.DesktopEnvironment["Service"]),
           ),
@@ -170,6 +172,7 @@ describe("DesktopLifecycle", () => {
       const layerEnvironment = Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
         platform,
         isDevelopment: false,
+        appImagePath: Option.none(),
       } as DesktopEnvironment.DesktopEnvironment["Service"]);
 
       const layer = DesktopLifecycle.layer.pipe(

@@ -98,6 +98,12 @@ it.layer(NodeSqliteClient.layer({ filename: ":memory:" }))(
           "agent-quoted",
           "agent-plain",
         ]);
+        // The migrations after 81 leave the index and its triggers as they are.
+        yield* runMigrations();
+        assert.sameMembers(yield* indexed(sql, '"amber harbor lantern"'), [
+          "agent-quoted",
+          "agent-plain",
+        ]);
       }),
     );
   },

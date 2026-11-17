@@ -160,6 +160,7 @@ function makeHarness(input: {
             Effect.succeedSome({
               projectId,
               title: "Project",
+              hasCustomTitle: false,
               workspaceRoot: "/repo",
               defaultModelSelection: titleModel,
               defaultThreadEnvMode: null,

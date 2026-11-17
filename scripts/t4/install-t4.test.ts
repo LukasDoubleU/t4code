@@ -207,10 +207,14 @@ const newVersion = "0.1.10-t4.1";
 const stub = (path: string, body: string) =>
   NodeFSP.writeFile(path, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
 
+// The `t3` launcher script install-t4.sh, upstream's install.sh and `t3 update` write.
+const launcherScript = (executable: string) => `#!/bin/sh\nexec '${executable}' "$@"\n`;
+
 // Runs install-t4.sh on a T3 home whose service runs oldVersion by its unit
 // and launcher, with newVersion unpacked and the newest release. curl answers
-// GitHub itself; systemctl and t3 only log their calls.
-const installSh = async (home: string) => {
+// GitHub itself; systemctl and t3 only log their calls. An older install left
+// the launcher a symlink.
+const installSh = async (home: string, launcher: "script" | "symlink" = "script") => {
   const stubs = NodePath.join(home, "stubs");
   const unit = NodePath.join(home, ".config", "systemd", "user", "t3code.service");
   const versions = NodePath.join(home, "runtime", "versions");
@@ -227,10 +231,14 @@ const installSh = async (home: string) => {
 if [ "$1 $2 $3" = "auth session issue" ]; then printf '{\\n  "sessionId": "s1",\\n  "token": "test-token"\\n}\\n'; fi`,
     );
   }
-  await NodeFSP.symlink(
-    NodePath.join(versions, oldVersion, "t3"),
-    NodePath.join(home, "bin", "t3"),
-  );
+  const oldExecutable = NodePath.join(versions, oldVersion, "t3");
+  if (launcher === "symlink") {
+    await NodeFSP.symlink(oldExecutable, NodePath.join(home, "bin", "t3"));
+  } else {
+    await NodeFSP.writeFile(NodePath.join(home, "bin", "t3"), launcherScript(oldExecutable), {
+      mode: 0o755,
+    });
+  }
   await NodeFSP.writeFile(
     unit,
     [
@@ -275,30 +283,35 @@ esac`,
   return {
     stdout,
     unit: await NodeFSP.readFile(unit, "utf8"),
-    launcher: await NodeFSP.readlink(NodePath.join(home, "bin", "t3")),
+    launcher: await NodeFSP.readFile(NodePath.join(home, "bin", "t3"), "utf8"),
     calls: (await NodeFSP.readFile(log, "utf8")).trim().split("\n"),
   };
 };
 
 describe.skipIf(isWindows)("install-t4.sh after a built-in update", () => {
-  it("points the unit and launcher at the version the service already runs, without a restart", async () => {
-    await withServer(
-      snapshot,
-      async (home) => {
-        const result = await installSh(home);
-        const versions = NodePath.join(home, "runtime", "versions");
-        expect(result.unit).toContain(`ExecStart=${versions}/${newVersion}/t3 __service-launcher`);
-        expect(result.unit).not.toContain(oldVersion);
-        expect(result.launcher).toBe(NodePath.join(versions, newVersion, "t3"));
-        expect(result.calls).toEqual([
-          "systemctl --user is-active --quiet t3code.service",
-          "systemctl --user daemon-reload",
-        ]);
-        expect(result.stdout).toContain(`already runs ${newVersion}`);
-      },
-      newVersion,
-    );
-  });
+  it.each(["script", "symlink"] as const)(
+    "points the unit and a %s launcher at the version the service already runs, without a restart",
+    async (launcher) => {
+      await withServer(
+        snapshot,
+        async (home) => {
+          const result = await installSh(home, launcher);
+          const versions = NodePath.join(home, "runtime", "versions");
+          expect(result.unit).toContain(
+            `ExecStart=${versions}/${newVersion}/t3 __service-launcher`,
+          );
+          expect(result.unit).not.toContain(oldVersion);
+          expect(result.launcher).toBe(launcherScript(NodePath.join(versions, newVersion, "t3")));
+          expect(result.calls).toEqual([
+            "systemctl --user is-active --quiet t3code.service",
+            "systemctl --user daemon-reload",
+          ]);
+          expect(result.stdout).toContain(`already runs ${newVersion}`);
+        },
+        newVersion,
+      );
+    },
+  );
 
   it("restarts the service when it runs an older version", async () => {
     await withServer(
@@ -307,7 +320,9 @@ describe.skipIf(isWindows)("install-t4.sh after a built-in update", () => {
         const result = await installSh(home);
         expect(result.calls).toContain("systemctl --user stop t3code.service");
         expect(result.calls).toContain(`t3 ${newVersion} service install --allow-downgrade`);
-        expect(result.launcher).toBe(NodePath.join(home, "runtime", "versions", newVersion, "t3"));
+        expect(result.launcher).toBe(
+          launcherScript(NodePath.join(home, "runtime", "versions", newVersion, "t3")),
+        );
       },
       oldVersion,
     );

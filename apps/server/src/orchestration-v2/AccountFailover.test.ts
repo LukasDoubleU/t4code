@@ -382,7 +382,10 @@ it.layer(layerRuntime(10))("a turn that hits its account's usage limit", (it) =>
       const message = moved.messages.find(
         (candidate) => candidate.id === continuation.userMessageId,
       );
-      assert.equal(message?.text, "Continue where you left off.");
+      // A native resume: the conversation shows that the thread resumed, not a prompt.
+      assert.equal(continuation.manualContinuationOfRunId, source.id);
+      assert.equal(message?.text, "");
+      assert.equal(message?.notification?.summary, "Resumed thread");
       assert.equal(message?.createdBy, "agent");
       assert.deepStrictEqual(yield* notices(threadId), [
         {

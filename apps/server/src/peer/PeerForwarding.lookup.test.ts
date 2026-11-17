@@ -110,6 +110,10 @@ const environmentThreads = (
       listPinnedThreads: () => Effect.succeed(shells.filter((shell) => shell.pinnedAt != null)),
       listProjectThreads: ({ projectId }) =>
         Effect.succeed(shells.filter((shell) => shell.projectId === projectId)),
+      getShellSnapshot: (options) =>
+        Effect.succeed({
+          threads: shells.filter((shell) => options?.threadIds?.includes(shell.id) === true),
+        } as never),
       sendToThread: (input) =>
         Ref.update(sends, (sent) => [...sent, input.threadId]).pipe(
           Effect.as({ run: { id: run, status: "running" }, delivery: "started" } as never),
@@ -142,7 +146,9 @@ const commonLayers = Layer.mergeAll(
   Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
   Layer.mock(SecretRequests.SecretRequests)({}),
   ServerSettings.layerTest(),
-  Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+  Layer.mock(RemoteDelegation.RemoteDelegation)({
+    followUp: (_scope, _environmentId, _request, sent) => Effect.succeed(sent),
+  }),
   Layer.mock(PeerLinkRequests.PeerLinkRequests)({}),
   NodeCrypto.layer,
   DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer)),

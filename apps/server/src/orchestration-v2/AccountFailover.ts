@@ -298,7 +298,8 @@ const make = Effect.gen(function* () {
             commandId: CommandId.make(`server:account-failover:${attempt}`),
             threadId: event.threadId,
             messageId: accountFailoverMessageId(run.id),
-            text: "Continue where you left off.",
+            // A manual continuation resumes natively; the conversation gets no message text.
+            text: "",
             attachments: [],
             modelSelection: { ...run.modelSelection, instanceId: plan.move.to },
             manualContinuationOfRunId: run.id,

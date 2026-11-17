@@ -554,16 +554,13 @@ it.effect("ends a forwarded wait when a message reaches the waiting thread here"
       const seen = yield* Ref.make<Seen>(nothingSeen);
       const linkSession = yield* Ref.make("");
       const waitingThere = yield* Deferred.make<void>();
-      const readAgain = yield* Deferred.make<void>();
-      // B's run keeps running: the wait there holds until the run is read
-      // again, and that read answers at once.
+      // B's run keeps running: the wait there holds past this test, and a
+      // second read of the run answers at once.
       const b = yield* serveBox(seen, linkSession, (input) =>
         Effect.gen(function* () {
           if (input.timeoutMs > 1) {
             yield* Deferred.succeed(waitingThere, undefined);
-            yield* Deferred.await(readAgain);
-          } else {
-            yield* Deferred.succeed(readAgain, undefined);
+            return yield* Effect.never;
           }
           return {
             threadId: input.threadId,

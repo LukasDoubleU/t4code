@@ -294,7 +294,8 @@ const RequestAttentionTool = Tool.make("t3_request_attention", {
 })
   .annotate(Tool.Title, "Ask for the user's attention")
   .annotate(Tool.Destructive, false)
-  .annotate(Tool.Idempotent, true);
+  .annotate(Tool.Idempotent, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const ThreadSendTool = Tool.make("t3_thread_send", {
   description:

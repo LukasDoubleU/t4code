@@ -6915,9 +6915,14 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       }
       // The active, activity, and pending-secret lookups; walking the ordinal index instead
       // reads every run of an idle thread.
-      const activeRunLookups = plan.filter(
+      const runLookups = plan.filter(
         (detail) => detail.startsWith("SEARCH r ") && detail.includes("(thread_id=?"),
       );
+      // Behind a background run only, the latest user run walks back from the newest run and
+      // stops at the first completed one the user started.
+      const userRunWalks = runLookups.filter((detail) => detail.includes("thread_ordinal_idx"));
+      assert.lengthOf(userRunWalks, 1);
+      const activeRunLookups = runLookups.filter((detail) => !userRunWalks.includes(detail));
       assert.lengthOf(activeRunLookups, 4);
       for (const lookup of activeRunLookups) {
         assert.include(lookup, "orchestration_v2_projection_runs_thread_status_idx");

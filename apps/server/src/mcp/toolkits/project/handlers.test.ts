@@ -101,7 +101,10 @@ it.effect("attributes a launched thread and its first message to the calling thr
           } as unknown as ThreadLaunch.ThreadLaunchResult);
         },
       }),
-      Layer.mock(Project.ProjectService)({}),
+      Layer.mock(Project.ProjectService)({
+        getById: (id) =>
+          Effect.succeedSome({ id, workspaceRoot: "/projects/target" } as unknown as ProjectRecord),
+      }),
       Layer.mock(PeerForwarding.PeerForwarding)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/projects" }),
       Layer.mock(GitVcsDriver.GitVcsDriver)({}),

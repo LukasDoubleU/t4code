@@ -851,7 +851,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
 
   const footerLinks =
     folded && senderThreadId ? (
-      <InlineButton onClick={() => ctx.onOpenThread(senderThreadId)} tone="muted">
+      <InlineButton
+        onClick={() => ctx.onOpenThread(senderThreadId, ctx.activeThreadEnvironmentId)}
+        tone="muted"
+      >
         Open thread
       </InlineButton>
     ) : sentFrom && senderEnvironment ? (

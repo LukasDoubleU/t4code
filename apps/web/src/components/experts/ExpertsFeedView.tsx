@@ -472,6 +472,8 @@ function ReplyComposer(props: {
           const intent = composerSubmissionIntentForKey({
             event: event.nativeEvent,
             keybindings,
+            // A reply box outside the thread view has no route or panel context of its own.
+            context: {},
             isSoftwareKeyboardOpen,
             isDraftThread: false,
             isRunning: running,

@@ -34,6 +34,7 @@ import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as ProviderEventIngestor from "../orchestration-v2/ProviderEventIngestor.ts";
 import * as PreviewAgentActivity from "../preview/PreviewAgentActivity.ts";
 import * as RunExecutionService from "../orchestration-v2/RunExecutionService.ts";
+import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
 import * as TurnItemPositionStore from "../orchestration-v2/TurnItemPositionStore.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as ThreadMemory from "./ThreadMemory.ts";
@@ -48,6 +49,7 @@ const layerTest = RunExecutionService.layer.pipe(
         allocate: () => Effect.succeed(1),
       }),
       Layer.mock(EventSink.EventSinkV2)({}),
+      Layer.mock(ThreadCommandExecutor.ThreadCommandExecutor)({}),
       IdAllocator.layer,
       Layer.mock(ProviderEventIngestor.ProviderEventIngestorV2)({
         ingestNormalized: () => Effect.succeed([]),

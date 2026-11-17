@@ -31,6 +31,7 @@ import {
   type OrchestrationV2DomainEvent,
   type OrchestrationV2LinkedSender,
   type OrchestrationV2Run,
+  type OrchestrationV2ThreadShell,
   type OrchestrationV2ThreadShellSnapshot,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadTranscript,

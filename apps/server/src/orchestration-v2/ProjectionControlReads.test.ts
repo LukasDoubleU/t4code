@@ -478,7 +478,13 @@ it.effect.each(storageCases)(
           providerSessionId,
           messageId,
         });
-      }).pipe(Effect.provide(ProviderTurnControlService.layer.pipe(Layer.provide(layerSessions))));
+      }).pipe(
+        Effect.provide(
+          ProviderTurnControlService.layer.pipe(
+            Layer.provide(Layer.merge(layerSessions, Layer.mock(EventSink.EventSinkV2)({}))),
+          ),
+        ),
+      );
 
       assert.deepEqual(steered, [
         [

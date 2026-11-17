@@ -611,13 +611,10 @@ it.effect("ends a forwarded wait when a message reaches the waiting thread here"
           delivery: "steered",
         },
       });
-      // The held piece, then one short read of the run's state; the box
+      // The held wait, capped like a local one, then one short read of the run's state; the box
       // never watches for the laptop thread's messages itself.
       const waits = (yield* Ref.get(seen)).waits;
-      expect(waits.map(({ timeoutMs }) => timeoutMs)).toEqual([
-        PeerForwarding.FORWARDED_WAIT_CHUNK_MS,
-        1,
-      ]);
+      expect(waits.map(({ timeoutMs }) => timeoutMs)).toEqual([45_000, 1]);
       expect(waits.every((input) => input.waitingThreadId === undefined)).toBe(true);
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),

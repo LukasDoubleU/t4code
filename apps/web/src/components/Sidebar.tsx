@@ -224,7 +224,6 @@ import {
   type SidebarSection,
   resolveSidebarExpertsSection,
   isSidebarThreadQuiet,
-  resolveSidebarRowThreadId,
   resolveSidebarRowVariant,
   resolveSidebarTopicExpert,
   resolveSidebarTopicOf,

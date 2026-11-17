@@ -24,7 +24,7 @@ import { waitForThreadShell } from "./state/entities";
 import { usePrimaryEnvironmentId } from "./state/environments";
 import {
   environmentServerConfigsAtom,
-  primaryServerAvailableEditorsAtom,
+  primaryServerConfigAtom,
   serverEnvironment,
 } from "./state/server";
 import { threadEnvironment } from "./state/threads";
@@ -63,7 +63,7 @@ export function readThreadMemoryPath(threadRef: ScopedThreadRef, pinned: boolean
  */
 export function useOpenThreadMemory() {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const availableEditors = useAtomValue(primaryServerAvailableEditorsAtom);
+  const availableEditors = useAtomValue(primaryServerConfigAtom)?.availableEditors ?? [];
   const openInPreferredEditor = useOpenInPreferredEditor(primaryEnvironmentId, availableEditors);
   const { copyToClipboard } = useCopyToClipboard<{ path: string }>({
     onCopy: ({ path }) => {

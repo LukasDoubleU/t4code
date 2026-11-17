@@ -1073,7 +1073,12 @@ it("readThread shows citations the way the agent received them", async () => {
           },
           getProjectThreadRecords: () => Effect.succeed(projection),
           getTimelinePage: () =>
-            Effect.succeed({ items: projection.visibleTurnItems, totalItems: 1, hasMore: false }),
+            Effect.succeed({
+              items: projection.visibleTurnItems,
+              totalItems: 1,
+              hasMore: false,
+              hasEarlier: false,
+            }),
         }),
         ServerSettings.layerTest(),
         Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
@@ -1152,7 +1157,12 @@ it("readThread lists the user's reactions on an assistant reply and its passages
           getThreadRecords: () => Effect.succeed(projection),
           getProjectThreadRecords: () => Effect.succeed(projection),
           getTimelinePage: () =>
-            Effect.succeed({ items: projection.visibleTurnItems, totalItems: 2, hasMore: false }),
+            Effect.succeed({
+              items: projection.visibleTurnItems,
+              totalItems: 2,
+              hasMore: false,
+              hasEarlier: false,
+            }),
         }),
         ServerSettings.layerTest(),
         Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),

@@ -12909,7 +12909,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             start:
               adapterOptions.installationGate === undefined
                 ? openQueryRuntime
-                : adapterOptions.installationGate.execute(adapterOptions.instanceId, openQueryRuntime),
+                : adapterOptions.installationGate.execute(
+                    adapterOptions.instanceId,
+                    openQueryRuntime,
+                  ),
             readPressure: agentMemoryPressure(agentScope),
             onWait: noticeAgentMemoryLimit(turnInput),
           }).pipe(

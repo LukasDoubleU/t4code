@@ -7657,7 +7657,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   page,
                   totalItems: index.visible.length,
                   hasMore: false,
-                  hasEarlier: (visible[0]?.position ?? Number.POSITIVE_INFINITY) < (page[0]?.position ?? 0),
+                  hasEarlier:
+                    (visible[0]?.position ?? Number.POSITIVE_INFINITY) < (page[0]?.position ?? 0),
                 };
               }
               const inView = index.visible

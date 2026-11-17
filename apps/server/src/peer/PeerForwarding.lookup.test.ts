@@ -110,9 +110,9 @@ const environmentThreads = (
       listPinnedThreads: () => Effect.succeed(shells.filter((shell) => shell.pinnedAt != null)),
       listProjectThreads: ({ projectId }) =>
         Effect.succeed(shells.filter((shell) => shell.projectId === projectId)),
-      getShellSnapshot: ({ threadIds }) =>
+      getShellSnapshot: (options) =>
         Effect.succeed({
-          threads: shells.filter((shell) => threadIds?.includes(shell.id) === true),
+          threads: shells.filter((shell) => options?.threadIds?.includes(shell.id) === true),
         } as never),
       sendToThread: (input) =>
         Ref.update(sends, (sent) => [...sent, input.threadId]).pipe(

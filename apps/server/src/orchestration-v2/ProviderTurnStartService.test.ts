@@ -79,6 +79,7 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnStart from "./ProviderTurnStartService.ts";
+import { accountFailoverMessageId } from "./accountFailoverContinuation.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
@@ -395,6 +396,8 @@ it.each([
 function makeLocalCommandHarness(input: {
   readonly text: string;
   readonly manualContinuation?: boolean;
+  /** The continuation moves the thread to another account after a usage limit. */
+  readonly accountMove?: boolean;
   readonly nativeResumeUnsupported?: boolean;
   readonly steeringRestart?: boolean;
   readonly nativeGoals?: boolean;
@@ -455,7 +458,9 @@ function makeLocalCommandHarness(input: {
   const oldInstanceId = ProviderInstanceId.make("antigravity-personal");
   const newInstanceId = ProviderInstanceId.make("codex-personal");
   const checkpointScopeId = CheckpointScopeId.make("scope-native-account-command");
-  const messageId = MessageId.make("message-native-account-command");
+  const messageId = input.accountMove
+    ? accountFailoverMessageId(RunId.make("stopped-run"))
+    : MessageId.make("message-native-account-command");
   const run: OrchestrationV2ThreadProjection["runs"][number] = {
     ...(input.manualContinuation ? { manualContinuationOfRunId: RunId.make("stopped-run") } : {}),
     id: runId,
@@ -2187,13 +2192,17 @@ effectIt.effect.each([
     runtimeMode: "approval-required",
     context: "SIDE_CHAT_CONTEXT",
   },
+  { contextRun: "current", runtimeMode: "full-access", context: "SIDE_CHAT_CONTEXT", move: true },
+  { contextRun: "delivered", runtimeMode: "full-access", context: "", move: true },
 ] as const)(
   "sends side chat context inline once, for the first turn that reaches the provider: %j",
   ({ runtimeMode, context, ...sideChat }) =>
     Effect.gen(function* () {
+      const accountMove = "move" in sideChat;
       const harness = makeLocalCommandHarness({
         text: "",
         manualContinuation: true,
+        accountMove,
         sideChat,
       });
 
@@ -2205,8 +2214,16 @@ effectIt.effect.each([
       const resendsOriginal =
         "unsentResume" in sideChat &&
         (!("acceptedResume" in sideChat) || "restartedResume" in sideChat);
+      // An account move that has to send context asks the agent to go on.
       expect(harness.startTurn.mock.calls.map(([turn]) => turn.message.text)).toEqual([
-        withInlineContext(context, resendsOriginal ? "Original request" : ""),
+        withInlineContext(
+          context,
+          resendsOriginal
+            ? "Original request"
+            : accountMove && context !== ""
+              ? "Continue where you left off."
+              : "",
+        ),
       ]);
       expect(harness.startTurn.mock.calls[0]?.[0].resume === true).toBe(
         context === "" && !resendsOriginal,

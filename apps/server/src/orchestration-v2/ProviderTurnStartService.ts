@@ -44,6 +44,7 @@ import { makeRestoreMissingWorktree } from "../workspace/restoreMissingWorktree.
 import * as EventSink from "./EventSink.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
 import * as ClaudeSessionCarry from "./ClaudeSessionCarry.ts";
+import { isAccountFailoverMessage } from "./accountFailoverContinuation.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
 import { isActiveRun } from "./CommandPolicy.ts";
 import {
@@ -133,6 +134,8 @@ export class ProviderTurnStartRunStateMissingError extends Schema.TaggedError<Pr
 export const isProviderTurnStartRunStateMissingError = Schema.is(
   ProviderTurnStartRunStateMissingError,
 );
+
+const ACCOUNT_MOVE_PROMPT = "Continue where you left off.";
 
 const START_GAVE_UP_MESSAGE =
   "T3 Code could not start this turn. Send the message again; if it keeps failing, check the server logs.";
@@ -1785,7 +1788,16 @@ export const layer: Layer.Layer<
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;
-          const text = goalCommand ? userText : withInlineContext(context, userText);
+          // An account move resumes without a message. When it must send context instead, such
+          // as a summary or the carried session's note, it asks the agent to go on unprompted.
+          const promptText =
+            turnInput.resume &&
+            userText === "" &&
+            context !== "" &&
+            isAccountFailoverMessage(message.id)
+              ? ACCOUNT_MOVE_PROMPT
+              : userText;
+          const text = goalCommand ? userText : withInlineContext(context, promptText);
           const startInput = noteContinuation ? promptedInput : turnInput;
           const { resume: _resume, ...contextInput } = startInput;
           const { message: resumeMessage, resume: _resumeIntent, ...resumeInput } = startInput;
@@ -1798,9 +1810,9 @@ export const layer: Layer.Layer<
                     ...turnInput.message,
                     text,
                   },
-                  ...(text === userText
+                  ...(text === promptText
                     ? {}
-                    : { inlineContextLength: text.length - userText.length }),
+                    : { inlineContextLength: text.length - promptText.length }),
                 });
           yield* operation.pipe(
             // Clear pending handoff markers for refused prompts so the next turn retains the native session.

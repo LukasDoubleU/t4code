@@ -156,8 +156,9 @@ is still recommended. **Use next** in **Usage → Limits** and new threads do no
 account.
 
 A thread that already exists keeps its account until the account runs out. When a turn stops on
-the account's usage limit, T3 continues it once on the account **Use next** recommends, ranked for
-the thread's model, with the same model and options, and the thread notes the move. Messages that
+the account's usage limit, T3 resumes it once on the account **Use next** recommends, ranked for
+the thread's model, with the same model and options, and the thread notes the move. Like
+**Resume**, it sends no new prompt. Messages that
 were waiting behind that turn follow it. A turn about to start on an account whose reading already
 shows a used-up window starts on the recommended account instead. The thread stays on its new
 account when the old one resets, and nothing moves threads for any other reason. If no other

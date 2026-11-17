@@ -235,11 +235,35 @@ real_dir() {
   (cd -P -- "$1" 2> /dev/null && pwd) || true
 }
 
-# Points the `t3` launcher at the release. A service finds the launchers it
-# must not prune through the launchers list.
+# The `t3` launcher that upstream's install.sh and `t3 update` write: a script
+# that runs the release by its path, as the Cursor SDK looks for its helpers
+# beside the executable it was started as.
+launcher_script() {
+  quoted="$(printf '%sx' "$1" | sed "s/'/'\\\\''/g")"
+  printf '#!/bin/sh\nexec '"'"'%s'"'"' "$@"\n' "${quoted%x}"
+}
+
+# What the `t3` launcher at $1 runs: an older symlink's target, or the path a
+# launcher script runs.
+launcher_runs() {
+  if [ -L "$1" ]; then
+    readlink "$1"
+  elif [ -f "$1" ]; then
+    sed -n '2s/^exec '"'"'\(.*\)'"'"' "\$@"$/\1/p' "$1" | sed "s/'\\\\''/'/g"
+  else
+    return 1
+  fi
+}
+
+# Points the `t3` launcher at the release, replacing an older symlink rather
+# than writing through it. A service finds the launchers it must not prune
+# through the launchers list.
 link_launcher() {
   mkdir -p "$bin_dir"
-  ln -sfn "$target_dir/t3" "$bin_dir/t3"
+  launcher_tmp="$(mktemp "$bin_dir/.t3.XXXXXX")"
+  launcher_script "$target_dir/t3" > "$launcher_tmp"
+  chmod 755 "$launcher_tmp"
+  mv -f "$launcher_tmp" "$bin_dir/t3"
   launcher="$(real_dir "$bin_dir")/t3"
   launchers="$t3_home/runtime/launchers"
   grep -qxF "$launcher" "$launchers" 2> /dev/null || printf '%s\n' "$launcher" >> "$launchers"
@@ -270,9 +294,9 @@ target_dir="$versions_dir/$release_version"
 
 # --- What is installed ------------------------------------------------------
 
-# The launcher points into runtime/versions/<version>.
+# The launcher runs runtime/versions/<version>/t3.
 installed=
-if launcher_target="$(readlink "$bin_dir/t3" 2> /dev/null)"; then
+if launcher_target="$(launcher_runs "$bin_dir/t3" 2> /dev/null)"; then
   case "$launcher_target" in
     */runtime/versions/*/t3) installed="${launcher_target%/t3}"; installed="${installed##*/}" ;;
   esac

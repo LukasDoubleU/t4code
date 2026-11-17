@@ -147,7 +147,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")(
       const arch = HostProcess.Architecture.defaultValue() === "arm64" ? "arm64" : "x64";
       const archive = `t3-1.2.3-linux-${arch}.tar.gz`;
       const server = NodeHttp.createServer((request, response) => {
-        if (request.url === "/v1.2.3/SHA256SUMS")
+        if (request.url === "/t4-v1.2.3/SHA256SUMS")
           return response.end(`${"0".repeat(64)}  ${archive}\n`);
         response.writeHead(404).end();
       });

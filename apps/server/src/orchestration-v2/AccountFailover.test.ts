@@ -8,6 +8,7 @@ import {
   MessageId,
   type ModelSelection,
   type OrchestrationV2DomainEvent,
+  type OrchestrationV2ProviderFailure,
   type OrchestrationV2Run,
   ProjectId,
   ProviderDriverKind,
@@ -27,10 +28,13 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import { FetchHttpClient } from "effect/http";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as ProviderFallback from "../fallback/ProviderFallback.ts";
+import * as ProviderFallbackStore from "../fallback/ProviderFallbackStore.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
@@ -144,18 +148,31 @@ const orchestrationAdapter = {
   planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
   openSession: () => Effect.die("these tests never start a provider turn"),
 } as ProviderAdapter.ProviderAdapterV2["Service"];
-const instance = (instanceId: ProviderInstanceId) =>
+const instance = (instanceId: ProviderInstanceId, driverKind = driver) =>
   ({
     instanceId,
-    driverKind: driver,
-    continuationIdentity: { driverKind: driver, continuationKey: `codex:${instanceId}` },
+    driverKind,
+    continuationIdentity: { driverKind, continuationKey: `${driverKind}:${instanceId}` },
     displayName: instanceId,
     enabled: true,
     snapshot: { getSnapshot: Effect.succeed({}) } as unknown as ProviderInstance["snapshot"],
-    orchestrationAdapter: { ...orchestrationAdapter, instanceId },
+    orchestrationAdapter: { ...orchestrationAdapter, instanceId, driver: driverKind },
     textGeneration: {} as ProviderInstance["textGeneration"],
   }) satisfies ProviderInstance;
 const instances = [instance(modelSelection.instanceId), instance(alternateInstanceId)];
+
+// The fallback chain's second entry runs on another driver.
+const antigravityDriver = ProviderDriverKind.make("antigravity");
+const chainSelection = {
+  instanceId: ProviderInstanceId.make("antigravity"),
+  model: "gemini-3-pro",
+} satisfies ModelSelection;
+// A second Codex account stays off the chain, where account failover could move a thread.
+const chainInstances = [
+  instance(modelSelection.instanceId),
+  instance(alternateInstanceId),
+  instance(chainSelection.instanceId, antigravityDriver),
+];
 
 const layerPlatformTest = Layer.mergeAll(
   NodeServices.layer,
@@ -168,20 +185,42 @@ const layerServerConfig = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-orchestration-v2-account-failover-",
 });
 
-/** An orchestrator whose server reads `sessionUsed` percent of the thread's account session. */
-const layerRuntime = (sessionUsed: number) =>
+/**
+ * An orchestrator whose server reads `sessionUsed` percent of the thread's account session. With
+ * `chain`, the project runs a fallback chain of its one Codex account, then Antigravity.
+ */
+const layerRuntime = (sessionUsed: number, chain = false) =>
   AccountFailover.layerReactor.pipe(
     Layer.provideMerge(
       Layer.mergeAll(RuntimeLayer.layer, RuntimeLayer.layerEventSink, ProjectStore.layer),
     ),
     Layer.provideMerge(AccountFailover.layerPolicy),
+    Layer.provideMerge(
+      chain
+        ? ProviderFallback.layer.pipe(
+            Layer.provide(ProviderFallbackStore.layer),
+            Layer.provide(FetchHttpClient.layer),
+          )
+        : Layer.empty,
+    ),
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ProviderRegistry.ProviderRegistry)({
-          getProviders: Effect.succeed([
-            snapshot(modelSelection.instanceId, "c2", "two@example.com", sessionUsed),
-            snapshot(alternateInstanceId, "c5", "five@example.com", 10),
-          ]),
+          getProviders: Effect.succeed(
+            chain
+              ? [
+                  snapshot(modelSelection.instanceId, "Codex", "two@example.com", sessionUsed),
+                  snapshot(alternateInstanceId, "c5", "five@example.com", 10),
+                  {
+                    ...snapshot(chainSelection.instanceId, "Antigravity", "ag@example.com", 0),
+                    driver: antigravityDriver,
+                  },
+                ]
+              : [
+                  snapshot(modelSelection.instanceId, "c2", "two@example.com", sessionUsed),
+                  snapshot(alternateInstanceId, "c5", "five@example.com", 10),
+                ],
+          ),
         }),
         Layer.succeed(
           ServerEnvironment.ServerEnvironmentIdentity,
@@ -204,18 +243,33 @@ const layerRuntime = (sessionUsed: number) =>
     ),
     Layer.provide(layerServerConfig),
     Layer.provide(
-      ServerSettings.layerTest({
-        providerInstances: {
-          [modelSelection.instanceId]: { driver: "codex", enabled: true },
-          [alternateInstanceId]: { driver: "codex", enabled: true },
-        },
-      }),
+      ServerSettings.layerTest(
+        chain
+          ? {
+              providerInstances: {
+                [modelSelection.instanceId]: { driver: "codex", enabled: true },
+                [alternateInstanceId]: { driver: "codex", enabled: true },
+                [chainSelection.instanceId]: { driver: "antigravity", enabled: true },
+              },
+              providerFallbackChain: [modelSelection, chainSelection],
+            }
+          : {
+              providerInstances: {
+                [modelSelection.instanceId]: { driver: "codex", enabled: true },
+                [alternateInstanceId]: { driver: "codex", enabled: true },
+              },
+            },
+      ),
     ),
     Layer.provide(
       Layer.succeed(ProviderInstanceRegistry.ProviderInstanceRegistry, {
         getInstance: (instanceId) =>
-          Effect.succeed(instances.find((candidate) => candidate.instanceId === instanceId)),
-        listInstances: Effect.succeed(instances),
+          Effect.succeed(
+            (chain ? chainInstances : instances).find(
+              (candidate) => candidate.instanceId === instanceId,
+            ),
+          ),
+        listInstances: Effect.succeed(chain ? chainInstances : instances),
         listUnavailable: Effect.succeed([]),
         streamChanges: Stream.empty,
         subscribeChanges: Effect.never,
@@ -294,9 +348,18 @@ const sendMessage = (
     }),
   );
 
+const codexUsageLimit: OrchestrationV2ProviderFailure = {
+  class: "usage_limit",
+  message: "You've hit your usage limit.",
+  code: "usageLimitExceeded",
+  retryable: null,
+  resetAt: inHours(1),
+};
+
 /** Ends `run` the way an adapter reports an account's usage limit, and returns that event. */
 const failOnUsageLimit = Effect.fn("AccountFailoverTest.failOnUsageLimit")(function* (
   run: OrchestrationV2Run,
+  failure: OrchestrationV2ProviderFailure = codexUsageLimit,
 ) {
   const events = yield* EventSink.EventSinkV2;
   const now = yield* DateTime.now;
@@ -331,13 +394,7 @@ const failOnUsageLimit = Effect.fn("AccountFailoverTest.failOnUsageLimit")(funct
           startedAt: now,
           completedAt: now,
           updatedAt: now,
-          failure: {
-            class: "usage_limit",
-            message: "You've hit your usage limit.",
-            code: "usageLimitExceeded",
-            retryable: null,
-            resetAt: inHours(1),
-          },
+          failure,
         },
       },
       failed,
@@ -688,6 +745,81 @@ it.layer(layerRuntime(100))("a turn on an account its reading shows used up", (i
         projection.runs.map((run) => run.providerInstanceId),
         [modelSelection.instanceId],
       );
+      assert.deepStrictEqual(yield* notices(threadId), []);
+    }),
+  );
+});
+
+it.layer(layerRuntime(10, true))("a turn on a provider fallback chain", (it) => {
+  it.effect("moves to the next entry on another driver once, then asks for attention", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const reactor = yield* AccountFailover.AccountFailoverReactor;
+      const threadId = yield* createThread("chain");
+      yield* sendMessage(threadId, "Start work.", "defer_start");
+      const [source] = (yield* orchestrator.getThreadProjection(threadId)).runs as [
+        OrchestrationV2Run,
+      ];
+      yield* reactor.handle(
+        yield* failOnUsageLimit(source, { ...codexUsageLimit, quota: "exhausted" }),
+      );
+
+      const moved = yield* orchestrator.getThreadProjection(threadId);
+      const continuation = moved.runs.find((run) => run.id !== source.id)!;
+      assert.equal(continuation.providerInstanceId, chainSelection.instanceId);
+      assert.deepStrictEqual(continuation.modelSelection, chainSelection);
+      assert.equal(continuation.manualContinuationOfRunId, source.id);
+      assert.deepStrictEqual(yield* notices(threadId), [
+        {
+          runId: source.id,
+          message: `Fallback chain: moved from Codex (gpt-5.4) to Antigravity (gemini-3-pro): its usage limit is reached until ${AccountFailover.formatResetTime(HOUR, 0)}.`,
+        },
+      ]);
+      assert.isNull(moved.thread.attention ?? null);
+
+      // Each entry is tried once per turn: the first stays cooling, so the chain is spent.
+      yield* reactor.handle(
+        yield* failOnUsageLimit(continuation, {
+          class: "usage_limit",
+          message: "You have reached your Antigravity quota for this period.",
+          code: "RESOURCE_EXHAUSTED",
+          retryable: true,
+          resetAt: inHours(3),
+          quota: "exhausted",
+        }),
+      );
+      const spent = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(spent.runs, 2);
+      assert.equal(
+        (yield* notices(threadId)).find((notice) => notice.runId === continuation.id)?.message,
+        `Fallback chain: no entry is ready after Antigravity (gemini-3-pro): its usage limit is reached until ${AccountFailover.formatResetTime(3 * HOUR, 0)}. Codex (gpt-5.4) frees up first, at ${AccountFailover.formatResetTime(HOUR, 0)}.`,
+      );
+      assert.equal(
+        spent.thread.attention?.reason,
+        "Every entry of the provider fallback chain is used up.",
+      );
+    }),
+  );
+
+  it.effect("stays on its entry, not another account, when the limit was read from text", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const reactor = yield* AccountFailover.AccountFailoverReactor;
+      const threadId = yield* createThread("chain-text");
+      yield* sendMessage(threadId, "Start work.", "defer_start");
+      const [source] = (yield* orchestrator.getThreadProjection(threadId)).runs as [
+        OrchestrationV2Run,
+      ];
+      // As Codex's managed errors are classified: a usage limit, but without a structured quota.
+      yield* reactor.handle(
+        yield* failOnUsageLimit(source, {
+          ...codexUsageLimit,
+          code: "subscription_sharing_usage_limit_exceeded",
+        }),
+      );
+      const after = yield* orchestrator.getThreadProjection(threadId);
+      assert.lengthOf(after.runs, 1);
+      assert.equal(after.thread.modelSelection.instanceId, modelSelection.instanceId);
       assert.deepStrictEqual(yield* notices(threadId), []);
     }),
   );

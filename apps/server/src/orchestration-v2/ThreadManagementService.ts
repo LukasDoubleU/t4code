@@ -63,6 +63,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
+import * as ProviderFallback from "../fallback/ProviderFallback.ts";
 import * as AccountFailover from "./AccountFailover.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -674,6 +675,7 @@ const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
   const accountFailover = yield* AccountFailover.AccountFailoverPolicy;
+  const providerFallback = yield* ProviderFallback.ProviderFallbackPolicy;
   const worktreeRestore = yield* ThreadWorktreeRestore;
 
   const assertProviderInstanceEnabled: ThreadManagementServiceShape["assertProviderInstanceEnabled"] =
@@ -872,9 +874,16 @@ const make = Effect.gen(function* () {
   const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
     ensureCommandTranscripts(command).pipe(
       Effect.andThen(
-        accountFailover === null || command.type !== "message.dispatch"
+        (accountFailover === null && providerFallback === null) ||
+          command.type !== "message.dispatch"
           ? Effect.succeed<AccountFailover.MovedCommand>({ command, notice: null })
-          : AccountFailover.moveOffUsedUpAccount(accountFailover, orchestrator, sessions, command),
+          : AccountFailover.moveOffUsedUpAccount(
+              accountFailover,
+              orchestrator,
+              sessions,
+              command,
+              providerFallback,
+            ),
       ),
       Effect.flatMap((moved) =>
         assertDispatchTargetEnabled(moved.command).pipe(

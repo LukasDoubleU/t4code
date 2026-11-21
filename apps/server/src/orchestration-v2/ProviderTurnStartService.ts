@@ -38,6 +38,7 @@ import { withTurnStartReservation, withWorkspaceLease } from "../workspace/works
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
+import * as ProviderFallback from "../fallback/ProviderFallback.ts";
 import * as ThreadMemory from "../memory/ThreadMemory.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { makeRestoreMissingWorktree } from "../workspace/restoreMissingWorktree.ts";
@@ -207,6 +208,7 @@ export const layer: Layer.Layer<
     const restoreMissingWorktree = yield* makeRestoreMissingWorktree;
     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
     const sessionCarry = yield* Effect.serviceOption(ClaudeSessionCarry.ClaudeSessionCarry);
+    const fallback = yield* ProviderFallback.ProviderFallbackPolicy;
 
     // Build draining callbacks outside startup scope so they cannot retain full thread history.
     const makeRunControls = (input: {
@@ -651,6 +653,31 @@ export const layer: Layer.Layer<
           });
           return;
         }
+      }
+      // A fallback entry with a budget reserves the run's cap before the turn can spend it.
+      const budgetRefusal =
+        fallback === null
+          ? null
+          : yield* fallback.reserveTurn({
+              threadId: projection.thread.id,
+              projectId: projection.thread.projectId,
+              runId: run.id,
+              selection: run.modelSelection,
+            });
+      if (budgetRefusal !== null) {
+        yield* settleRunBeforeStart({
+          run,
+          rootNode,
+          attempt,
+          turnItems: projection.turnItems,
+          signal: "provider-fallback-budget",
+          status: "failed",
+          now: yield* DateTime.now,
+          providerInstanceId: run.providerInstanceId,
+          itemProviderThreadId: providerThread.id,
+          item: { type: "error", title: "Budget used up", failure: budgetRefusal },
+        });
+        return;
       }
       const recreateResult = yield* Effect.result(restoreMissingWorktree(projection.thread));
       if (recreateResult._tag === "Failure") {
@@ -1784,7 +1811,24 @@ export const layer: Layer.Layer<
               ? ""
               : sideChatHandoff.summaryText;
           const carryNote = carry.type === "carried" && !resumeFellBack ? carry.note : "";
-          const context = [delivery.context, sideChatContext, restartNote, carryNote]
+          const fallbackSource = isAccountFailoverMessage(message.id)
+            ? projection.runs.find((source) => source.id === run.manualContinuationOfRunId)
+            : undefined;
+          // A move to another driver says first where the turn was cut off.
+          const cutOffNote =
+            fallback === null || fallbackSource === undefined || userText !== ""
+              ? null
+              : yield* fallback.continuationNote({
+                  from: fallbackSource.modelSelection,
+                  to: run.modelSelection,
+                });
+          const context = [
+            cutOffNote ?? "",
+            delivery.context,
+            sideChatContext,
+            restartNote,
+            carryNote,
+          ]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;

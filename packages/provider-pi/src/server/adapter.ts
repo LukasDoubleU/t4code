@@ -207,6 +207,19 @@ export interface PiAdapterV2Options {
   };
 }
 
+// Pi forwards its model SDK's error, which leads with the HTTP status of Pi's own model call.
+const PI_ERROR_STATUS = /^(\d{3})\b/;
+
+/** A model-call failure's class and quota, from that leading HTTP status alone. */
+export function piModelFailureClass(errorMessage: string | undefined) {
+  const status = errorMessage === undefined ? null : PI_ERROR_STATUS.exec(errorMessage.trimStart());
+  if (status?.[1] === "429") return { class: "usage_limit" as const, quota: "exhausted" as const };
+  if (status?.[1] === "402") {
+    return { class: "provider_error" as const, quota: "out_of_credit" as const };
+  }
+  return { class: "provider_error" as const };
+}
+
 function contentText(content: unknown): string {
   if (!Array.isArray(content)) {
     return typeof content === "string" ? content : "";
@@ -2293,9 +2306,10 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               turn.reportedModel = `${reportedProvider}/${reportedModelId}`;
             }
             if (recordString(message, "stopReason") === "error" && turn.failure === null) {
+              const errorMessage = recordString(message, "errorMessage");
               turn.failure = makeProviderFailure({
-                message: recordString(message, "errorMessage") ?? "Pi reported a model error.",
-                class: "provider_error",
+                message: errorMessage ?? "Pi reported a model error.",
+                ...piModelFailureClass(errorMessage),
               });
             }
             return;
@@ -2430,9 +2444,10 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               turn.failure = null;
               return;
             }
+            const finalError = recordString(event, "finalError");
             const failure = makeProviderFailure({
-              message: recordString(event, "finalError") ?? "Pi auto-retry failed.",
-              class: "provider_error",
+              message: finalError ?? "Pi auto-retry failed.",
+              ...piModelFailureClass(finalError),
               retryable: false,
             });
             const attempt = Math.max(1, Math.trunc(recordNumber(event, "attempt") ?? 1));

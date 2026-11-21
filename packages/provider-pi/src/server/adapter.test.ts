@@ -53,6 +53,7 @@ import {
   PiAdapterV2Driver,
   PI_PROVIDER,
   type PiAdapterV2Options,
+  piModelFailureClass,
 } from "./adapter.ts";
 import { makePiRpcConnection, type PiRpcRecord } from "./rpc.ts";
 import { loadMcpBridge } from "./mcpBridge.testkit.ts";
@@ -6685,4 +6686,23 @@ process.stdout.write('{"type":"ready"}\\n');
         assert.deepEqual(cues, ["SIGTERM"]);
       }).pipe(Effect.provide(NodeServices.layer)),
   );
+});
+
+describe("piModelFailureClass", () => {
+  it("reads a quota only from the leading HTTP status of Pi's own model call", () => {
+    assert.deepStrictEqual(piModelFailureClass("429 Rate limit exceeded: free-models-per-day"), {
+      class: "usage_limit",
+      quota: "exhausted",
+    });
+    assert.deepStrictEqual(
+      piModelFailureClass('402 {"error":{"message":"Insufficient credits","code":402}}'),
+      { class: "provider_error", quota: "out_of_credit" },
+    );
+    // Text that only mentions a limit, or a status inside the message, is no signal.
+    assert.deepStrictEqual(piModelFailureClass("Rate limited"), { class: "provider_error" });
+    assert.deepStrictEqual(piModelFailureClass("upstream said 429 for api.example.com"), {
+      class: "provider_error",
+    });
+    assert.deepStrictEqual(piModelFailureClass(undefined), { class: "provider_error" });
+  });
 });

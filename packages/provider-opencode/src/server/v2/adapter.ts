@@ -27,6 +27,7 @@ import {
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderCapabilities,
   type OrchestrationV2ProviderFailure,
+  type OrchestrationV2ProviderQuota,
   type OrchestrationV2ProviderRetry,
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
@@ -246,6 +247,8 @@ interface ActiveTurn {
     cacheWrite: number;
     output: number;
     reasoning: number;
+    /** What OpenCode reports its steps cost, in USD. */
+    cost: number;
   };
   // Steps OpenCode started; a step that ends without tokens leaves the total partial.
   startedSteps: number;
@@ -610,6 +613,20 @@ const isUsageLimit = (error: {
   error.type === "provider.rate-limit" ||
   claudeUsageLimit(error.message) !== undefined;
 
+/**
+ * The quota signal for the fallback chain, from OpenCode's typed error and HTTP status only:
+ * `claudeUsageLimit` reads text, so it never moves a thread to another provider.
+ */
+const quotaOf = (error: {
+  readonly type: string;
+  readonly status?: number | undefined;
+}): OrchestrationV2ProviderQuota | undefined =>
+  error.status === 402
+    ? "out_of_credit"
+    : error.type === "provider.quota" || error.type === "provider.rate-limit"
+      ? "exhausted"
+      : undefined;
+
 const INTERRUPT_TIMEOUT = 10_000;
 const INSTRUCTIONS_KEY = "t3-code";
 const RECONNECT_ATTEMPTS = 5;
@@ -788,6 +805,7 @@ const turnTokenUsage = (turn: ActiveTurn, status: OrchestrationV2ProviderTurn["s
         outputTokens: turn.usage.output,
         reasoningTokens: turn.usage.reasoning,
         hasSubagents: turn.usedSubagents,
+        ...(turn.usage.cost > 0 ? { reportedCostUsd: turn.usage.cost } : {}),
       };
 };
 
@@ -1511,6 +1529,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           code: error.type,
           class: isUsageLimit(error) ? "usage_limit" : "provider_error",
           retryable: true,
+          quota: quotaOf(error),
         }),
         startedAt: turn.retry?.startedAt ?? (yield* DateTime.now),
       };
@@ -1553,7 +1572,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       startedAt: new Map(),
       ordinals: new Map(),
       nextOrdinal: providerTurn.ordinal * 100 + 1,
-      usage: { input: 0, cached: 0, cacheWrite: 0, output: 0, reasoning: 0 },
+      usage: { input: 0, cached: 0, cacheWrite: 0, output: 0, reasoning: 0, cost: 0 },
       startedSteps: 0,
       missedEvents: false,
       steps: 0,
@@ -2879,6 +2898,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           turn.usage.cacheWrite += tokens.cache.write;
           turn.usage.output += tokens.output + tokens.reasoning;
           turn.usage.reasoning += tokens.reasoning;
+          const cost = event.data.cost;
+          if (cost !== undefined && Number.isFinite(cost) && cost > 0) turn.usage.cost += cost;
           return;
         }
         case "session.retry.scheduled":
@@ -2901,6 +2922,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               code: type,
               class: isUsageLimit(event.data.error) ? "usage_limit" : "provider_error",
               resetAt: claudeUsageLimit(message)?.resetAt ?? null,
+              quota: quotaOf(event.data.error),
             }),
           });
         }

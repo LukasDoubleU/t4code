@@ -95,3 +95,60 @@ it.effect("refuses a preferences update when the caller's turn ends while it wai
     );
   }),
 );
+
+it.effect("never lets an agent set the provider fallback chain", () =>
+  Effect.gen(function* () {
+    const patches = yield* Ref.make<ReadonlyArray<unknown>>([]);
+    const layerDependencies = Layer.mergeAll(
+      ThreadCommandExecutor.layer,
+      Layer.succeed(McpInvocationContext.McpInvocationContext, {
+        environmentId,
+        requestNamespace: "provider:preferences",
+        thread: {
+          threadId,
+          providerSessionId: "provider:preferences",
+          providerInstanceId: ProviderInstanceId.make("codex"),
+        },
+        client: undefined,
+        capabilities: new Set(["orchestration" as const]),
+        issuedAt: 0,
+      }),
+      Layer.mock(ThreadManagement.ThreadManagementService)({
+        getThreadShell: () => Effect.succeed(liveThreadShell(threadId)),
+      }),
+      Layer.mock(Environment.ServerEnvironment)({
+        getDescriptor: Effect.succeed({
+          environmentId,
+          label: "Test",
+          platform: { os: "linux", arch: "x64" },
+          serverVersion: "0.0.0",
+          capabilities: { repositoryIdentity: false },
+        }),
+      }),
+      Layer.mock(Settings.ServerSettingsService)({
+        getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+        updateSettings: (patch) =>
+          Ref.update(patches, (all) => [...all, patch]).pipe(Effect.as(DEFAULT_SERVER_SETTINGS)),
+      }),
+    );
+    yield* Effect.gen(function* () {
+      const toolkit = yield* EnvironmentToolkit;
+      yield* toolkit
+        .handle("t3_environment_preferences_update", {
+          newWorktreesStartFromOrigin: true,
+          providerFallbackChain: [{ instanceId: "opencode", model: "openrouter/any" }],
+        } as never)
+        .pipe(Stream.unwrap, Stream.runCollect);
+    }).pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(EnvironmentHandlers.layer).pipe(
+          Layer.provideMerge(layerDependencies),
+        ),
+      ),
+    );
+    const sent = yield* Ref.get(patches);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ newWorktreesStartFromOrigin: true });
+    expect(sent[0]).not.toHaveProperty("providerFallbackChain");
+  }),
+);

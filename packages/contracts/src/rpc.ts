@@ -367,6 +367,9 @@ import {
   ServerSettings,
   ServerSettingsError,
   ClientServerSettingsPatch,
+  ProviderFallbackReenableInput,
+  ProviderFallbackStatus,
+  ProviderFallbackStatusInput,
   ListTextGeneratorModelsInput,
   ListTextGeneratorModelsResult,
   TextGeneratorError,
@@ -554,6 +557,8 @@ export const WS_METHODS = {
   serverReportClientActivity: "server.reportClientActivity",
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
+  serverGetProviderFallbackStatus: "server.getProviderFallbackStatus",
+  serverReenableProviderFallbackEntry: "server.reenableProviderFallbackEntry",
 
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   scheduledTasksUpsert: "scheduledTasks.upsert",
@@ -1036,6 +1041,21 @@ const WsServerRefreshUsageRatesRpc = Rpc.make(WS_METHODS.serverRefreshUsageRates
   success: UsagePricing,
   error: EnvironmentAuthorizationError,
 });
+
+const WsServerGetProviderFallbackStatusRpc = Rpc.make(WS_METHODS.serverGetProviderFallbackStatus, {
+  payload: ProviderFallbackStatusInput,
+  success: ProviderFallbackStatus,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsServerReenableProviderFallbackEntryRpc = Rpc.make(
+  WS_METHODS.serverReenableProviderFallbackEntry,
+  {
+    payload: ProviderFallbackReenableInput,
+    success: ProviderFallbackStatus,
+    error: EnvironmentAuthorizationError,
+  },
+);
 
 const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess, {
   payload: ServerSignalProcessInput,
@@ -2180,6 +2200,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerPrepareTriageRpc,
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,
+  WsServerGetProviderFallbackStatusRpc,
+  WsServerReenableProviderFallbackEntryRpc,
   WsServerSignalProcessRpc,
   WsScheduledTasksSubscribeRpc,
   WsScheduledTasksUpsertRpc,

@@ -2,6 +2,7 @@ import type {
   NodeId,
   OrchestrationV2ProviderFailure,
   OrchestrationV2ProviderFailureClass,
+  OrchestrationV2ProviderQuota,
   OrchestrationV2ProviderRetry,
   OrchestrationV2TurnItem,
   ProviderDriverKind,
@@ -282,6 +283,8 @@ export function makeProviderFailure(input: {
   readonly class?: OrchestrationV2ProviderFailureClass;
   readonly retryable?: boolean | null;
   readonly resetAt?: string | null;
+  /** Only from a structured signal of the adapter's own model call; see the contract. */
+  readonly quota?: OrchestrationV2ProviderQuota | undefined;
 }): OrchestrationV2ProviderFailure {
   const curated = curatedCauseMessages(input.cause);
   const requestTooLarge =
@@ -305,6 +308,7 @@ export function makeProviderFailure(input: {
     Number.isFinite(Date.parse(input.resetAt))
       ? { resetAt: DateTime.formatIso(DateTime.makeUnsafe(input.resetAt)) }
       : {}),
+    ...(input.quota === undefined ? {} : { quota: input.quota }),
   };
 }
 

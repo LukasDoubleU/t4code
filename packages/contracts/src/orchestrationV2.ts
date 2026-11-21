@@ -1688,6 +1688,13 @@ const OrchestrationV2ProviderFailureMessage = TrimmedNonEmptyString.check(
 );
 const OrchestrationV2ProviderFailureCode = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
 
+/**
+ * The account's quota or credit is spent, as the adapter's own model call reported it through a
+ * structured signal: an SDK limit event, an HTTP status or an error code, never text.
+ */
+export const OrchestrationV2ProviderQuota = Schema.Literals(["exhausted", "out_of_credit"]);
+export type OrchestrationV2ProviderQuota = typeof OrchestrationV2ProviderQuota.Type;
+
 /** Producers must redact credentials before construction. */
 export const OrchestrationV2ProviderFailure = Schema.Struct({
   class: OrchestrationV2ProviderFailureClass,
@@ -1695,6 +1702,8 @@ export const OrchestrationV2ProviderFailure = Schema.Struct({
   code: Schema.NullOr(OrchestrationV2ProviderFailureCode),
   retryable: Schema.NullOr(Schema.Boolean),
   resetAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  /** Only a failure carrying it moves a thread along its provider fallback chain. */
+  quota: Schema.optional(OrchestrationV2ProviderQuota),
 });
 export type OrchestrationV2ProviderFailure = typeof OrchestrationV2ProviderFailure.Type;
 

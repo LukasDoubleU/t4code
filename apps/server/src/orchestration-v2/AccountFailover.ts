@@ -3,11 +3,15 @@ import {
   isListedThreadLineage,
   type ModelSelection,
   type OrchestrationV2DomainEvent,
+  type OrchestrationV2ProviderFailure,
+  type OrchestrationV2Run,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2ThreadShell,
   type ProjectId,
   type ProviderInstanceId,
   resolveProjectProviderInstanceEnabled,
+  type RunId,
+  type ThreadId,
 } from "@t3tools/contracts";
 import {
   latestExecutedRun,
@@ -22,6 +26,17 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import {
+  BUDGET_FAILURE_CODE,
+  chainNotice,
+  REFUSED_FAILURE_CODE,
+  isChainTrigger,
+  SCHEDULE_BREAKER_STREAK,
+  selectionFor,
+  type TriggerReason,
+} from "../fallback/fallbackChain.ts";
+import * as ProviderFallback from "../fallback/ProviderFallback.ts";
+import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -30,6 +45,7 @@ import * as UsageLimitSources from "../usage/UsageLimitSources.ts";
 import {
   accountFailoverMessageId,
   isAccountFailoverMessage,
+  moveOrigin,
 } from "./accountFailoverContinuation.ts";
 import { isNativeMaintenanceCommand } from "./CommandPolicy.ts";
 import * as EventSink from "./EventSink.ts";
@@ -40,6 +56,7 @@ type MessageDispatch = Extract<OrchestrationV2ServerCommand, { readonly type: "m
 
 const DAY = 24 * 60 * 60_000;
 const NOTICE_KEY = "account";
+const FALLBACK_NOTICE_KEY = "fallback";
 
 /** A reset time in the server's zone; one more than a day away names its weekday. */
 export function formatResetTime(at: number, now: number, timeZone?: string): string {
@@ -187,14 +204,31 @@ export const moveOffUsedUpAccount = Effect.fn("AccountFailover.moveOffUsedUpAcco
     orchestrator: Orchestrator.OrchestratorV2["Service"],
     sessions: ProviderSessionManager.ProviderSessionManagerV2["Service"],
     command: OrchestrationV2ServerCommand,
+    fallback: ProviderFallback.ProviderFallbackPolicyShape | null = null,
   ) {
     const unchanged: MovedCommand = { command, notice: null };
-    if (policy === null || command.type !== "message.dispatch" || !startsTurn(command)) {
+    if (
+      (policy === null && fallback === null) ||
+      command.type !== "message.dispatch" ||
+      !startsTurn(command)
+    ) {
       return unchanged;
     }
     const shell = yield* orchestrator.getThreadShell(command.threadId);
     if (shell === null || shell.activeRunId !== null || !threadMoves(shell)) return unchanged;
     const selection = command.modelSelection ?? shell.modelSelection;
+    if (fallback !== null) {
+      const chained = yield* fallback.turnStart({ projectId: shell.projectId, selection });
+      if (chained !== null) {
+        return {
+          command: { ...command, modelSelection: chained.selection },
+          notice: `Fallback chain: this turn runs on ${chained.to}, the first ready entry, instead of ${chained.from}.`,
+        } satisfies MovedCommand;
+      }
+      // The chain decides where its threads go; the account ranking does not move them.
+      if (yield* fallback.onChain({ projectId: shell.projectId, selection })) return unchanged;
+    }
+    if (policy === null) return unchanged;
     const plan = yield* policy.plan({
       projectId: shell.projectId,
       selection,
@@ -206,7 +240,7 @@ export const moveOffUsedUpAccount = Effect.fn("AccountFailover.moveOffUsedUpAcco
       notice: plan.notice,
     } satisfies MovedCommand;
   },
-  (effect, _policy, _orchestrator, _sessions, command) =>
+  (effect, _policy, _orchestrator, _sessions, command, _fallback) =>
     effect.pipe(
       Effect.catchCause((cause) =>
         Effect.logWarning("checking the account of a new turn failed", {
@@ -230,44 +264,208 @@ const endsBackgroundWork = (error: Orchestrator.OrchestratorV2Error) =>
   error._tag === "OrchestratorDispatchError" &&
   error.cause === Orchestrator.SWITCH_ENDS_BACKGROUND_WORK;
 
+const triggerReason = (
+  failure: OrchestrationV2ProviderFailure | null,
+  budgetStopped: boolean,
+): TriggerReason | null => {
+  if (budgetStopped || failure?.code === BUDGET_FAILURE_CODE) return { kind: "budget" };
+  if (failure?.code === REFUSED_FAILURE_CODE) return { kind: "refused" };
+  if (!isChainTrigger(failure)) return null;
+  if (failure?.quota === "out_of_credit") return { kind: "out_of_credit" };
+  const resetAt = failure?.resetAt == null ? Number.NaN : Date.parse(failure.resetAt);
+  return { kind: "quota", until: Number.isFinite(resetAt) ? resetAt : null };
+};
+
 const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const eventSink = yield* EventSink.EventSinkV2;
   const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
   const policy = yield* AccountFailoverPolicy;
+  const fallback = yield* ProviderFallback.ProviderFallbackPolicy;
+  const scheduledTasks = yield* Effect.serviceOption(ScheduledTaskService);
 
-  // Runs for every run update and creation; all but a failed or a queued run return at once.
-  // A run queued behind the limited one is a wake, often from background work ending: that work
-  // may have held the move back, so the move is tried again.
+  // The scheduled task a run serves, through the moves that continued it.
+  const scheduledTaskOf = Effect.fn("AccountFailover.scheduledTaskOf")(function* (
+    threadId: ThreadId,
+    runs: ReadonlyArray<OrchestrationV2Run>,
+    run: OrchestrationV2Run,
+  ) {
+    const origin = moveOrigin(runs, run);
+    const records = yield* orchestrator.getThreadRecords(threadId, ["messages"], {
+      messageIds: [origin.userMessageId],
+    });
+    return records.messages.find((message) => message.id === origin.userMessageId)?.scheduledTaskId;
+  });
+
+  /** Moves a thread along its fallback chain; false when the run is not on one. */
+  const moveAlongChain = Effect.fn("AccountFailover.moveAlongChain")(function* (input: {
+    readonly fallback: ProviderFallback.ProviderFallbackPolicyShape;
+    readonly threadId: ThreadId;
+    readonly projectId: ProjectId;
+    readonly runs: ReadonlyArray<OrchestrationV2Run>;
+    readonly run: OrchestrationV2Run;
+    readonly reason: TriggerReason;
+    /** Retries after background work held a move back record nothing new. */
+    readonly retryOf: RunId | undefined;
+    /** Only a wake retries: a message the user queued already starts on the first ready entry. */
+    readonly wake: boolean;
+  }) {
+    const { run, threadId } = input;
+    if (input.retryOf !== undefined && !input.wake) return;
+    const origin = moveOrigin(input.runs, run);
+    const move = yield* input.fallback.afterFailure({
+      threadId,
+      projectId: input.projectId,
+      originRunId: origin.id,
+      runId: run.id,
+      selection: run.modelSelection,
+      reason: input.reason,
+      record: input.retryOf === undefined,
+    });
+    if (move === null) return;
+    const now = yield* Clock.currentTimeMillis;
+    const time = (at: number) => formatResetTime(at, now);
+    let notice = chainNotice(move.plan, { reason: input.reason, label: move.label, time });
+    const attempt = input.retryOf === undefined ? run.id : `${run.id}:${input.retryOf}`;
+    if (move.plan.type === "move") {
+      const to = move.plan.to;
+      const moved = yield* orchestrator
+        .dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make(`server:provider-fallback:${attempt}`),
+          threadId,
+          messageId: accountFailoverMessageId(run.id),
+          // The new entry reads the thread's handoff and a note on where the turn was cut off.
+          text: "",
+          attachments: [],
+          modelSelection: selectionFor(to.entry, run.modelSelection),
+          manualContinuationOfRunId: run.id,
+          dispatchMode: { type: "start_immediately" },
+          createdBy: "agent",
+          creationSource: "server",
+        })
+        .pipe(
+          Effect.as(true),
+          Effect.catchIf(endsBackgroundWork, () => Effect.succeed(false)),
+        );
+      if (!moved) {
+        notice = `Fallback chain: stays on ${move.label(move.plan.from)} for now: moving would end its running background agents and commands.`;
+      } else {
+        yield* input.fallback.markTried({ threadId, originRunId: origin.id, entry: to });
+        if (input.runs.some((candidate) => candidate.status === "queued")) {
+          yield* orchestrator.dispatch({
+            type: "queue.resume",
+            commandId: CommandId.make(`server:provider-fallback:queue:${attempt}`),
+            threadId,
+          });
+        }
+      }
+    } else if (input.retryOf === undefined) {
+      yield* orchestrator.dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make(`server:provider-fallback:attention:${run.id}`),
+        threadId,
+        attention: { reason: "Every entry of the provider fallback chain is used up." },
+      });
+      const scheduleId = yield* scheduledTaskOf(threadId, input.runs, run);
+      if (scheduleId !== undefined) {
+        const trips = yield* input.fallback.scheduleOutcome({
+          scheduleId,
+          runId: origin.id,
+          exhausted: true,
+        });
+        if (trips && Option.isSome(scheduledTasks)) {
+          yield* scheduledTasks.value.setEnabled({ id: scheduleId, enabled: false });
+          notice = `${notice} Its schedule exhausted the chain ${SCHEDULE_BREAKER_STREAK} runs in a row and is paused; turn it back on in Schedules.`;
+        }
+      }
+    }
+    yield* orchestrator.recordRunNotice({
+      threadId,
+      runId: run.id,
+      key: FALLBACK_NOTICE_KEY,
+      message: notice,
+    });
+  });
+
+  // Runs for every run update and creation; all but a failed, interrupted or queued run return
+  // at once. A run queued behind the limited one is a wake, often from background work ending:
+  // that work may have held the move back, so the move is tried again.
   const handle: AccountFailoverReactor["Service"]["handle"] = Effect.fnUntraced(
     function* (event) {
-      if (policy === null) return;
+      if (policy === null && fallback === null) return;
       const failedRunId =
         event.type === "run.updated" && event.payload.status === "failed"
+          ? event.payload.id
+          : undefined;
+      // Only the budget check interrupts a run for the chain; any other stop stays put.
+      const interruptedRunId =
+        fallback !== null && event.type === "run.updated" && event.payload.status === "interrupted"
           ? event.payload.id
           : undefined;
       const queuedRunId =
         event.type === "run.created" && event.payload.status === "queued"
           ? event.payload.id
           : undefined;
-      if (failedRunId === undefined && queuedRunId === undefined) return;
+      if (
+        failedRunId === undefined &&
+        queuedRunId === undefined &&
+        interruptedRunId === undefined
+      ) {
+        return;
+      }
+      const endedRunId = failedRunId ?? interruptedRunId;
+      const stoppedAtCap = (runId: RunId) =>
+        fallback === null
+          ? Effect.succeed(false)
+          : fallback.reservation(runId).pipe(Effect.map((held) => held?.stoppedAt != null));
+      if (interruptedRunId !== undefined && !(yield* stoppedAtCap(interruptedRunId))) return;
       const projection = yield* orchestrator.getThreadRecords(
         event.threadId,
         ["runs", "runtimeRequests", "turnItems"],
         {
           turnItemTypes: ["error"],
-          ...(failedRunId === undefined ? {} : { turnItemRunIds: [failedRunId] }),
+          ...(endedRunId === undefined ? {} : { turnItemRunIds: [endedRunId] }),
         },
       );
       const run = latestExecutedRun(projection.runs);
       const failure = latestRootProviderFailure(run, projection.turnItems);
       if (
         run === null ||
-        (failedRunId !== undefined && run.id !== failedRunId) ||
-        failure?.class !== "usage_limit" ||
+        (endedRunId !== undefined && run.id !== endedRunId) ||
         projection.thread.deletedAt !== null ||
         !threadMoves(projection.thread) ||
-        projection.runtimeRequests.some((request) => request.status === "pending") ||
+        projection.runtimeRequests.some((request) => request.status === "pending")
+      ) {
+        return;
+      }
+      // The chain alone decides where its threads go, also on a limit it does not move on.
+      if (
+        fallback !== null &&
+        (yield* fallback.onChain({
+          projectId: projection.thread.projectId,
+          selection: run.modelSelection,
+        }))
+      ) {
+        // A wake after a stop at the cap finds the stopped run, which carries no failure.
+        const budgetStopped = run.status === "interrupted" && (yield* stoppedAtCap(run.id));
+        const reason = triggerReason(failure, budgetStopped);
+        if (reason === null || (run.status === "interrupted" && !budgetStopped)) return;
+        yield* moveAlongChain({
+          fallback,
+          threadId: event.threadId,
+          projectId: projection.thread.projectId,
+          runs: projection.runs,
+          run,
+          reason,
+          retryOf: queuedRunId,
+          wake: event.type === "run.created" && event.payload.origin === "wake",
+        });
+        return;
+      }
+      if (
+        policy === null ||
+        failure?.class !== "usage_limit" ||
         // A turn that already continues a move does not move again.
         isAccountFailoverMessage(run.userMessageId)
       ) {

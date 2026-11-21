@@ -216,6 +216,37 @@ Until then it shows no limits. Readings are not kept across a server restart.
 API-key accounts may not report subscription limits. This also applies to Claude connections
 using a proxy through `ANTHROPIC_AUTH_TOKEN`.
 
+## Fall back to other providers
+
+A fallback chain keeps agents working when a provider's quota runs out. It is an ordered list of
+provider accounts, each with a model, for example an Antigravity subscription, then Antigravity
+with a Gemini API key, then a Codex subscription, then OpenRouter through OpenCode as the last
+resort. Set it in **Settings → Threads → Provider fallback**. A project can follow the
+environment's chain, use its own, or turn it off; the chain is off until you add entries, and
+agents cannot change it.
+
+A thread whose model is on the chain moves when its provider reports that the quota or credit is
+spent. Its turn continues on the next ready entry in a new session that gets the thread's
+summary and a note saying where the previous attempt was cut off, so the agent checks before it
+repeats anything. Each entry is tried at most once per turn. A spent entry rests until its reset
+time, or for 10 minutes doubling up to 6 hours when the provider gives none. An entry that is
+out of credit stays off until you choose **Re-enable** next to it. New turns start on the first
+ready entry, so an earlier entry takes over again once it resets. When no entry is ready, the
+thread asks for your attention and names the entry that frees up first; a schedule that runs out
+of entries three times in a row pauses itself.
+
+Entries that bill per use can have a monthly budget and a per-run ceiling, and entries that use the
+same key can share one budget group. Each run reserves its ceiling before it starts and is
+stopped when it reaches it; its turn then moves on, or stops at the last entry. A run is charged
+what the provider reports, else its cost at list price (see custom model prices above), else the
+whole ceiling. OpenCode reports its cost as it goes, so it suits OpenRouter best; Pi reports no
+cost while it runs, so a Pi run is charged its ceiling and is not stopped partway.
+
+These budgets are T3's own count. The real safety net is the limit on the key itself: OpenRouter
+lets you cap each key, and T3 refuses an OpenRouter entry whose key has no limit. T3 reads the key
+from `OPENROUTER_API_KEY` in the provider's environment variables, or from OpenCode's or Pi's own
+login.
+
 ## Connect a CLIProxyAPI hub
 
 To see pooled accounts, open **Settings → Providers → Usage providers → Add hub**. Choose the

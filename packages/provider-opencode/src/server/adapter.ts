@@ -3163,10 +3163,12 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                     );
               const error = event.properties.error;
               const usageLimit = error?.name === "APIError" && error.data.statusCode === 429;
+              const outOfCredit = error?.name === "APIError" && error.data.statusCode === 402;
               const failure = makeProviderFailure({
                 message: openCodeErrorMessage(event),
                 code: error?.name ?? null,
                 class: usageLimit ? "usage_limit" : "provider_error",
+                quota: usageLimit ? "exhausted" : outOfCredit ? "out_of_credit" : undefined,
               });
               if (
                 !isMessageAbortedError(event) &&

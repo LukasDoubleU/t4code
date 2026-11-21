@@ -1230,6 +1230,11 @@ function codexUsageLimitError(
   );
 }
 
+/** Codex's typed error info only: a managed error read from text never moves the fallback chain. */
+function codexQuota(code: string | null, errorInfo: CodexErrorInfo | null | undefined) {
+  return codexUsageLimitError(code, errorInfo) ? ("exhausted" as const) : undefined;
+}
+
 function codexTerminalFailureClass(
   errorInfo: CodexErrorInfo | null | undefined,
   code: string | null,
@@ -5211,6 +5216,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                       payload.error.codexErrorInfo,
                       notificationCode,
                     ),
+                    quota: codexQuota(notificationCode, payload.error.codexErrorInfo),
                   }),
                   payload.error,
                 ),
@@ -6389,6 +6395,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                         message: input.failureMessage,
                         code: failureCode,
                         class: failureClass,
+                        quota: codexQuota(failureCode ?? null, input.failureErrorInfo),
                       }),
                       input.failureMessage,
                     );
@@ -7145,7 +7152,9 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   failure: {
                     ...state.failure,
                     retryable: false,
-                    ...(codexErrorHttpStatus(errorInfo) === 429 ? { class: "usage_limit" } : {}),
+                    ...(codexErrorHttpStatus(errorInfo) === 429
+                      ? { class: "usage_limit", quota: "exhausted" }
+                      : {}),
                   },
                 },
               },

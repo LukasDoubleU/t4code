@@ -8,11 +8,16 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
+import {
+  isAccountFailoverMessage,
+  moveOrigin,
+} from "../orchestration-v2/accountFailoverContinuation.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { forkParked } from "../serverActivation.ts";
@@ -81,10 +86,13 @@ const make = Effect.gen(function* () {
     const reservation = yield* policy.reservation(runId);
     if (reservation === null || reservation.chargedUsd !== null) return;
     const { run, turns } = yield* runTurns(threadId, runId);
+    // A run that never reached its provider spent nothing; one that did, without a cost, its cap.
     const costUsd =
       run === undefined
         ? null
-        : yield* policy.runCost({ selection: run.modelSelection, providerTurns: turns });
+        : turns.length === 0
+          ? 0
+          : yield* policy.runCost({ selection: run.modelSelection, providerTurns: turns });
     yield* policy.settle({ runId, costUsd });
   });
 
@@ -141,17 +149,26 @@ const make = Effect.gen(function* () {
       if (!TERMINAL.has(run.status)) return;
       if (!unbudgeted.delete(run.id)) yield* settle(fallback, event.threadId, run.id);
       if (run.status !== "completed") return;
-      yield* fallback.completed(run.modelSelection);
-      if (run.origin === "schedule") {
-        const records = yield* orchestrator.getThreadRecords(event.threadId, ["messages"], {
-          messageIds: [run.userMessageId],
+      if (run.startedAt !== null) {
+        yield* fallback.completed({
+          selection: run.modelSelection,
+          startedAt: DateTime.toEpochMillis(run.startedAt),
         });
-        const scheduleId = records.messages.find(
-          (message) => message.id === run.userMessageId,
-        )?.scheduledTaskId;
-        if (scheduleId !== undefined) {
-          yield* fallback.scheduleOutcome({ scheduleId, exhausted: false });
-        }
+      }
+      // A scheduled turn that completed, also after moving along the chain, ends the streak.
+      const moved = isAccountFailoverMessage(run.userMessageId);
+      if (run.origin !== "schedule" && !moved) return;
+      const origin = moved
+        ? moveOrigin((yield* orchestrator.getThreadRecords(event.threadId, ["runs"])).runs, run)
+        : run;
+      const records = yield* orchestrator.getThreadRecords(event.threadId, ["messages"], {
+        messageIds: [origin.userMessageId],
+      });
+      const scheduleId = records.messages.find(
+        (message) => message.id === origin.userMessageId,
+      )?.scheduledTaskId;
+      if (scheduleId !== undefined) {
+        yield* fallback.scheduleOutcome({ scheduleId, runId: origin.id, exhausted: false });
       }
     },
     (effect, event) =>

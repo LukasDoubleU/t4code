@@ -3,7 +3,11 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { ProviderFallbackEntry, ProviderInstanceId } from "@t3tools/contracts";
+import type {
+  ProviderFallbackEntry,
+  ProviderFallbackEntryState,
+  ProviderInstanceId,
+} from "@t3tools/contracts";
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 
@@ -41,6 +45,13 @@ import {
   useScopedSettingsWriteAllowed,
   useUpdateScopedSettings,
 } from "./useScopedSettings";
+
+// Re-enabling lifts parking and cool-downs and checks a refused key again.
+const reenableLabel: Partial<Record<ProviderFallbackEntryState, string>> = {
+  parked: "Re-enable",
+  cooling: "Retry now",
+  refused: "Check again",
+};
 
 /** The ordered chain a thread moves along when a provider's quota or budget runs out. */
 export function ProviderFallbackSettings() {
@@ -249,11 +260,11 @@ function FallbackEntryRow({
             {described === null ? null : <Badge variant={described.tone}>{described.label}</Badge>}
             {described?.detail ? <span>{described.detail}</span> : null}
             {budget === null ? null : <span>{budget}</span>}
-            {status?.state === "parked" ? (
+            {status === undefined || reenableLabel[status.state] === undefined ? null : (
               <Button size="xs" variant="outline" disabled={!canReenable} onClick={onReenable}>
-                Re-enable
+                {reenableLabel[status.state]}
               </Button>
-            ) : null}
+            )}
           </span>
         )
       }

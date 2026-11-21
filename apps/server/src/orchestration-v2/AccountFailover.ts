@@ -29,6 +29,7 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import {
   BUDGET_FAILURE_CODE,
   chainNotice,
+  REFUSED_FAILURE_CODE,
   isChainTrigger,
   SCHEDULE_BREAKER_STREAK,
   selectionFor,
@@ -44,6 +45,7 @@ import * as UsageLimitSources from "../usage/UsageLimitSources.ts";
 import {
   accountFailoverMessageId,
   isAccountFailoverMessage,
+  moveOrigin,
 } from "./accountFailoverContinuation.ts";
 import { isNativeMaintenanceCommand } from "./CommandPolicy.ts";
 import * as EventSink from "./EventSink.ts";
@@ -262,31 +264,12 @@ const endsBackgroundWork = (error: Orchestrator.OrchestratorV2Error) =>
   error._tag === "OrchestratorDispatchError" &&
   error.cause === Orchestrator.SWITCH_ENDS_BACKGROUND_WORK;
 
-/** The run a chain of moves started from: the turn whose entries the tried set counts. */
-function moveOrigin(
-  runs: ReadonlyArray<OrchestrationV2Run>,
-  run: OrchestrationV2Run,
-): OrchestrationV2Run {
-  let current = run;
-  const seen = new Set<RunId>();
-  while (
-    isAccountFailoverMessage(current.userMessageId) &&
-    current.manualContinuationOfRunId !== undefined &&
-    !seen.has(current.id)
-  ) {
-    seen.add(current.id);
-    const source = runs.find((candidate) => candidate.id === current.manualContinuationOfRunId);
-    if (source === undefined) break;
-    current = source;
-  }
-  return current;
-}
-
 const triggerReason = (
   failure: OrchestrationV2ProviderFailure | null,
   budgetStopped: boolean,
 ): TriggerReason | null => {
   if (budgetStopped || failure?.code === BUDGET_FAILURE_CODE) return { kind: "budget" };
+  if (failure?.code === REFUSED_FAILURE_CODE) return { kind: "refused" };
   if (!isChainTrigger(failure)) return null;
   if (failure?.quota === "out_of_credit") return { kind: "out_of_credit" };
   const resetAt = failure?.resetAt == null ? Number.NaN : Date.parse(failure.resetAt);
@@ -324,26 +307,22 @@ const make = Effect.gen(function* () {
     readonly reason: TriggerReason;
     /** Retries after background work held a move back record nothing new. */
     readonly retryOf: RunId | undefined;
+    /** Only a wake retries: a message the user queued already starts on the first ready entry. */
+    readonly wake: boolean;
   }) {
     const { run, threadId } = input;
-    if (
-      !(yield* input.fallback.onChain({
-        projectId: input.projectId,
-        selection: run.modelSelection,
-      }))
-    ) {
-      return false;
-    }
+    if (input.retryOf !== undefined && !input.wake) return;
     const origin = moveOrigin(input.runs, run);
     const move = yield* input.fallback.afterFailure({
       threadId,
       projectId: input.projectId,
       originRunId: origin.id,
+      runId: run.id,
       selection: run.modelSelection,
       reason: input.reason,
       record: input.retryOf === undefined,
     });
-    if (move === null) return true;
+    if (move === null) return;
     const now = yield* Clock.currentTimeMillis;
     const time = (at: number) => formatResetTime(at, now);
     let notice = chainNotice(move.plan, { reason: input.reason, label: move.label, time });
@@ -359,7 +338,7 @@ const make = Effect.gen(function* () {
           // The new entry reads the thread's handoff and a note on where the turn was cut off.
           text: "",
           attachments: [],
-          modelSelection: selectionFor(to.entry),
+          modelSelection: selectionFor(to.entry, run.modelSelection),
           manualContinuationOfRunId: run.id,
           dispatchMode: { type: "start_immediately" },
           createdBy: "agent",
@@ -390,7 +369,11 @@ const make = Effect.gen(function* () {
       });
       const scheduleId = yield* scheduledTaskOf(threadId, input.runs, run);
       if (scheduleId !== undefined) {
-        const trips = yield* input.fallback.scheduleOutcome({ scheduleId, exhausted: true });
+        const trips = yield* input.fallback.scheduleOutcome({
+          scheduleId,
+          runId: origin.id,
+          exhausted: true,
+        });
         if (trips && Option.isSome(scheduledTasks)) {
           yield* scheduledTasks.value.setEnabled({ id: scheduleId, enabled: false });
           notice = `${notice} Its schedule exhausted the chain ${SCHEDULE_BREAKER_STREAK} runs in a row and is paused; turn it back on in Schedules.`;
@@ -403,7 +386,6 @@ const make = Effect.gen(function* () {
       key: FALLBACK_NOTICE_KEY,
       message: notice,
     });
-    return true;
   });
 
   // Runs for every run update and creation; all but a failed, interrupted or queued run return
@@ -433,11 +415,11 @@ const make = Effect.gen(function* () {
         return;
       }
       const endedRunId = failedRunId ?? interruptedRunId;
-      const budgetStopped =
-        interruptedRunId !== undefined &&
-        fallback !== null &&
-        (yield* fallback.reservation(interruptedRunId))?.stoppedAt != null;
-      if (interruptedRunId !== undefined && !budgetStopped) return;
+      const stoppedAtCap = (runId: RunId) =>
+        fallback === null
+          ? Effect.succeed(false)
+          : fallback.reservation(runId).pipe(Effect.map((held) => held?.stoppedAt != null));
+      if (interruptedRunId !== undefined && !(yield* stoppedAtCap(interruptedRunId))) return;
       const projection = yield* orchestrator.getThreadRecords(
         event.threadId,
         ["runs", "runtimeRequests", "turnItems"],
@@ -457,11 +439,19 @@ const make = Effect.gen(function* () {
       ) {
         return;
       }
-      const reason = triggerReason(failure, budgetStopped);
+      // The chain alone decides where its threads go, also on a limit it does not move on.
       if (
         fallback !== null &&
-        reason !== null &&
-        (yield* moveAlongChain({
+        (yield* fallback.onChain({
+          projectId: projection.thread.projectId,
+          selection: run.modelSelection,
+        }))
+      ) {
+        // A wake after a stop at the cap finds the stopped run, which carries no failure.
+        const budgetStopped = run.status === "interrupted" && (yield* stoppedAtCap(run.id));
+        const reason = triggerReason(failure, budgetStopped);
+        if (reason === null || (run.status === "interrupted" && !budgetStopped)) return;
+        yield* moveAlongChain({
           fallback,
           threadId: event.threadId,
           projectId: projection.thread.projectId,
@@ -469,8 +459,8 @@ const make = Effect.gen(function* () {
           run,
           reason,
           retryOf: queuedRunId,
-        }))
-      ) {
+          wake: event.type === "run.created" && event.payload.origin === "wake",
+        });
         return;
       }
       if (

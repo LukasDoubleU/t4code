@@ -239,7 +239,8 @@ Entries that bill per use can have a monthly budget and a per-run ceiling, and e
 same key can share one budget group. Each run reserves its ceiling before it starts and is
 stopped when it reaches it; its turn then moves on, or stops at the last entry. A run is charged
 what the provider reports, else its cost at list price (see custom model prices above), else the
-whole ceiling. OpenCode reports its cost as it goes; Pi runs are charged their ceiling.
+whole ceiling. OpenCode reports its cost as it goes, so it suits OpenRouter best; Pi reports no
+cost while it runs, so a Pi run is charged its ceiling and is not stopped partway.
 
 These budgets are T3's own count. The real safety net is the limit on the key itself: OpenRouter
 lets you cap each key, and T3 refuses an OpenRouter entry whose key has no limit. T3 reads the key

@@ -28,7 +28,12 @@ import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import { BUDGET_FAILURE_CODE, cutOffNote, nextMonthStart } from "./fallbackChain.ts";
+import {
+  BUDGET_FAILURE_CODE,
+  cutOffNote,
+  nextMonthStart,
+  REFUSED_FAILURE_CODE,
+} from "./fallbackChain.ts";
 import { NO_LIMIT } from "./openRouterKey.ts";
 import * as ProviderFallback from "./ProviderFallback.ts";
 import * as ProviderFallbackReactor from "./ProviderFallbackReactor.ts";
@@ -126,9 +131,11 @@ const layer = (limit: number | null, dispatched: Array<OrchestrationV2ServerComm
     Layer.provide(NodeServices.layer),
   );
 
-const policy = Effect.flatMap(ProviderFallback.ProviderFallbackPolicy, (value) =>
-  value === null ? Effect.die("no fallback policy") : Effect.succeed(value),
-);
+const policy = Effect.gen(function* () {
+  const value = yield* ProviderFallback.ProviderFallbackPolicy;
+  if (value === null) return yield* Effect.die("no fallback policy");
+  return value;
+});
 
 const reserve = (runId: string, selection: ModelSelection = geminiKey) =>
   Effect.flatMap(policy, (fallback) =>
@@ -246,6 +253,12 @@ it.layer(layer(null))("an OpenRouter entry", (it) => {
       const fallback = yield* policy;
       const status = yield* fallback.status(projectId);
       assert.deepInclude(status.entries[2], { state: "refused", reason: NO_LIMIT });
+      // A thread already on the entry does not start a turn on the key either.
+      assert.deepInclude(yield* reserve("refused-run", openRouter), {
+        quota: "exhausted",
+        code: REFUSED_FAILURE_CODE,
+        message: NO_LIMIT,
+      });
     }),
   );
 });

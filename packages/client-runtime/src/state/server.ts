@@ -1296,6 +1296,20 @@ export function createServerEnvironmentAtoms<R, E>(
       ]);
     }).pipe(Atom.withLabel(`environment-data:server:usage-scan-settings:${environmentId}`)),
   );
+  // A saved chain is read again at once, so a refused entry shows while the user sets it up.
+  const providerFallbackSettingsAtom = Atom.family((environmentId: EnvironmentId) =>
+    Atom.make((get) => {
+      const settings = get(settingsValueAtom(environmentId));
+      return JSON.stringify([
+        settings?.providerFallbackChain ?? [],
+        Object.entries(settings?.projectSettingsOverrides ?? {}).flatMap(([projectId, override]) =>
+          override.providerFallbackChain === undefined
+            ? []
+            : [[projectId, override.providerFallbackChain]],
+        ),
+      ]);
+    }).pipe(Atom.withLabel(`environment-data:server:provider-fallback-settings:${environmentId}`)),
+  );
   // Settings snapshots rebuild the filter object; only a changed filter should touch the Usage tab.
   const usageModelFilterAtom = Atom.family((environmentId: EnvironmentId) =>
     Atom.make((get) => get(settingsValueAtom(environmentId))?.usageModelFilter).pipe(
@@ -1482,6 +1496,7 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverGetProviderFallbackStatus,
       staleTimeMs: 15_000,
       refreshIntervalMs: 60_000,
+      refreshTrigger: ({ environmentId }) => providerFallbackSettingsAtom(environmentId),
     }),
     hostResources: createEnvironmentQueryAtomFamily(runtime, {
       label: "environment-data:server:host-resources",

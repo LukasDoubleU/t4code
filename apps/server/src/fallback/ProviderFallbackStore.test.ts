@@ -44,28 +44,27 @@ describe("ProviderFallbackStore", () => {
       const file = yield* tempDatabase;
       yield* withStore(file, (store) =>
         Effect.gen(function* () {
-          assert.equal(
-            yield* store.coolDown({
+          const stop = (runId: string) =>
+            store.coolDown({
               key: entry,
               until: null,
               backoff: backoffMs,
               reason: "quota",
               now: 0,
-            }),
-            backoffMs(1),
-          );
+              runId,
+            });
+          assert.equal(yield* stop("run-1"), backoffMs(1));
+          // The same run reported again, as its checkpoint does, counts once.
+          assert.equal(yield* stop("run-1"), backoffMs(1));
           // A second failure in a row without a reset time doubles the wait.
-          assert.equal(
-            yield* store.coolDown({
-              key: entry,
-              until: null,
-              backoff: backoffMs,
-              reason: "quota",
-              now: 0,
-            }),
-            backoffMs(2),
-          );
-          yield* store.coolDown({ key: otherModel, until: 5_000, reason: "quota", now: 0 });
+          assert.equal(yield* stop("run-2"), backoffMs(2));
+          yield* store.coolDown({
+            key: otherModel,
+            until: 5_000,
+            reason: "quota",
+            now: 0,
+            runId: "run-3",
+          });
           yield* store.park({ key: "antigravity_api", reason: "Out of credit", now: 0 });
           yield* store.markTried({ threadId: "t", originRunId: "r", key: entry, now: 0 });
           yield* store.markTried({ threadId: "t", originRunId: "r", key: entry, now: 1 });
@@ -87,6 +86,18 @@ describe("ProviderFallbackStore", () => {
       assert.deepStrictEqual([...after.tried], [entry]);
       assert.equal(after.otherTurn.size, 0);
 
+      // A turn that started before the entry stopped, on another thread, leaves the cool-down.
+      const cleared = yield* withStore(file, (store) =>
+        Effect.gen(function* () {
+          yield* store.clearCooldown({ key: otherModel, startedAt: 0 });
+          const kept = (yield* store.entryStates()).find((state) => state.key === otherModel);
+          yield* store.clearCooldown({ key: otherModel, startedAt: 1 });
+          const gone = (yield* store.entryStates()).find((state) => state.key === otherModel);
+          return { kept: kept?.cooldownUntil, gone: gone?.cooldownUntil };
+        }),
+      );
+      assert.deepStrictEqual(cleared, { kept: 5_000, gone: null });
+
       // Re-enabling an instance lifts its parking and every model's cool-down on it.
       const reenabled = yield* withStore(file, (store) =>
         store.reenable("antigravity").pipe(Effect.andThen(store.entryStates())),
@@ -107,10 +118,9 @@ describe("ProviderFallbackStore", () => {
     Effect.gen(function* () {
       const file = yield* tempDatabase;
       const reservations = yield* withStore(file, (store) =>
-        Effect.all(
-          ["a", "b", "c", "d"].map((id) => store.reserve(reserveInput(id))),
-          { concurrency: "unbounded" },
-        ),
+        Effect.forEach(["a", "b", "c", "d"], (id) => store.reserve(reserveInput(id)), {
+          concurrency: "unbounded",
+        }),
       );
       // 10 USD a month at 4 per run: two full runs, one with the 2 left, then no room.
       assert.deepStrictEqual(
@@ -149,23 +159,30 @@ describe("ProviderFallbackStore", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("trips a schedule's breaker once per streak", () =>
+  it.effect("trips a schedule's breaker once per streak of runs", () =>
     Effect.gen(function* () {
       const file = yield* tempDatabase;
       yield* withStore(file, (store) =>
         Effect.gen(function* () {
-          const outcome = (exhausted: boolean) =>
-            store.recordScheduleOutcome({ scheduleId: "s", exhausted, now: 0 });
-          assert.equal(yield* outcome(true), 1);
-          assert.equal(yield* outcome(true), 2);
-          assert.equal(yield* outcome(true), 3);
-          assert.isTrue(yield* store.tripBreaker({ scheduleId: "s", now: 0 }));
-          assert.equal(yield* outcome(true), 4);
-          assert.isFalse(yield* store.tripBreaker({ scheduleId: "s", now: 0 }));
-          // A run that gets through ends the streak; the next one can trip again.
-          assert.equal(yield* outcome(false), 0);
-          yield* outcome(true);
-          assert.isTrue(yield* store.tripBreaker({ scheduleId: "s", now: 0 }));
+          const outcome = (runId: string, exhausted: boolean) =>
+            store.recordScheduleOutcome({ scheduleId: "s", runId, exhausted, now: 0 });
+          const trip = store.tripBreaker({ scheduleId: "s", threshold: 3, now: 0 });
+          assert.equal(yield* outcome("a", true), 1);
+          // A run reported twice counts once.
+          assert.equal(yield* outcome("a", true), 1);
+          assert.equal(yield* outcome("b", true), 2);
+          assert.isFalse(yield* trip);
+          assert.equal(yield* outcome("c", true), 3);
+          assert.isTrue(yield* trip);
+          assert.isFalse(yield* trip, "once per streak");
+          // Turned back on, the schedule pauses again after another full streak.
+          assert.equal(yield* outcome("d", true), 1);
+          // A run that gets through ends the streak.
+          assert.equal(yield* outcome("e", false), 0);
+          yield* outcome("f", true);
+          yield* outcome("g", true);
+          yield* outcome("h", true);
+          assert.isTrue(yield* trip);
         }),
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),

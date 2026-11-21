@@ -12,9 +12,11 @@ import {
   findChainEntry,
   firstReadyEntry,
   isChainTrigger,
+  monthlyBudgetFor,
   monthOf,
   nextMonthStart,
   planChainMove,
+  selectionFor,
 } from "./fallbackChain.ts";
 
 const chain = chainEntries([
@@ -104,19 +106,40 @@ describe("planChainMove", () => {
 });
 
 describe("chain entries", () => {
-  it("finds a selection's entry by instance and model, else by instance", () => {
+  it("puts a selection on the chain only with the instance and model an entry names", () => {
     assert.equal(
       findChainEntry(chain, { instanceId: codex.entry.instanceId, model: "gpt-5.4" }),
       codex,
     );
-    assert.equal(
+    // Another model on a chain instance is the user's own choice, off the chain.
+    assert.isUndefined(
       findChainEntry(chain, { instanceId: codex.entry.instanceId, model: "gpt-5.4-mini" }),
-      codex,
     );
-    assert.equal(
-      findChainEntry(chain, { instanceId: ProviderInstanceId.make("claudeAgent"), model: "x" }),
-      undefined,
+  });
+
+  it("keeps the user's options only when a move stays on the same instance", () => {
+    const options = [{ id: "effort", value: "high" }];
+    assert.deepStrictEqual(
+      selectionFor(codex.entry, { ...codex.entry, model: "gpt-5.4-mini", options }),
+      { ...codex.entry, options },
     );
+    assert.deepStrictEqual(selectionFor(apiKey.entry, { ...codex.entry, options }), {
+      instanceId: apiKey.entry.instanceId,
+      model: apiKey.entry.model,
+    });
+  });
+
+  it("holds a budget group to the smallest monthly amount its entries set", () => {
+    const grouped = chainEntries([
+      { ...apiKey.entry, budget: { monthlyUsd: 10, perRunUsd: 1, group: "gemini" } },
+      {
+        instanceId: ProviderInstanceId.make("antigravity_flash"),
+        model: "gemini-3-flash",
+        budget: { monthlyUsd: 6, perRunUsd: 1, group: "gemini" },
+      },
+    ]);
+    assert.equal(monthlyBudgetFor(grouped, grouped[0]!.entry), 6);
+    assert.equal(monthlyBudgetFor(grouped, codex.entry), undefined);
   });
 
   it("gives a new turn back to an earlier entry once it is ready again", () => {

@@ -76,9 +76,17 @@ export class ProviderFallbackStore extends Context.Service<
       readonly backoff?: (failures: number) => number;
       readonly reason: string;
       readonly now: number;
+      /** The run that stopped: a run reported twice counts once. */
+      readonly runId: string;
     }) => Effect.Effect<number, ProviderFallbackStoreError>;
-    /** A turn that completed on the entry clears its cool-down and backoff. */
-    readonly clearCooldown: (key: string) => Effect.Effect<void, ProviderFallbackStoreError>;
+    /**
+     * A turn that completed on the entry clears its cool-down and backoff, unless the entry
+     * stopped after that turn started, on another thread.
+     */
+    readonly clearCooldown: (input: {
+      readonly key: string;
+      readonly startedAt: number;
+    }) => Effect.Effect<void, ProviderFallbackStoreError>;
     readonly park: (input: {
       readonly key: string;
       readonly reason: string;
@@ -127,15 +135,23 @@ export class ProviderFallbackStore extends Context.Service<
       ProviderFallbackStoreError
     >;
 
-    /** Records how a scheduled run ended; returns the streak of runs that exhausted the chain. */
+    /**
+     * Records how a scheduled run ended, once per run; returns the streak of runs in a row that
+     * exhausted the chain.
+     */
     readonly recordScheduleOutcome: (input: {
       readonly scheduleId: string;
+      readonly runId: string;
       readonly exhausted: boolean;
       readonly now: number;
     }) => Effect.Effect<number, ProviderFallbackStoreError>;
-    /** True once per streak: the caller that gets it pauses the schedule and asks for attention. */
+    /**
+     * True once a streak reaches `threshold`; it starts the streak again, so the caller pauses the
+     * schedule and asks for attention once, and again only after another full streak.
+     */
     readonly tripBreaker: (input: {
       readonly scheduleId: string;
+      readonly threshold: number;
       readonly now: number;
     }) => Effect.Effect<boolean, ProviderFallbackStoreError>;
   }
@@ -148,6 +164,7 @@ const SCHEMA = [
     failures INTEGER NOT NULL DEFAULT 0,
     parked_at INTEGER,
     reason TEXT,
+    last_run_id TEXT,
     updated_at INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS t4_fallback_tried (
@@ -174,6 +191,7 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS t4_fallback_breaker (
     schedule_id TEXT PRIMARY KEY,
     streak INTEGER NOT NULL,
+    last_run_id TEXT,
     tripped_at INTEGER,
     updated_at INTEGER NOT NULL
   )`,
@@ -223,20 +241,28 @@ const make = Effect.gen(function* () {
       return yield* sql
         .withTransaction(
           Effect.gen(function* () {
-            const rows = yield* sql<{
-              failures: number;
-            }>`SELECT failures FROM t4_fallback_entry_state WHERE key = ${input.key}`;
-            const failures = input.until === null ? (num(rows[0]?.failures) ?? 0) + 1 : 0;
+            const rows = yield* sql<Record<string, unknown>>`
+              SELECT failures, cooldown_until, last_run_id FROM t4_fallback_entry_state
+              WHERE key = ${input.key}
+            `;
+            const current = rows[0];
+            if (current !== undefined && str(current.last_run_id) === input.runId) {
+              return num(current.cooldown_until) ?? input.now;
+            }
+            const failures = input.until === null ? (num(current?.failures) ?? 0) + 1 : 0;
             const until =
               input.until ??
               input.now + (input.backoff === undefined ? 0 : input.backoff(failures));
             yield* sql`
-                INSERT INTO t4_fallback_entry_state (key, cooldown_until, failures, reason, updated_at)
-                VALUES (${input.key}, ${until}, ${failures}, ${input.reason}, ${input.now})
+                INSERT INTO t4_fallback_entry_state
+                  (key, cooldown_until, failures, reason, last_run_id, updated_at)
+                VALUES
+                  (${input.key}, ${until}, ${failures}, ${input.reason}, ${input.runId}, ${input.now})
                 ON CONFLICT (key) DO UPDATE SET
                   cooldown_until = excluded.cooldown_until,
                   failures = excluded.failures,
                   reason = excluded.reason,
+                  last_run_id = excluded.last_run_id,
                   updated_at = excluded.updated_at
               `;
             return until;
@@ -245,10 +271,12 @@ const make = Effect.gen(function* () {
         .pipe(Effect.mapError(toError("coolDown")));
     }),
 
-    clearCooldown: Effect.fn("ProviderFallbackStore.clearCooldown")(function* (key) {
+    clearCooldown: Effect.fn("ProviderFallbackStore.clearCooldown")(function* (input) {
       return yield* sql`
           UPDATE t4_fallback_entry_state SET cooldown_until = NULL, failures = 0
-          WHERE key = ${key} AND (cooldown_until IS NOT NULL OR failures != 0)
+          WHERE key = ${input.key}
+            AND updated_at < ${input.startedAt}
+            AND (cooldown_until IS NOT NULL OR failures != 0)
         `.pipe(Effect.asVoid, Effect.mapError(toError("clearCooldown")));
     }),
 
@@ -361,12 +389,17 @@ const make = Effect.gen(function* () {
 
     recordScheduleOutcome: Effect.fn("ProviderFallbackStore.recordScheduleOutcome")(
       function* (input) {
+        const exhausted = input.exhausted ? 1 : 0;
         return yield* sql<{ streak: number }>`
-          INSERT INTO t4_fallback_breaker (schedule_id, streak, updated_at)
-          VALUES (${input.scheduleId}, ${input.exhausted ? 1 : 0}, ${input.now})
+          INSERT INTO t4_fallback_breaker (schedule_id, streak, last_run_id, updated_at)
+          VALUES (${input.scheduleId}, ${exhausted}, ${input.runId}, ${input.now})
           ON CONFLICT (schedule_id) DO UPDATE SET
-            streak = CASE WHEN ${input.exhausted ? 1 : 0} = 1 THEN streak + 1 ELSE 0 END,
-            tripped_at = CASE WHEN ${input.exhausted ? 1 : 0} = 1 THEN tripped_at ELSE NULL END,
+            streak = CASE
+              WHEN t4_fallback_breaker.last_run_id IS excluded.last_run_id THEN streak
+              WHEN ${exhausted} = 1 THEN streak + 1
+              ELSE 0
+            END,
+            last_run_id = excluded.last_run_id,
             updated_at = excluded.updated_at
           RETURNING streak
         `.pipe(
@@ -378,8 +411,8 @@ const make = Effect.gen(function* () {
 
     tripBreaker: Effect.fn("ProviderFallbackStore.tripBreaker")(function* (input) {
       return yield* sql<{ schedule_id: string }>`
-          UPDATE t4_fallback_breaker SET tripped_at = ${input.now}
-          WHERE schedule_id = ${input.scheduleId} AND tripped_at IS NULL
+          UPDATE t4_fallback_breaker SET streak = 0, tripped_at = ${input.now}
+          WHERE schedule_id = ${input.scheduleId} AND streak >= ${input.threshold}
           RETURNING schedule_id
         `.pipe(
         Effect.map((rows) => rows.length > 0),

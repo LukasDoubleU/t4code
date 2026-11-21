@@ -167,8 +167,10 @@ const chainSelection = {
   instanceId: ProviderInstanceId.make("antigravity"),
   model: "gemini-3-pro",
 } satisfies ModelSelection;
+// A second Codex account stays off the chain, where account failover could move a thread.
 const chainInstances = [
   instance(modelSelection.instanceId),
+  instance(alternateInstanceId),
   instance(chainSelection.instanceId, antigravityDriver),
 ];
 
@@ -208,6 +210,7 @@ const layerRuntime = (sessionUsed: number, chain = false) =>
             chain
               ? [
                   snapshot(modelSelection.instanceId, "Codex", "two@example.com", sessionUsed),
+                  snapshot(alternateInstanceId, "c5", "five@example.com", 10),
                   {
                     ...snapshot(chainSelection.instanceId, "Antigravity", "ag@example.com", 0),
                     driver: antigravityDriver,
@@ -245,6 +248,7 @@ const layerRuntime = (sessionUsed: number, chain = false) =>
           ? {
               providerInstances: {
                 [modelSelection.instanceId]: { driver: "codex", enabled: true },
+                [alternateInstanceId]: { driver: "codex", enabled: true },
                 [chainSelection.instanceId]: { driver: "antigravity", enabled: true },
               },
               providerFallbackChain: [modelSelection, chainSelection],
@@ -797,7 +801,7 @@ it.layer(layerRuntime(10, true))("a turn on a provider fallback chain", (it) => 
     }),
   );
 
-  it.effect("stays on its entry when the usage limit was read from text", () =>
+  it.effect("stays on its entry, not another account, when the limit was read from text", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const reactor = yield* AccountFailover.AccountFailoverReactor;

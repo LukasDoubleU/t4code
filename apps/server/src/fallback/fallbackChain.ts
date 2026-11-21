@@ -16,6 +16,8 @@ export const BACKOFF_CAP_MS = 6 * 60 * MINUTE;
 export const SCHEDULE_BREAKER_STREAK = 3;
 /** Set by T4 itself when an entry's own budget refuses a turn; a structured signal like any other. */
 export const BUDGET_FAILURE_CODE = "budget_exhausted";
+/** Set by T4 itself when it refuses an entry, such as an OpenRouter key without a limit. */
+export const REFUSED_FAILURE_CODE = "fallback_entry_refused";
 
 export const backoffMs = (failures: number): number =>
   Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** Math.max(0, failures - 1));
@@ -40,21 +42,26 @@ export const chainEntries = (
 ): ReadonlyArray<ChainEntry> =>
   chain.map((entry, index) => ({ index, entry, key: entryKey(entry.instanceId, entry.model) }));
 
-/** The entry a selection runs on: its instance and model, else the first entry on its instance. */
+/** The entry a selection runs on; a model the chain does not list is off the chain. */
 export function findChainEntry(
   chain: ReadonlyArray<ChainEntry>,
   selection: Pick<ModelSelection, "instanceId" | "model">,
 ): ChainEntry | undefined {
-  return (
-    chain.find(
-      ({ entry }) => entry.instanceId === selection.instanceId && entry.model === selection.model,
-    ) ?? chain.find(({ entry }) => entry.instanceId === selection.instanceId)
+  return chain.find(
+    ({ entry }) => entry.instanceId === selection.instanceId && entry.model === selection.model,
   );
 }
 
-export const selectionFor = (entry: ProviderFallbackEntry): ModelSelection => ({
+/** The selection a turn moves to; options such as effort carry over only on the same instance. */
+export const selectionFor = (
+  entry: ProviderFallbackEntry,
+  from?: ModelSelection,
+): ModelSelection => ({
   instanceId: entry.instanceId,
   model: entry.model,
+  ...(from?.options !== undefined && from.instanceId === entry.instanceId
+    ? { options: from.options }
+    : {}),
 });
 
 /** The failures that move a thread along its chain: only a structured quota or budget signal. */
@@ -111,10 +118,26 @@ export const budgetKeyFor = (entry: ProviderFallbackEntry): string =>
     ? `instance:${entry.instanceId}`
     : `group:${entry.budget.group}`;
 
+/** A budget group's monthly amount is the smallest any of its entries sets. */
+export function monthlyBudgetFor(
+  chain: ReadonlyArray<ChainEntry>,
+  entry: ProviderFallbackEntry,
+): number | undefined {
+  if (entry.budget === undefined) return undefined;
+  const key = budgetKeyFor(entry);
+  return Math.min(
+    entry.budget.monthlyUsd,
+    ...chain.flatMap(({ entry: other }) =>
+      other.budget !== undefined && budgetKeyFor(other) === key ? [other.budget.monthlyUsd] : [],
+    ),
+  );
+}
+
 export type TriggerReason =
   | { readonly kind: "quota"; readonly until: number | null }
   | { readonly kind: "out_of_credit" }
-  | { readonly kind: "budget" };
+  | { readonly kind: "budget" }
+  | { readonly kind: "refused" };
 
 function reasonText(reason: TriggerReason, time: (at: number) => string): string {
   switch (reason.kind) {
@@ -126,6 +149,8 @@ function reasonText(reason: TriggerReason, time: (at: number) => string): string
       return "it is out of credit; re-enable it in Settings once it has credit again";
     case "budget":
       return "its budget is used up";
+    case "refused":
+      return "T4 refuses it, and Settings says why";
   }
 }
 

@@ -39,8 +39,10 @@ import {
   type EntryBlock,
   findChainEntry,
   firstReadyEntry,
+  monthlyBudgetFor,
   monthOf,
   nextMonthStart,
+  REFUSED_FAILURE_CODE,
   planChainMove,
   SCHEDULE_BREAKER_STREAK,
   selectionFor,
@@ -61,6 +63,8 @@ import {
 } from "./ProviderFallbackStore.ts";
 
 const KEY_CHECK_TTL_MS = 6 * 60 * 60_000;
+// A refused key is checked again soon, so a limit set on openrouter.ai takes effect quickly.
+const KEY_REFUSED_TTL_MS = 15 * 60_000;
 const KEY_RETRY_TTL_MS = 5 * 60_000;
 
 export interface ChainMove {
@@ -95,6 +99,8 @@ export interface ProviderFallbackPolicyShape {
     readonly projectId: ProjectId;
     readonly originRunId: RunId;
     readonly selection: ModelSelection;
+    /** The run that stopped; a run reported twice is recorded once. */
+    readonly runId: RunId;
     readonly reason: TriggerReason;
     /** False on a retry after background work held the move back: the stop is recorded. */
     readonly record: boolean;
@@ -124,8 +130,11 @@ export interface ProviderFallbackPolicyShape {
     readonly costUsd: number | null;
   }) => Effect.Effect<void>;
   readonly markBudgetStopped: (runId: RunId) => Effect.Effect<void>;
-  /** A completed turn ends its entry's cool-down and backoff. */
-  readonly completed: (selection: ModelSelection) => Effect.Effect<void>;
+  /** A completed turn ends its entry's cool-down and backoff, unless it stopped since. */
+  readonly completed: (input: {
+    readonly selection: ModelSelection;
+    readonly startedAt: number;
+  }) => Effect.Effect<void>;
   /** The first line a turn moved to another driver reads, naming where it was cut off. */
   readonly continuationNote: (input: {
     readonly from: ModelSelection;
@@ -134,6 +143,8 @@ export interface ProviderFallbackPolicyShape {
   /** True when a scheduled run's outcome trips the breaker: pause the schedule, ask once. */
   readonly scheduleOutcome: (input: {
     readonly scheduleId: string;
+    /** The scheduled run, which counts once however often it is reported. */
+    readonly runId: RunId;
     readonly exhausted: boolean;
   }) => Effect.Effect<boolean>;
   readonly status: (projectId: ProjectId | null) => Effect.Effect<ProviderFallbackStatus>;
@@ -179,7 +190,11 @@ const make = Effect.gen(function* () {
     if (
       cached !== undefined &&
       now - cached.at <
-        (cached.check.ok || !cached.check.retry ? KEY_CHECK_TTL_MS : KEY_RETRY_TTL_MS)
+        (cached.check.ok
+          ? KEY_CHECK_TTL_MS
+          : cached.check.retry
+            ? KEY_RETRY_TTL_MS
+            : KEY_REFUSED_TTL_MS)
     ) {
       return cached.check;
     }
@@ -245,10 +260,10 @@ const make = Effect.gen(function* () {
   });
 
   const budgetRoom = (readings: Readings, entry: ChainEntry) => {
-    const budget = entry.entry.budget;
-    if (budget === undefined) return Infinity;
+    const monthly = monthlyBudgetFor(readings.chain, entry.entry);
+    if (monthly === undefined) return Infinity;
     const totals = readings.totals.get(budgetKeyFor(entry.entry));
-    return budget.monthlyUsd - (totals?.spentUsd ?? 0) - (totals?.reservedUsd ?? 0);
+    return monthly - (totals?.spentUsd ?? 0) - (totals?.reservedUsd ?? 0);
   };
 
   const blockOf =
@@ -302,7 +317,11 @@ const make = Effect.gen(function* () {
       const ready = firstReadyEntry(readings.chain, block);
       if (ready === undefined || ready.key === current.key) return null;
       const label = labelOf(readings);
-      return { selection: selectionFor(ready.entry), from: label(current), to: label(ready) };
+      return {
+        selection: selectionFor(ready.entry, input.selection),
+        from: label(current),
+        to: label(ready),
+      };
     },
     logged("choosing a turn's entry", null),
   );
@@ -331,6 +350,7 @@ const make = Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       const reason =
         input.reason.kind === "out_of_credit" ? "Out of credit" : "Usage limit reached";
+      // Budget and refusal stops are read from the ledger and the key check, not recorded here.
       if (input.record && input.reason.kind === "out_of_credit") {
         yield* store.park({ key: from.entry.instanceId, reason, now });
       } else if (input.record && input.reason.kind === "quota") {
@@ -340,6 +360,7 @@ const make = Effect.gen(function* () {
           backoff: backoffMs,
           reason,
           now,
+          runId: input.runId,
         });
       }
       yield* store.markTried({
@@ -390,9 +411,25 @@ const make = Effect.gen(function* () {
         resolveProjectSettings(settings, input.projectId).settings.providerFallbackChain,
       );
       const entry = findChainEntry(chain, input.selection);
-      const budget = entry?.entry.budget;
-      if (entry === undefined || budget === undefined) return null;
+      if (entry === undefined) return null;
       const now = yield* Clock.currentTimeMillis;
+      const provider = (yield* registry.getProviders).find(
+        (candidate) => candidate.instanceId === entry.entry.instanceId,
+      );
+      if (provider !== undefined && isOpenRouterEntry(provider.driver, entry.entry.model)) {
+        const check = yield* keyCheck(provider, now);
+        if (!check.ok) {
+          return makeProviderFailure({
+            class: "provider_error",
+            quota: "exhausted",
+            code: REFUSED_FAILURE_CODE,
+            message: check.reason,
+          });
+        }
+      }
+      const budget = entry.entry.budget;
+      const monthlyUsd = monthlyBudgetFor(chain, entry.entry);
+      if (budget === undefined || monthlyUsd === undefined) return null;
       const reservation = yield* store.reserve({
         id: input.runId,
         budgetKey: budgetKeyFor(entry.entry),
@@ -400,7 +437,7 @@ const make = Effect.gen(function* () {
         instanceId: entry.entry.instanceId,
         threadId: input.threadId,
         runId: input.runId,
-        monthlyUsd: budget.monthlyUsd,
+        monthlyUsd,
         perRunUsd: budget.perRunUsd,
         now,
       });
@@ -528,8 +565,11 @@ const make = Effect.gen(function* () {
       logged("recording a budget stop", undefined),
     ),
     completed: Effect.fn("ProviderFallback.completed")(
-      function* (selection) {
-        yield* store.clearCooldown(entryKey(selection.instanceId, selection.model));
+      function* (input) {
+        yield* store.clearCooldown({
+          key: entryKey(input.selection.instanceId, input.selection.model),
+          startedAt: input.startedAt,
+        });
       },
       logged("clearing a cool-down", undefined),
     ),
@@ -550,7 +590,11 @@ const make = Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
         const streak = yield* store.recordScheduleOutcome({ ...input, now });
         if (!input.exhausted || streak < SCHEDULE_BREAKER_STREAK) return false;
-        return yield* store.tripBreaker({ scheduleId: input.scheduleId, now });
+        return yield* store.tripBreaker({
+          scheduleId: input.scheduleId,
+          threshold: SCHEDULE_BREAKER_STREAK,
+          now,
+        });
       },
       logged("recording a schedule's outcome", false),
     ),

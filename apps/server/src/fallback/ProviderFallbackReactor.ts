@@ -23,7 +23,7 @@ import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { forkParked } from "../serverActivation.ts";
 import { ProviderFallbackPolicy, type ProviderFallbackPolicyShape } from "./ProviderFallback.ts";
 
-const TERMINAL = new Set(["completed", "failed", "interrupted", "cancelled"]);
+const TERMINAL = new Set(["completed", "failed", "interrupted", "cancelled", "rolled_back"]);
 
 interface WatchedRun {
   readonly threadId: ThreadId;

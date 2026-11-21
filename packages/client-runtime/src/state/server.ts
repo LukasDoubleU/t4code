@@ -1477,6 +1477,12 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:process-diagnostics",
       tag: WS_METHODS.serverGetProcessDiagnostics,
     }),
+    providerFallbackStatus: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:provider-fallback-status",
+      tag: WS_METHODS.serverGetProviderFallbackStatus,
+      staleTimeMs: 15_000,
+      refreshIntervalMs: 60_000,
+    }),
     hostResources: createEnvironmentQueryAtomFamily(runtime, {
       label: "environment-data:server:host-resources",
       idleTtlMs: 0,
@@ -1820,6 +1826,10 @@ export function createServerEnvironmentAtoms<R, E>(
         key: ({ environmentId, input }) =>
           JSON.stringify([environmentId, input.threadId, input.turnItemId]),
       },
+    }),
+    reenableProviderFallbackEntry: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:reenable-provider-fallback-entry",
+      tag: WS_METHODS.serverReenableProviderFallbackEntry,
     }),
     refreshUsageRates: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:refresh-usage-rates",

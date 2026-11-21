@@ -115,6 +115,8 @@ function turnFailure(
   if (errorText === undefined && stopReason !== "refusal") return undefined;
   const text = errorText ?? "";
   const apiError = API_ERROR.exec(text);
+  // The typed stop reason, or the harness's error step rendering the API's own status and
+  // reason codes, never the model's text: both count as structured for the fallback chain.
   if (stopReason === "refusal" || QUOTA_EXHAUSTED.test(text)) {
     return makeProviderFailure({
       class: "usage_limit",
@@ -122,6 +124,7 @@ function turnFailure(
       code: apiError?.[3] ?? "QUOTA_EXHAUSTED",
       retryable: true,
       resetAt: resetAtFrom(text, now) ?? null,
+      quota: "exhausted",
     });
   }
   if (apiError === null) {
@@ -132,12 +135,18 @@ function turnFailure(
   }
   const [, httpStatus, message, status] = apiError;
   const rateLimited = httpStatus === "429" || status === "RESOURCE_EXHAUSTED";
+  const outOfCredit = httpStatus === "402";
   return makeProviderFailure({
     class: rateLimited ? "usage_limit" : "provider_error",
     message: message!.trim(),
     code: status ?? null,
     retryable: rateLimited || Number(httpStatus) >= 500,
     resetAt: resetAtFrom(text, now) ?? null,
+    ...(rateLimited
+      ? { quota: "exhausted" as const }
+      : outOfCredit
+        ? { quota: "out_of_credit" as const }
+        : {}),
   });
 }
 

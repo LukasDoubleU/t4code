@@ -68,6 +68,10 @@ const TurnTokenUsageCommonFields = {
   otherUsage: Schema.optional(
     Schema.Struct({ inputTokens: NonNegativeInt, outputTokens: NonNegativeInt }),
   ),
+  // What the provider itself reports the turn cost, in USD, where it reports one.
+  reportedCostUsd: Schema.optional(
+    Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+  ),
 };
 export const TurnTokenUsage = Schema.Union([
   Schema.Struct({

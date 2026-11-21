@@ -2,6 +2,7 @@ import * as WorktreeBranchSync from "./WorktreeBranchSync.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as AccountFailover from "./AccountFailover.ts";
+import * as ProviderFallbackReactor from "../fallback/ProviderFallbackReactor.ts";
 import * as ClaudeSessionCarry from "./ClaudeSessionCarry.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Effect from "effect/Effect";
@@ -440,8 +441,18 @@ export const layerProduction = Layer.mergeAll(
         layerOrchestratorProvided,
         layerEventSink,
         layerProviderSessionManagerProvided,
+        layerScheduledTaskProvided,
       ),
     ),
+  ),
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const reactor = yield* ProviderFallbackReactor.ProviderFallbackReactor;
+      yield* reactor.start();
+    }),
+  ).pipe(
+    Layer.provide(ProviderFallbackReactor.layer),
+    Layer.provide(Layer.mergeAll(layerOrchestratorProvided, layerEventSink)),
   ),
   layerAgentSessionScannerProvided,
   layerAgentSessionImporterProvided,

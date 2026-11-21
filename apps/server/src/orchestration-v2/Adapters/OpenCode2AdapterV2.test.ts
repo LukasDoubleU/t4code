@@ -586,10 +586,10 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
 
   // regression: #18315 OpenCode Go quota stops were not shown as usage limits
   it.effect.each([
-    ["provider.quota", "usage_limit"],
-    ["provider.rate-limit", "usage_limit"],
-    ["provider", "provider_error"],
-  ] as const)("classifies a %s execution failure as %s", ([code, failureClass]) =>
+    ["provider.quota", "usage_limit", "exhausted"],
+    ["provider.rate-limit", "usage_limit", "exhausted"],
+    ["provider", "provider_error", undefined],
+  ] as const)("classifies a %s execution failure as %s", ([code, failureClass, quota]) =>
     Effect.gen(function* () {
       const { runtime, thread } = yield* resumed([
         out("session.prompt", { sessionID: SESSION, text: "<any>" }),
@@ -608,6 +608,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         code,
         message: "Provider rejected the request",
         retryable: null,
+        ...(quota === undefined ? {} : { quota }),
       });
     }),
   );
@@ -618,6 +619,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     {
       name: "an out-of-funds provider.quota (402)",
       failureClass: "provider_error",
+      quota: "out_of_credit",
       error: {
         type: "provider.quota",
         message: "Upstream request failed: Insufficient account funds",
@@ -627,6 +629,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     {
       name: "a provider.quota usage window (429)",
       failureClass: "usage_limit",
+      quota: "exhausted",
       error: {
         type: "provider.quota",
         message: "Subscription quota exceeded.",
@@ -642,6 +645,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     {
       name: "a provider.quota account budget (429)",
       failureClass: "usage_limit",
+      quota: "exhausted",
       error: {
         type: "provider.quota",
         message: "Upstream request failed: Account budget exceeded",
@@ -651,6 +655,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     {
       name: "a provider.rate-limit failure (429)",
       failureClass: "usage_limit",
+      quota: "exhausted",
       error: {
         type: "provider.rate-limit",
         message: "Rate limit exceeded: free-models-per-min.",
@@ -659,7 +664,9 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     },
     {
       name: "a Claude limit without a reset timestamp",
+      // Read from text: shown as a usage limit, but it never moves the fallback chain.
       failureClass: "usage_limit",
+      quota: undefined,
       error: {
         type: "provider.unknown",
         message: "You've hit your session limit · resets 5:20pm (Europe/Berlin)",
@@ -668,12 +675,13 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     {
       name: "an unrelated provider.unknown failure",
       failureClass: "provider_error",
+      quota: undefined,
       error: {
         type: "provider.unknown",
         message: "Request failed. Resets at 2026-11-02T20:00:00Z.",
       },
     },
-  ] as const)("classifies $name as $failureClass", ({ error, failureClass }) =>
+  ] as const)("classifies $name as $failureClass", ({ error, failureClass, quota }) =>
     Effect.gen(function* () {
       const { runtime, thread } = yield* resumed([
         out("session.prompt", { sessionID: SESSION, text: "<any>" }),
@@ -694,9 +702,16 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       );
       yield* runtime.startTurn(turnInput(thread));
       const seen = yield* Fiber.join(collected);
+      const quotaField = quota === undefined ? {} : { quota };
       assert.deepInclude(errorRows(seen)[0], {
         status: "running",
-        failure: { class: failureClass, code: error.type, message: error.message, retryable: true },
+        failure: {
+          class: failureClass,
+          code: error.type,
+          message: error.message,
+          retryable: true,
+          ...quotaField,
+        },
       });
       const ended = seen.find((event) => event.type === "turn.terminal");
       assert.equal(ended?.status, "failed");
@@ -705,6 +720,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         code: error.type,
         message: error.message,
         retryable: null,
+        ...quotaField,
       });
     }),
   );
@@ -5692,6 +5708,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     message: rateLimited.message,
     code: rateLimited.type,
     retryable: true,
+    quota: "exhausted",
   } satisfies OrchestrationV2ProviderFailure;
   const firstRetry = { attempt: 1, maxAttempts: null, retryDelayMs: 2_000 };
   const errorRows = (collected: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>) =>

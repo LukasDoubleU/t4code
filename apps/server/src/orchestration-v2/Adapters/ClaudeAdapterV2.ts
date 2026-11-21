@@ -4778,6 +4778,8 @@ function providerFailureFromResult(
     (message.subtype === "success" && message.api_error_status === 429) || usageLimited
       ? "usage_limit"
       : "provider_error";
+  // The SDK's rate-limit event or the API's status: structured, so the fallback chain moves.
+  const quota = failureClass === "usage_limit" ? ("exhausted" as const) : undefined;
   const listedError = resultUserFacingError(message);
   const apiErrorMessage =
     message.subtype === "success" &&
@@ -4795,6 +4797,7 @@ function providerFailureFromResult(
       message: listedError ?? structuredError ?? message.errors.join("\n"),
       code: message.subtype,
       class: failureClass,
+      quota,
     });
   }
   if (!message.is_error && structuredError === undefined) {
@@ -4828,6 +4831,7 @@ function providerFailureFromResult(
     class: failureClass,
     retryable: apiErrorStatus === 429 || apiErrorStatus === 529 ? true : null,
     resetAt: resetAt ?? null,
+    quota,
   });
 }
 

@@ -8,6 +8,7 @@ import {
   type UsagePricing,
   type UsageSummary,
   type UsageSummaryInput,
+  type UsageTokenTotals,
   UsageReadError,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -44,6 +45,7 @@ import {
   createOverrideRateTable,
   isUnlistedModel,
   parseRateTable,
+  priceUsage,
   type RateTable,
 } from "./usagePricing.ts";
 import {
@@ -162,6 +164,11 @@ export class UsageService extends Context.Service<
   {
     readonly readSummary: (input: UsageSummaryInput) => Effect.Effect<UsageSummary, UsageReadError>;
     readonly refreshRates: Effect.Effect<UsagePricing>;
+    /** A turn's cost in USD at list price, or null when no rate prices the model. */
+    readonly priceTokens: (input: {
+      readonly model: string;
+      readonly totals: UsageTokenTotals;
+    }) => Effect.Effect<number | null>;
   }
 >()("t3/usage/UsageService") {}
 
@@ -1238,7 +1245,29 @@ export const make = Effect.gen(function* () {
     return yield* Deferred.await(deferred);
   });
 
-  return { readSummary, refreshRates, awaitPersisted } as const;
+  const priceTokens = Effect.fn("UsageService.priceTokens")(function* (input: {
+    readonly model: string;
+    readonly totals: UsageTokenTotals;
+  }) {
+    yield* ensureRates(false);
+    const settings = yield* settingsService.getSettings.pipe(Effect.option);
+    const priced = priceUsage(
+      rates,
+      {
+        model: input.model,
+        totals: input.totals,
+        cacheCreation1hTokens: 0,
+        speed: "standard",
+        reportedCostUsd: null,
+      },
+      settings._tag === "Some"
+        ? createOverrideRateTable(settings.value.usagePriceOverrides)
+        : undefined,
+    );
+    return priced.costSource === "unpriced" ? null : priced.costUsd;
+  });
+
+  return { readSummary, refreshRates, priceTokens, awaitPersisted } as const;
 });
 
 export const layer = Layer.effect(UsageService, make);

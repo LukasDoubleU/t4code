@@ -7034,7 +7034,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         command.dispatchMode.type !== "start_immediately" ||
         source === undefined ||
         (source.status !== "interrupted" &&
-          !(source.status === "failed" && limited?.class === "usage_limit")) ||
+          !(
+            source.status === "failed" &&
+            // A spent credit is no usage limit, but the fallback chain moves its turn on too.
+            (limited?.class === "usage_limit" || limited?.quota !== undefined)
+          )) ||
         latestExecutedRun(projection.runs)?.id !== source.id ||
         projection.thread.archivedAt !== null ||
         projection.thread.deletedAt !== null ||

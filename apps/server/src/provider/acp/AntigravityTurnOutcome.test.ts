@@ -89,6 +89,7 @@ describe("watchAntigravityPromptOutcome", () => {
           code: "RESOURCE_EXHAUSTED",
           retryable: true,
           resetAt: "1970-01-01T01:00:00.000Z",
+          quota: "exhausted",
         },
       );
       // The earlier error step is outside this turn.
@@ -115,6 +116,7 @@ describe("watchAntigravityPromptOutcome", () => {
           code: "RESOURCE_EXHAUSTED",
           retryable: true,
           resetAt: "1970-01-01T00:00:42.000Z",
+          quota: "exhausted",
         },
       );
       assert.deepEqual(
@@ -157,6 +159,7 @@ describe("watchAntigravityPromptOutcome", () => {
         message: "You have reached your Antigravity quota for this period.",
         code: "QUOTA_EXHAUSTED",
         retryable: true,
+        quota: "exhausted",
       });
     }).pipe(Effect.provide(NodeServices.layer)),
   );
@@ -205,6 +208,7 @@ describe("watchAntigravityPromptOutcome", () => {
         message: "You have reached your Antigravity quota for this period.",
         code: "QUOTA_EXHAUSTED",
         retryable: true,
+        quota: "exhausted",
       });
     }).pipe(Effect.provide(NodeServices.layer)),
   );

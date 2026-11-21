@@ -642,6 +642,86 @@ export const UsageModelPriceOverride = Schema.Struct({
 });
 export type UsageModelPriceOverride = typeof UsageModelPriceOverride.Type;
 
+const UsdAmount = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0));
+
+/** A spending cap for an API-billed fallback entry, in US dollars. */
+export const ProviderFallbackBudget = Schema.Struct({
+  monthlyUsd: UsdAmount,
+  perRunUsd: UsdAmount,
+  /** Entries that bill the same key share one monthly budget under this name. */
+  group: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type ProviderFallbackBudget = typeof ProviderFallbackBudget.Type;
+
+export const ProviderFallbackEntry = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  model: TrimmedNonEmptyString,
+  budget: Schema.optionalKey(ProviderFallbackBudget),
+});
+export type ProviderFallbackEntry = typeof ProviderFallbackEntry.Type;
+
+const isProviderFallbackEntry = Schema.is(ProviderFallbackEntry);
+
+/** Ordered; a thread on one entry moves to the next when its quota runs out. Bad entries drop alone. */
+export const ProviderFallbackChain = Schema.Array(Schema.Unknown).pipe(
+  Schema.decodeTo(
+    Schema.Array(ProviderFallbackEntry),
+    SchemaTransformation.transform<
+      ReadonlyArray<typeof ProviderFallbackEntry.Encoded>,
+      ReadonlyArray<unknown>
+    >({
+      decode: (values) => values.filter(isProviderFallbackEntry),
+      encode: (values) => values,
+    }),
+  ),
+);
+export type ProviderFallbackChain = typeof ProviderFallbackChain.Type;
+
+export const ProviderFallbackEntryState = Schema.Literals([
+  "ready",
+  "cooling",
+  "parked",
+  "budget",
+  "unavailable",
+  "refused",
+]);
+export type ProviderFallbackEntryState = typeof ProviderFallbackEntryState.Type;
+
+export const ProviderFallbackEntryStatus = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  model: TrimmedNonEmptyString,
+  state: ProviderFallbackEntryState,
+  /** When a cooling entry or a spent budget frees up, as an ISO time. */
+  until: Schema.NullOr(Schema.String),
+  reason: Schema.NullOr(Schema.String),
+  budget: Schema.NullOr(
+    Schema.Struct({
+      key: Schema.String,
+      monthlyUsd: Schema.Number,
+      spentUsd: Schema.Number,
+      reservedUsd: Schema.Number,
+    }),
+  ),
+});
+export type ProviderFallbackEntryStatus = typeof ProviderFallbackEntryStatus.Type;
+
+export const ProviderFallbackStatus = Schema.Struct({
+  entries: Schema.Array(ProviderFallbackEntryStatus),
+});
+export type ProviderFallbackStatus = typeof ProviderFallbackStatus.Type;
+
+export const ProviderFallbackStatusInput = Schema.Struct({
+  /** The project whose chain to read; absent reads the environment's. */
+  projectId: Schema.optional(ProjectId),
+});
+export type ProviderFallbackStatusInput = typeof ProviderFallbackStatusInput.Type;
+
+export const ProviderFallbackReenableInput = Schema.Struct({
+  instanceId: ProviderInstanceId,
+  projectId: Schema.optional(ProjectId),
+});
+export type ProviderFallbackReenableInput = typeof ProviderFallbackReenableInput.Type;
+
 export const makeBinaryPathSetting = (fallback: string) =>
   TrimmedString.pipe(
     Schema.decodeTo(
@@ -1221,6 +1301,7 @@ export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "continueThreadsAfterServerUpdate",
   "responseStreamingMode",
   "speechProjectCustomWords",
+  "providerFallbackChain",
 ] as const;
 export type ProjectScopedServerSettingKey = (typeof PROJECT_SCOPED_SERVER_SETTING_KEYS)[number];
 
@@ -1259,6 +1340,8 @@ export const ProjectSettingsOverrides = Schema.Struct({
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
   speechProjectCustomWords: Schema.optionalKey(SpeechCustomWords),
+  /** Empty turns the environment's chain off for the project. */
+  providerFallbackChain: Schema.optionalKey(ProviderFallbackChain),
   providerInstances: Schema.optionalKey(
     Schema.Record(ProviderInstanceId, ProjectProviderInstanceOverride),
   ),
@@ -1478,6 +1561,8 @@ export const ServerSettings = Schema.Struct({
   idleCompaction: Schema.optionalKey(IdleCompactionMode),
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Off when empty. Agents cannot set it: no MCP tool writes it. */
+  providerFallbackChain: ProviderFallbackChain.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   pinnedThreadsKeepMemory: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   snoozePresets: SnoozePresetSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SNOOZE_PRESETS)),
@@ -1927,6 +2012,7 @@ export const ServerSettingsPatch = Schema.Struct({
   sidebarAutoSettleKeepPullRequests: Schema.optionalKey(Schema.Boolean),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
+  providerFallbackChain: Schema.optionalKey(ProviderFallbackChain),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   pinnedThreadsKeepMemory: Schema.optionalKey(Schema.Boolean),
   snoozePresets: Schema.optionalKey(SnoozePresetSettings),

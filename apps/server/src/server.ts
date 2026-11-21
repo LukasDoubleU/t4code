@@ -8,6 +8,8 @@ import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
 import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
 import * as AccountFailover from "./orchestration-v2/AccountFailover.ts";
+import * as ProviderFallback from "./fallback/ProviderFallback.ts";
+import * as ProviderFallbackStore from "./fallback/ProviderFallbackStore.ts";
 import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
 // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
 // @effect-diagnostics nodeBuiltinImport:off
@@ -602,6 +604,8 @@ const layerScheduledTaskWebhookOrigin = Layer.effect(
 
 const layerOrchestrationV2Runtime = RuntimeLayer.layerProduction.pipe(
   Layer.provide(AccountFailover.layerPolicy),
+  // Merged: the settings RPCs read the chain's status through the same policy.
+  Layer.provideMerge(ProviderFallback.layer.pipe(Layer.provide(ProviderFallbackStore.layer))),
   Layer.provide(UsageLimitSources.layerResetFallback),
   Layer.provide(layerScheduledTaskWebhookOrigin),
   Layer.provide(ProviderUsageAnalytics.layer),

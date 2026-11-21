@@ -27,6 +27,7 @@ import {
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderCapabilities,
   type OrchestrationV2ProviderFailure,
+  type OrchestrationV2ProviderQuota,
   type OrchestrationV2ProviderRetry,
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
@@ -609,6 +610,20 @@ const isUsageLimit = (error: {
   (error.type === "provider.quota" && error.status !== 402) ||
   error.type === "provider.rate-limit" ||
   claudeUsageLimit(error.message) !== undefined;
+
+/**
+ * The quota signal for the fallback chain, from OpenCode's typed error and HTTP status only:
+ * `claudeUsageLimit` reads text, so it never moves a thread to another provider.
+ */
+const quotaOf = (error: {
+  readonly type: string;
+  readonly status?: number | undefined;
+}): OrchestrationV2ProviderQuota | undefined =>
+  error.status === 402
+    ? "out_of_credit"
+    : error.type === "provider.quota" || error.type === "provider.rate-limit"
+      ? "exhausted"
+      : undefined;
 
 const INTERRUPT_TIMEOUT = 10_000;
 const INSTRUCTIONS_KEY = "t3-code";
@@ -1511,6 +1526,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           code: error.type,
           class: isUsageLimit(error) ? "usage_limit" : "provider_error",
           retryable: true,
+          quota: quotaOf(error),
         }),
         startedAt: turn.retry?.startedAt ?? (yield* DateTime.now),
       };
@@ -2901,6 +2917,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               code: type,
               class: isUsageLimit(event.data.error) ? "usage_limit" : "provider_error",
               resetAt: claudeUsageLimit(message)?.resetAt ?? null,
+              quota: quotaOf(event.data.error),
             }),
           });
         }

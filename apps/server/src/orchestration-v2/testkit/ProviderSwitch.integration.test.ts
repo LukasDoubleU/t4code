@@ -448,7 +448,11 @@ function makeTestAdapter(input: {
               }
             }),
           steerTurn: () => Effect.void,
-          interruptTurn: () => Effect.void,
+          // Stop on a settled turn ends the session's background work, as Claude's does.
+          interruptTurn: (interrupt) =>
+            interrupt.requestRuntimeRestart === true && input.backgroundWork !== undefined
+              ? Ref.set(input.backgroundWork, false)
+              : Effect.void,
           respondToRuntimeRequest: () => Effect.void,
           readThreadSnapshot: () =>
             unimplemented(input.driver, "readThreadSnapshot unused in provider switch test"),
@@ -3265,7 +3269,14 @@ describe("orchestration v2 provider switching", () => {
             unchanged.providerSessions.map((session) => [session.id, session.status]),
             [[firstSession!.id, "ready"]],
           );
-          yield* Ref.set(backgroundWork, false);
+          // As the refusal says, Stop on the idle thread ends the work it has nothing projected for.
+          yield* orchestrator.dispatch({
+            type: "thread.stop",
+            commandId: CommandId.make("command:handoff-releases-session:stop"),
+            threadId: handoffThreadId,
+          });
+          yield* worker.drain();
+          assert.isFalse(yield* Ref.get(backgroundWork));
         }
 
         yield* send(2, secondSelection);

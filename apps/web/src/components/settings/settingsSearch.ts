@@ -461,6 +461,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["usage quota rate limit reset recover continue"],
   },
   {
+    id: "provider-fallback",
+    title: "Provider fallback",
+    to: "/settings/threads",
+    scope: "project-defaults",
+    searchTerms: [
+      "fallback chain failover next provider quota usage limit out of credit budget monthly per run openrouter api key antigravity codex opencode pi",
+    ],
+  },
+  {
     id: "pinned-thread-memory",
     title: "Pinned threads keep a memory",
     to: "/settings/threads",

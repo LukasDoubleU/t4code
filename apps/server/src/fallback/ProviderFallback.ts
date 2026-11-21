@@ -273,9 +273,11 @@ const make = Effect.gen(function* () {
       const provider = readings.providers.find(
         (candidate) => candidate.instanceId === entry.entry.instanceId,
       );
+      // As the model picker shows it: a provider that is missing or erroring cannot take a turn.
       if (
         provider === undefined ||
         !provider.enabled ||
+        provider.status === "error" ||
         provider.availability === "unavailable" ||
         !readings.usable(entry.entry.instanceId)
       ) {

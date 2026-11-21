@@ -14006,16 +14006,72 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     },
   );
 
+  // Work only the adapter knows of, such as a wake turn it buffers, leaves Stop nothing projected
+  // to target, yet it refuses a switch; reach each live session that still reports work.
+  const interruptUnprojectedBackgroundWork = Effect.fn(
+    "Orchestrator.interruptUnprojectedBackgroundWork",
+  )(function* (input: {
+    readonly command: Extract<OrchestrationV2ServerCommand, { readonly type: "thread.stop" }>;
+    readonly effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>;
+    readonly projection: Pick<
+      OrchestrationV2ThreadProjection,
+      "providerSessions" | "providerThreads"
+    >;
+  }) {
+    const { command, projection } = input;
+    const busy: Array<OrchestrationV2ProviderThread> = [];
+    for (const session of projection.providerSessions) {
+      if (session.status === "stopped" || session.status === "error") continue;
+      if (!(yield* sessionHasBackgroundWork(session, projection.providerThreads))) continue;
+      busy.push(
+        ...projection.providerThreads.filter(
+          (providerThread) => providerThread.providerSessionId === session.id,
+        ),
+      );
+    }
+    if (busy.length === 0) return;
+    const { providerTurns } = yield* projectionStore
+      .getThreadRecords(command.threadId, ["providerTurns"], {
+        providerTurnThreadIds: busy.map((providerThread) => providerThread.id),
+      })
+      .pipe(mapDispatchError(command));
+    const interrupts = busy.flatMap((providerThread) => {
+      const turn = providerTurns.findLast(
+        (candidate) => candidate.providerThreadId === providerThread.id,
+      );
+      return turn === undefined || providerThread.providerSessionId === null
+        ? []
+        : [
+            {
+              id: `effect:${command.commandId}:provider-turn.interrupt:${turn.id}`,
+              commandId: command.commandId,
+              threadId: command.threadId,
+              request: {
+                type: "provider-turn.interrupt",
+                providerSessionId: providerThread.providerSessionId,
+                providerThreadId: providerThread.id,
+                providerTurnId: turn.id,
+              },
+            } satisfies PendingOrchestrationEffectV2,
+          ];
+    });
+    yield* Ref.update(input.effects, (existing) => [...existing, ...interrupts]);
+  });
+
   const dispatchThreadStop = Effect.fn("Orchestrator.dispatchThreadStop")(function* (
     command: Extract<OrchestrationV2ServerCommand, { readonly type: "thread.stop" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
     effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
   ) {
     const projection = yield* projectionStore
-      .getThreadRecords(command.threadId, ["runs", "providerThreads", "turnItems", "subagents"], {
-        turnItemTypes: ["command_execution", "dynamic_tool", "subagent"],
-        turnItemStatuses: ["pending", "running", "waiting"],
-      })
+      .getThreadRecords(
+        command.threadId,
+        ["runs", "providerSessions", "providerThreads", "turnItems", "subagents"],
+        {
+          turnItemTypes: ["command_execution", "dynamic_tool", "subagent"],
+          turnItemStatuses: ["pending", "running", "waiting"],
+        },
+      )
       .pipe(
         Effect.mapError(
           (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
@@ -14121,6 +14177,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         now,
       });
     }
+    yield* interruptUnprojectedBackgroundWork({ command, effects, projection });
     yield* holdStoppedThread({ command, events, projection, cohortRunIds: [], now });
     yield* cancelIdleOrphans({ command, events, projection });
     yield* stopDelegatedTasks;

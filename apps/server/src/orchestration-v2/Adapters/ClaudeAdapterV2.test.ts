@@ -15677,6 +15677,7 @@ ${memoryReminder}
 
       yield* Queue.offer(harness.sdkMessages, wakeAssistant);
       yield* harness.awaitContinuation(1);
+      assert.isTrue(yield* harness.hasPendingBackgroundWork, "the wake turn is still open");
       assert.equal(harness.continuationRequests[0]?.threadId, harness.threadId);
       assert.equal(harness.continuationRequests[0]?.providerThreadId, harness.providerThread.id);
       assert.equal(harness.continuationRequests[0]?.driver, ClaudeAdapterV2.CLAUDE_PROVIDER);
@@ -15685,7 +15686,8 @@ ${memoryReminder}
       yield* harness.offerAndWait(wakeResult);
       assert.lengthOf(harness.continuationRequests, 1);
       assert.lengthOf(harness.terminalEvents(), 1);
-      assert.isTrue(yield* harness.hasPendingBackgroundWork);
+      // The finished wake only waits for its continuation to show it.
+      assert.isFalse(yield* harness.hasPendingBackgroundWork);
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
@@ -16911,7 +16913,6 @@ ${memoryReminder}
 
       yield* harness.until(() => harness.offeredMessages.length === 2);
       assert.lengthOf(harness.terminalEvents(), 1);
-      assert.isTrue(yield* harness.hasPendingBackgroundWork);
 
       yield* Queue.offer(
         harness.sdkMessages,
@@ -20682,6 +20683,163 @@ ${memoryReminder}
       yield* harness.awaitTerminal(2);
 
       assert.equal(subagentEvents().at(-1)?.subagent.status, "cancelled");
+      assert.isFalse(yield* harness.hasPendingBackgroundWork);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
+  );
+
+  it.effect.each(["completed", "failed"] as const)(
+    "a subagent the usage limit ended holds no switch while its wake waits (parent turn %s)",
+    (parent) =>
+      Effect.gen(function* () {
+        const TASK_ID = "task-limit-ended";
+        const TOOL_USE_ID = "toolu-limit-ended";
+        const LIMIT = "You've hit your 5-hour limit · resets 6:10pm (UTC)";
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-claude-limit-ended"),
+            text: "Audit in the background.",
+            attachments: [],
+          }),
+        );
+        yield* harness.offerAndWait(
+          makeSubagentTaskStartedFrame({
+            taskId: TASK_ID,
+            toolUseId: TOOL_USE_ID,
+            uuid: "00000000-0000-4000-8000-000000003101",
+          }),
+        );
+        if (parent === "failed") {
+          yield* harness.offerAndWait(
+            makeAssistantErrorFrame({
+              uuid: "00000000-0000-4000-8000-000000003102",
+              error: "rate_limit",
+              text: LIMIT,
+            }),
+          );
+        }
+        yield* harness.offerAndWait(
+          parent === "completed"
+            ? makeResultFrame({
+                uuid: "00000000-0000-4000-8000-000000003103",
+                result: "Auditing in the background.",
+              })
+            : makeResultFrame({
+                uuid: "00000000-0000-4000-8000-000000003103",
+                result: LIMIT,
+                isError: true,
+                terminalReason: "api_error",
+              }),
+        );
+        yield* harness.awaitTerminal(1);
+        assert.equal(harness.terminalEvents()[0]?.status, parent);
+        assert.isTrue(yield* harness.hasPendingBackgroundWork, "the subagent still runs");
+
+        yield* harness.offerAndWait(
+          claudeSdkFrame({
+            type: "system",
+            subtype: "task_notification",
+            task_id: TASK_ID,
+            tool_use_id: TOOL_USE_ID,
+            status: "failed",
+            output_file: `/tmp/${TASK_ID}.output`,
+            summary: `Agent terminated early due to an API error: ${LIMIT}`,
+            uuid: "00000000-0000-4000-8000-000000003104",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        // The wake turn Claude starts for the notification fails at once on the same limit.
+        yield* harness.offerAndWait(
+          claudeSdkFrame({ ...wakeTurnInit, uuid: "00000000-0000-4000-8000-000000003105" }),
+        );
+        yield* harness.offerAndWait(
+          makeAssistantErrorFrame({
+            uuid: "00000000-0000-4000-8000-000000003106",
+            error: "rate_limit",
+            text: LIMIT,
+          }),
+        );
+        assert.isTrue(yield* harness.hasPendingBackgroundWork, "the wake turn is still open");
+        yield* harness.offerAndWait(
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000003107",
+            result: LIMIT,
+            isError: true,
+            terminalReason: "api_error",
+            origin: { kind: "task-notification" },
+          }),
+        );
+        yield* harness.awaitContinuation(1);
+
+        // The limit holds the continuation that would show all of this, so nothing drained it.
+        assert.isFalse(yield* harness.hasPendingBackgroundWork);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
+        ),
+      ),
+  );
+
+  it.effect("buffered wake output holds no switch once the CLI exits", () =>
+    Effect.gen(function* () {
+      const TASK_ID = "task-exit-wake";
+      const TOOL_USE_ID = "toolu-exit-wake";
+      const harness = yield* makeWakeHarness;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("attempt-claude-exit-wake"),
+          text: "Audit in the background.",
+          attachments: [],
+        }),
+      );
+      yield* harness.offerAndWait(
+        makeSubagentTaskStartedFrame({
+          taskId: TASK_ID,
+          toolUseId: TOOL_USE_ID,
+          uuid: "00000000-0000-4000-8000-000000003201",
+        }),
+      );
+      yield* harness.offerAndWait(
+        makeResultFrame({
+          uuid: "00000000-0000-4000-8000-000000003202",
+          result: "Auditing in the background.",
+        }),
+      );
+      yield* harness.awaitTerminal(1);
+      // A message from another session starts a turn the CLI has not finished.
+      yield* harness.offerAndWait(
+        claudeSdkFrame({ ...wakeTurnInit, uuid: "00000000-0000-4000-8000-000000003203" }),
+      );
+      yield* harness.offerAndWait(wakeAssistant);
+      yield* harness.awaitContinuation(1);
+      assert.isTrue(yield* harness.hasPendingBackgroundWork);
+
+      yield* Queue.shutdown(harness.sdkMessages);
+      let ended = yield* Queue.take(harness.subagentReceipts);
+      while (ended.subagent.status === "running") {
+        ended = yield* Queue.take(harness.subagentReceipts);
+      }
+      assert.equal(ended.subagent.status, "failed");
       assert.isFalse(yield* harness.hasPendingBackgroundWork);
     }).pipe(
       Effect.provide(

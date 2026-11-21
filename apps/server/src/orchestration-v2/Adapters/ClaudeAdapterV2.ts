@@ -3771,6 +3771,20 @@ function isClaudeRootTurnFrame(message: SDKMessage): boolean {
   );
 }
 
+// The last start or end of each buffered task; a resumed subagent starts again.
+function claudeBufferedTaskStates(
+  messages: ReadonlyArray<SDKMessage>,
+): ReadonlyMap<string, "running" | "ended"> {
+  const states = new Map<string, "running" | "ended">();
+  for (const message of messages) {
+    if (message.type !== "system") continue;
+    if (message.subtype === "task_notification") states.set(message.task_id, "ended");
+    else if (message.subtype === "task_started" && !isClaudeNonSubagentTask(message))
+      states.set(message.task_id, "running");
+  }
+  return states;
+}
+
 // One stable id per native thread: a new ScheduleWakeup replaces the pending one.
 const CLAUDE_SCHEDULED_WAKEUP_TASK: OrchestrationV2PendingBackgroundTask = {
   taskId: "claude-scheduled-wakeup",
@@ -13945,7 +13959,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           events: Stream.fromEffectRepeat(Queue.take(events)),
           backgroundTasksEndWithProcess: true,
           hasPendingBackgroundWork: Effect.gen(function* () {
-            // A wakeup can be up to an hour out, past the idle timeout, and dies with the process.
+            // Everything below runs inside the CLI process and ends with it.
+            const live = yield* Ref.get(queryContext);
+            if (live === null || live.stopping) {
+              return false;
+            }
+            // A wakeup can be up to an hour out, past the idle timeout.
             if (scheduledWakeupsByNativeThread.size > 0) {
               return true;
             }
@@ -13954,25 +13973,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 return true;
               }
             }
-            for (const subagent of (yield* Ref.get(sessionSubagentsByTaskId)).values()) {
-              if (subagent.task.status === "running") {
+            const buffers = [...(yield* Ref.get(wakeBuffers)).values()];
+            const bufferedTasks = new Map(
+              buffers.flatMap((entry) => [...claudeBufferedTaskStates(entry.messages)]),
+            );
+            // A subagent's end can wait in a wake buffer until a continuation shows it.
+            for (const [taskId, subagent] of yield* Ref.get(sessionSubagentsByTaskId)) {
+              if (subagent.task.status === "running" && bufferedTasks.get(taskId) !== "ended") {
                 return true;
               }
             }
-            const buffers = yield* Ref.get(wakeBuffers);
-            for (const entry of buffers.values()) {
-              if (
-                entry.messages.some(
-                  (message) =>
-                    message.type === "user" ||
-                    message.type === "assistant" ||
-                    message.type === "result",
-                )
-              ) {
+            // A finished wake only waits to be shown, and its continuation can be held or
+            // run on another provider thread; an open wake turn or subagent is still work.
+            for (const { messages } of buffers) {
+              const lastResult = messages.findLastIndex((message) => message.type === "result");
+              if (messages.slice(lastResult + 1).some(isClaudeRootTurnFrame)) {
                 return true;
               }
             }
-            return false;
+            return [...bufferedTasks.values()].includes("running");
           }),
           // Untraced: the run's event stream calls this once per provider event.
           hasPendingBackgroundWorkForThread: Effect.fnUntraced(function* (providerThread, options) {

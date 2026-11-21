@@ -45,30 +45,6 @@ export function getThreadErrorBannerMessage(error: string): string {
     : error;
 }
 
-export function getThreadErrorBannerKey(threadKey: string, error: string | null): string | null {
-  return error === null ? null : `${threadKey}\u0000${error}`;
-}
-
-export function shouldShowThreadErrorBanner(
-  threadKey: string,
-  error: string | null,
-  isDismissed: boolean,
-): boolean {
-  return getThreadErrorBannerKey(threadKey, error) !== null && !isDismissed;
-}
-
-const sessionDismissedThreadErrorBannerKeys = new Set<string>();
-
-export function dismissThreadErrorBannerForSession(bannerKey: string | null): void {
-  if (bannerKey !== null) {
-    sessionDismissedThreadErrorBannerKeys.add(bannerKey);
-  }
-}
-
-export function isThreadErrorBannerDismissedForSession(bannerKey: string | null): boolean {
-  return bannerKey !== null && sessionDismissedThreadErrorBannerKeys.has(bannerKey);
-}
-
 export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   error,
   onDismiss,

@@ -338,11 +338,7 @@ import {
   shouldShowProviderStatusBanner,
   useProviderStatusBannerDismissed,
 } from "./chat/ProviderStatusBanner";
-import {
-  getThreadErrorBannerKey,
-  isThreadErrorBannerDismissedForSession,
-  shouldShowThreadErrorBanner,
-} from "./chat/ThreadErrorBanner";
+import { resolveThreadErrorBanner } from "./chat/ThreadErrorBanner.logic";
 import { QueuedRunsControl, type QueuedRunsControlHandle } from "./chat/QueuedRunsControl";
 import { useThreadLinkedPullRequest } from "./pullRequest/useThreadLinkedPullRequest";
 import { useProactivePanels } from "../hooks/useProactivePanels";
@@ -807,9 +803,7 @@ export default function ChatView(props: ChatViewProps) {
     ? scopeProjectRef(draftThread.environmentId, draftThread.projectId)
     : null;
   const fallbackDraftProject = useProject(fallbackDraftProjectRef);
-  const localDraftError = serverThread
-    ? null
-    : ((draftId ? localDraftErrorsByDraftId[draftId]?.message : null) ?? null);
+  const localDraftError = serverThread || !draftId ? undefined : localDraftErrorsByDraftId[draftId];
   const localServerError = localServerErrorsByThreadKey[routeThreadKey]?.message ?? null;
   const promotedDraftError =
     serverThread && draftId ? localDraftErrorsByDraftId[draftId] : undefined;
@@ -1004,17 +998,14 @@ export default function ChatView(props: ChatViewProps) {
           threadId: parentSubagentThreadRef.threadId,
           title: parentSubagentThread?.title ?? "Parent thread",
         };
-  const threadError = isServerThread
-    ? (localServerError ?? serverRuntime?.lastError ?? null)
-    : localDraftError;
-  const threadErrorBannerKey = getThreadErrorBannerKey(routeThreadKey, threadError);
-  const visibleThreadError = shouldShowThreadErrorBanner(
-    routeThreadKey,
-    threadError,
-    isThreadErrorBannerDismissedForSession(threadErrorBannerKey),
-  )
-    ? threadError
-    : null;
+  const threadErrorBanner = resolveThreadErrorBanner({
+    threadKey: routeThreadKey,
+    localError: isServerThread ? localServerErrorsByThreadKey[routeThreadKey] : localDraftError,
+    serverError: isServerThread ? (serverRuntime?.lastError ?? null) : null,
+  });
+  const threadError = threadErrorBanner.error;
+  const threadErrorBannerKey = threadErrorBanner.bannerKey;
+  const visibleThreadError = threadErrorBanner.visible ? threadError : null;
   const [, setThreadErrorBannerDismissTick] = useState(0);
   const threadErrorIsServerRuntimeError =
     localServerError === null && visibleThreadError === serverRuntime?.lastError;

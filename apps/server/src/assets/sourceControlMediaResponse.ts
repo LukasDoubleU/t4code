@@ -63,6 +63,7 @@ export const sourceControlMediaResponse = Effect.fn(
   }
   const response = yield* fetchMedia({
     url: asset.url,
+    cwd: asset.cwd,
     headers: forwarded,
     ...(repository === undefined ? {} : { repository }),
   });

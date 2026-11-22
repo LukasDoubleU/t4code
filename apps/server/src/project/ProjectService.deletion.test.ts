@@ -536,7 +536,11 @@ it.effect.each([
         if (worktreeCleanup === undefined) {
           assert.isUndefined(entry);
         } else {
-          assert.deepStrictEqual(entry, { worktreeCleanup, providerInstances: {} });
+          assert.deepStrictEqual(entry, {
+            worktreeCleanup,
+            providerInstances: {},
+            gitHubTokens: {},
+          });
         }
 
         const liveProjectId = ProjectId.make("project:still-live");
@@ -559,7 +563,7 @@ it.effect.each([
           [liveProjectId]: { defaultAutoPull: true },
           ...(worktreeCleanup === undefined
             ? {}
-            : { [projectId]: { worktreeCleanup, providerInstances: {} } }),
+            : { [projectId]: { worktreeCleanup, providerInstances: {}, gitHubTokens: {} } }),
         });
       }).pipe(Effect.provide(layerServices));
     }).pipe(Effect.provide(layerDatabase)),

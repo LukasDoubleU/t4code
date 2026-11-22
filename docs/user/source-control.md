@@ -44,6 +44,23 @@ over that choice; a host turned off stays off either way.
 For GitHub Enterprise, sign in with `gh auth login --hostname YOUR_HOST`. T3 Code treats a
 custom server name as GitHub once it has a credential for that host.
 
+#### A different account for one project
+
+The credential above is the default for every project. To work on one project as another GitHub
+account, for example your personal account on a machine signed in to an organization, open the
+project in **Settings → Projects** and save a token under **GitHub**. The page shows which account
+the project acts as.
+
+The token is kept in the server's secret store and can't be viewed again; save a new one to replace
+it, or choose **Remove** to go back to the machine's credential. It covers the server's GitHub
+requests for that project and its threads' worktrees: pull request status and creation, reviews,
+merges, issues, and the pull request and CI tools agents use. If GitHub refuses the token, those
+requests fail with an error instead of quietly using the machine's account.
+
+Git itself does not use this token. `git fetch` and `git push` keep using the checkout's own Git
+credentials, so point the project's remote at the same account, for example with an SSH host alias
+or a credential helper scoped to the repository.
+
 ### Forgejo and Gitea
 
 Install [Forgejo CLI (`fj`)](https://codeberg.org/forgejo-contrib/forgejo-cli) or

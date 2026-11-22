@@ -27,6 +27,10 @@
       "types": "./src/server/mergeMessage.ts",
       "import": "./src/server/mergeMessage.ts"
     },
+    "./server/ProjectCredential": {
+      "types": "./src/server/ProjectCredential.ts",
+      "import": "./src/server/ProjectCredential.ts"
+    },
     "./server/pullRequestUtils": {
       "types": "./src/server/pullRequestUtils.ts",
       "import": "./src/server/pullRequestUtils.ts"

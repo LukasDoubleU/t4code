@@ -7,6 +7,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import * as ProjectGitHubToken from "./projectGitHubToken.ts";
 import * as ServerSourceControlHost from "./ServerSourceControlHost.ts";
 import { BUILT_IN_SOURCE_CONTROL_DRIVER_LIST } from "./sourceControlDefinitions.ts";
 
@@ -21,11 +22,20 @@ export class SourceControlDrivers extends Context.Service<
   ReadonlyArray<SourceControlDriverEntry>
 >()("t3/sourceControl/builtInDrivers/SourceControlDrivers") {}
 
-const make = Effect.forEach(BUILT_IN_SOURCE_CONTROL_DRIVER_LIST, (driver) =>
-  driver.make.pipe(Effect.map((instance) => ({ driver, instance }))),
-);
+const make = Effect.gen(function* () {
+  const projectTokens = yield* ProjectGitHubToken.ProjectGitHubTokens;
+  return yield* Effect.forEach(BUILT_IN_SOURCE_CONTROL_DRIVER_LIST, (driver) =>
+    driver.make.pipe(
+      Effect.map((instance) => ({
+        driver,
+        instance: driver.kind === "github" ? projectTokens.scope(instance) : instance,
+      })),
+    ),
+  );
+});
 
 export const layer = Layer.effect(SourceControlDrivers, make).pipe(
+  Layer.provide(ProjectGitHubToken.layer),
   Layer.provideMerge(ServerSourceControlHost.layer),
   Layer.provideMerge(SourceControlRateLimit.layer),
 );

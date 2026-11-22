@@ -387,7 +387,9 @@ function fromGitHubApiError(
       return failure(error.message, error);
     case "GitHubApiAuthenticationError":
       return failure(
-        "GitHub is not authenticated. Run `gh auth login` (or set GH_TOKEN) and retry.",
+        error.credential === "project"
+          ? error.message
+          : "GitHub is not authenticated. Run `gh auth login` (or set GH_TOKEN) and retry.",
         error,
       );
     case "GitHubApiRateLimitError":

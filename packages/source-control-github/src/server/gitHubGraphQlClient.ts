@@ -10,6 +10,7 @@ import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import * as Headers from "effect/http/Headers";
 import { GraphQLClientError, GraphQLMiddleware, GraphQLProtocol } from "effect/graphql";
 import * as SourceControlRateLimit from "@t3tools/source-control-core/server/SourceControlRateLimit";
+import { ProjectCredential } from "@t3tools/source-control-core/server/ProjectCredential";
 import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
 
 import * as GitHubCredentials from "./GitHubCredentials.ts";
@@ -241,6 +242,7 @@ export const batchKey = (context: Context.Context<GitHubGraphQlTarget>) =>
     Context.getOrElse(context, GitHubRequestPolicy.PinnedGitHubCredential, () => null)
       ?.credentialFingerprint ?? null,
     Context.getOrElse(context, SourceControlRateLimit.CredentialScope, () => ""),
+    Context.getOrElse(context, ProjectCredential, () => null)?.projectId ?? null,
   ]);
 
 const fromClientError = (

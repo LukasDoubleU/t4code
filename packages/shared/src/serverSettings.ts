@@ -281,6 +281,8 @@ function mergeProjectSettingsOverridesPatch(
       continue;
     }
     const storedProviderInstances = current[projectId]?.providerInstances;
+    // Dropping a project's token would quietly switch it to the machine's GitHub account.
+    const storedGitHubTokens = current[projectId]?.gitHubTokens;
     next.set(projectId, {
       // Preserve downgraded storage, but reject new unknown writes so clients can detect unsupported settings.
       ...pickOverrideKeys(current[projectId], false),
@@ -288,6 +290,9 @@ function mergeProjectSettingsOverridesPatch(
       ...(Object.hasOwn(entry, "providerInstances") || storedProviderInstances === undefined
         ? {}
         : { providerInstances: storedProviderInstances }),
+      ...(Object.hasOwn(entry, "gitHubTokens") || storedGitHubTokens === undefined
+        ? {}
+        : { gitHubTokens: storedGitHubTokens }),
     });
   }
   return Object.fromEntries(next);

@@ -1082,11 +1082,20 @@ export const make = Effect.gen(function* () {
       const unavailable = () => new GitHubViewerLoginUnavailableError({ cwd: input.cwd });
       const host = input.host.toLowerCase();
       // A pinned credential is never handed on to another, so pick one that reaches the repository.
-      const { token, fingerprint: key } =
-        input.repository === undefined
-          ? yield* api.credential(host)
-          : yield* appAccess.credentialFor(host, input.repository);
-      const credential = { host, token, credentialFingerprint: key };
+      const {
+        token,
+        fingerprint: key,
+        source,
+      } = input.repository === undefined
+        ? yield* api.credential(host)
+        : yield* appAccess.credentialFor(host, input.repository);
+      // The source names a refused project token in its error.
+      const credential = {
+        host,
+        token,
+        credentialFingerprint: key,
+        ...(source === undefined ? {} : { source }),
+      };
       return yield* Effect.acquireUseRelease(
         Effect.sync(() => {
           const lock = identityLocks.get(key) ?? { gate: Semaphore.makeUnsafe(1), users: 0 };
@@ -1151,13 +1160,14 @@ export const make = Effect.gen(function* () {
     use,
   ) =>
     captureVerifiedCredential(input).pipe(
-      Effect.flatMap(({ host, token, accountId, viewer, credentialFingerprint }) =>
+      Effect.flatMap(({ host, token, accountId, viewer, credentialFingerprint, source }) =>
         use({ accountId, viewer, credentialFingerprint }).pipe(
           Effect.provideService(SourceControlRateLimit.CredentialScope, credentialFingerprint),
           Effect.provideService(GitHubRequestPolicy.PinnedGitHubCredential, {
             host,
             token,
             credentialFingerprint,
+            ...(source === undefined ? {} : { source }),
           }),
         ),
       ),
@@ -1338,7 +1348,7 @@ export const make = Effect.gen(function* () {
     input: RestReadInput<A>,
   ) {
     const host = normalizeHost(input.host);
-    const { token, fingerprint } = yield* api.credential(host);
+    const { token, fingerprint, source } = yield* api.credential(host);
     const key = `${fingerprint}\0${host}\0${input.path}`;
     const previous = yield* Cache.get(validators, key);
     const response = yield* api
@@ -1353,6 +1363,7 @@ export const make = Effect.gen(function* () {
           host,
           token,
           credentialFingerprint: fingerprint,
+          ...(source === undefined ? {} : { source }),
         }),
       );
     if (response.status === 304 && Option.isSome(previous)) {

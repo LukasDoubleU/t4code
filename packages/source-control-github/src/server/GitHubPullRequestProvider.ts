@@ -112,10 +112,12 @@ function gitHubProviderFailure(
   switch (error._tag) {
     case "GitHubCliMissingError":
       return { reason: "missing-tool" };
+    case "GitHubApiAuthenticationError":
+      // A refused project token is that project's problem: keep its own message, not the host's.
+      return error.credential === "project" ? { reason: "failed" } : { reason: "unauthenticated" };
     case "GitHubNotSignedInError":
     case "GitHubHostDisabledError":
     case "SettingsSecretUnresolvedError":
-    case "GitHubApiAuthenticationError":
       return { reason: "unauthenticated" };
     case "GitHubApiRateLimitError":
       return {
@@ -143,6 +145,8 @@ function gitHubProviderFailure(
 }
 
 const REPOSITORY_ACCESS_HINTS: Record<Exclude<GitHubCredentialSource, "app">, string> = {
+  project:
+    "This project's own GitHub token can't see it. Give it access, or change it in the project's settings.",
   settings:
     "Your saved GitHub token can't see it. Give it access, or change it in Settings → Source control & issues.",
   env: "The server's environment token can't see it. Give it access, or unset it.",

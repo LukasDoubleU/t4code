@@ -444,6 +444,7 @@ import {
   SourceControlSignInResult,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
+import { ProjectGitHubIdentity, ProjectGitHubIdentityInput } from "./projectGitHubToken.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
@@ -661,6 +662,7 @@ export const WS_METHODS = {
   sourceControlAppAccess: "sourceControl.appAccess",
   sourceControlStarred: "sourceControl.starred",
   sourceControlStar: "sourceControl.star",
+  sourceControlProjectGitHubIdentity: "sourceControl.projectGitHubIdentity",
   projectCloneStart: "projectClone.start",
   projectCloneCancel: "projectClone.cancel",
   projectCloneRetry: "projectClone.retry",
@@ -1495,6 +1497,16 @@ const WsSourceControlStarredRpc = Rpc.make(WS_METHODS.sourceControlStarred, {
   success: Schema.Boolean,
   error: EnvironmentAuthorizationError,
 });
+
+// Reads the project's GitHub login once per token; the server caches it.
+const WsSourceControlProjectGitHubIdentityRpc = Rpc.make(
+  WS_METHODS.sourceControlProjectGitHubIdentity,
+  {
+    payload: ProjectGitHubIdentityInput,
+    success: ProjectGitHubIdentity,
+    error: EnvironmentAuthorizationError,
+  },
+);
 
 // Stars the repository as the server's forge account. False when the forge refused or cannot star.
 const WsSourceControlStarRpc = Rpc.make(WS_METHODS.sourceControlStar, {
@@ -2417,6 +2429,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlAppAccessRpc,
   WsSourceControlStarredRpc,
   WsSourceControlStarRpc,
+  WsSourceControlProjectGitHubIdentityRpc,
   WsProjectCloneStartRpc,
   WsProjectCloneCancelRpc,
   WsProjectCloneRetryRpc,

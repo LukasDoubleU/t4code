@@ -28,6 +28,7 @@ import * as VcsProjectConfig from "../../apps/server/src/vcs/VcsProjectConfig.ts
 import * as GitVcsDriver from "../../apps/server/src/vcs/GitVcsDriver.ts";
 import * as ProcessRunner from "../../apps/server/src/processRunner.ts";
 import * as ServerConfig from "../../apps/server/src/config.ts";
+import * as SqlitePersistence from "../../apps/server/src/persistence/Sqlite.ts";
 
 const { values } = NodeUtil.parseArgs({
   options: {
@@ -153,6 +154,8 @@ await Effect.runPromise(
         ProcessRunner.layer,
         SourceControlProviderRegistry.layer.pipe(
           Layer.provide(SourceControlBuiltInDrivers.layer),
+          // The drivers look up project tokens only once a project has one; this eval has none.
+          Layer.provide(SqlitePersistence.layerMemory),
           Layer.provide(ServerSettings.layerTest()),
           Layer.provide(VcsDriverRegistry.layer.pipe(Layer.provide(VcsProjectConfig.layer))),
           Layer.provide(GitVcsDriver.layer),

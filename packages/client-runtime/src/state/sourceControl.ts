@@ -30,6 +30,11 @@ export function createSourceControlEnvironmentAtoms<R, E>(
       label: "environment-data:source-control:check-app-access",
       tag: WS_METHODS.sourceControlAppAccess,
     }),
+    // The GitHub login a project's requests act as; the server keeps it per token.
+    projectGitHubIdentity: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:source-control:project-github-identity",
+      tag: WS_METHODS.sourceControlProjectGitHubIdentity,
+    }),
     checkStarred: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:source-control:check-starred",
       tag: WS_METHODS.sourceControlStarred,

@@ -10,6 +10,7 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as SourceControlRateLimit from "@t3tools/source-control-core/server/SourceControlRateLimit";
+import { ProjectCredential } from "@t3tools/source-control-core/server/ProjectCredential";
 
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
@@ -44,10 +45,16 @@ export class GitHubApiRequestError extends Schema.TaggedError<GitHubApiRequestEr
 
 export class GitHubApiAuthenticationError extends Schema.TaggedError<GitHubApiAuthenticationError>()(
   "GitHubApiAuthenticationError",
-  { host: Schema.String, operation: Schema.String },
+  {
+    host: Schema.String,
+    operation: Schema.String,
+    credential: Schema.optionalKey(GitHubCredentials.GitHubCredentialSource),
+  },
 ) {
   override get message(): string {
-    return `GitHub refused the credential for ${this.host}. Run \`gh auth login --hostname ${this.host}\` and retry.`;
+    return this.credential === "project"
+      ? `GitHub refused this project's own token for ${this.host}. Replace or remove it in the project's settings; the project does not fall back to another credential.`
+      : `GitHub refused the credential for ${this.host}. Run \`gh auth login --hostname ${this.host}\` and retry.`;
   }
 }
 
@@ -287,9 +294,26 @@ export const make = Effect.gen(function* () {
       })),
     );
 
+  /** A project's own token for `host`, which outranks every machine credential. */
+  const projectCredential = Effect.fnUntraced(function* (host: string) {
+    const project = yield* ProjectCredential;
+    if (project === null) return Option.none<ChosenCredential>();
+    const token = yield* project.tokenFor(host);
+    if (Option.isNone(token)) return Option.none<ChosenCredential>();
+    return Option.some<ChosenCredential>({
+      token: token.value,
+      fingerprint: yield* credentials.fingerprint(host, Redacted.value(token.value)),
+      source: "project",
+      fromApp: false,
+    });
+  });
+
   const appCredential: GitHubRequestPolicy["Service"]["appCredential"] = Effect.fn(
     "GitHubRest.appCredential",
   )(function* (host) {
+    // The app sign-in is the machine's: a project with its own token never acts through it.
+    const project = yield* Effect.result(projectCredential(normalizeHost(host)));
+    if (Result.isFailure(project) || Option.isSome(project.success)) return Option.none();
     const token = yield* appSignIn.token(normalizeHost(host));
     if (Option.isNone(token)) return Option.none();
     return Option.some({
@@ -312,6 +336,8 @@ export const make = Effect.gen(function* () {
         fromApp: false,
       } satisfies ChosenCredential;
     }
+    const project = yield* projectCredential(host);
+    if (Option.isSome(project)) return project.value;
     const saved = yield* credentials.saved(host);
     if (Option.isSome(saved)) {
       return {
@@ -390,7 +416,10 @@ export const make = Effect.gen(function* () {
           // The source may hold a newer token than the one that was refused.
           yield* appSignIn.invalidate(host, Redacted.value(held.token));
           yield* credentials.invalidate(host);
-          return yield* new GitHubApiAuthenticationError(context);
+          return yield* new GitHubApiAuthenticationError({
+            ...context,
+            ...(held.source === "project" ? { credential: held.source } : {}),
+          });
         case "NotFound":
           return yield* new GitHubApiNotFoundError({
             ...context,

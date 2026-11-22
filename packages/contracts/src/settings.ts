@@ -869,7 +869,7 @@ const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
 
 export const IDLE_COMPACTION_MODES = [
   { value: "onReturn", label: "When you return" },
-  { value: "beforeCacheExpires", label: "Before the cache expires (beta)" },
+  { value: "beforeCacheExpires", label: "Before the cache expires" },
   { value: "off", label: "Never" },
 ] as const;
 export const IdleCompactionMode = Schema.Literals(IDLE_COMPACTION_MODES.map((mode) => mode.value));
@@ -1568,9 +1568,13 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS)),
   ),
   compactIdleThreads: LegacyCompactIdleThreads.pipe(
-    Schema.withDecodingDefault(Effect.succeed(false)),
+    Schema.withDecodingDefault(Effect.succeed(true)),
   ),
   idleCompaction: Schema.optionalKey(IdleCompactionMode),
+  /** Switch a saved "When you return" once, so choosing it again later sticks. */
+  idleCompactionDefaultSwitched: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
   snoozeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   autoResumeLimitedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Off when empty. Agents cannot set it: no MCP tool writes it. */

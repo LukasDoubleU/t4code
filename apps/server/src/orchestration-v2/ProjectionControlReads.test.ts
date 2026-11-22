@@ -484,7 +484,13 @@ it.effect.each(storageCases)(
       }).pipe(
         Effect.provide(
           ProviderTurnControlService.layer.pipe(
-            Layer.provide(Layer.merge(layerSessions, Layer.mock(EventSink.EventSinkV2)({}))),
+            Layer.provide(
+              Layer.mergeAll(
+                layerSessions,
+                Layer.mock(EventSink.EventSinkV2)({}),
+                McpAppModelContext.layerEmpty,
+              ),
+            ),
           ),
         ),
       );

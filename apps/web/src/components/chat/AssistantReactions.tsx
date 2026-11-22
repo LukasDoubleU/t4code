@@ -13,6 +13,7 @@ import {
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
+import { msg, useGT, useMessages } from "gt-react";
 import { PlayIcon, ReplyIcon, ThumbsUpIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -34,8 +35,8 @@ import {
   type ReactableReply,
 } from "./AssistantReactions.logic";
 
-const GO_AHEAD_LABEL = "👍 Go ahead: starts a turn";
-const REPLY_LABEL = "Reply to this response";
+const GO_AHEAD_LABEL = msg("👍 Go ahead: starts a turn");
+const REPLY_LABEL = msg("Reply to this response");
 
 function reportFailure(title: string, result: AtomCommandResult<unknown, unknown>) {
   if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
@@ -49,6 +50,7 @@ function reportFailure(title: string, result: AtomCommandResult<unknown, unknown
 
 /** Reactions on the replies of threads in `environmentId`, and "Go ahead". */
 export function useReplyReactions(environmentId: EnvironmentId | null) {
+  const gt = useGT();
   const serverConfigs = useServerConfigs();
   const capabilities =
     environmentId === null ? undefined : serverConfigs.get(environmentId)?.environment.capabilities;
@@ -78,7 +80,12 @@ export function useReplyReactions(environmentId: EnvironmentId | null) {
         ...(passage === undefined ? {} : { passage }),
       },
     });
-    reportFailure(reacted ? `Could not react ${emoji}` : `Could not remove ${emoji}`, result);
+    reportFailure(
+      reacted
+        ? gt("Could not react {emoji}", { emoji })
+        : gt("Could not remove {emoji}", { emoji }),
+      result,
+    );
   };
 
   // Sends through the queue like any message, so it starts a turn now or after the running one.
@@ -93,7 +100,7 @@ export function useReplyReactions(environmentId: EnvironmentId | null) {
     )?.projection;
     if (thread === undefined) return;
     reportFailure(
-      "Could not react 👍",
+      gt("Could not react 👍"),
       await setReaction({
         environmentId,
         input: {
@@ -108,7 +115,7 @@ export function useReplyReactions(environmentId: EnvironmentId | null) {
     );
     const text = messageText(thread.turnItems);
     reportFailure(
-      "Could not send Go ahead",
+      gt("Could not send Go ahead"),
       await startTurn({
         environmentId,
         input: {
@@ -154,11 +161,12 @@ export function AssistantReactionActions(props: {
   /** Puts a reference to this reply in the composer; absent where there is no composer. */
   readonly onReply?: (() => void) | undefined;
 }) {
+  const m = useMessages();
   const { available, canReply, react, goAhead } = useReplyReactions(props.environmentId);
   const [busy, setBusy] = useState(false);
   const reply = reactableReply(props.projectedItem);
   if (!available || reply === null) return null;
-  const thumbsUp = thumbsUpAction(props.reactions);
+  const thumbsUp = thumbsUpAction(props.reactions, m);
   const run = (action: () => Promise<void>) => {
     setBusy(true);
     void action().finally(() => setBusy(false));
@@ -192,14 +200,14 @@ export function AssistantReactionActions(props: {
               size="xs"
               variant="ghost"
               disabled={busy}
-              aria-label={GO_AHEAD_LABEL}
+              aria-label={m(GO_AHEAD_LABEL)}
               onClick={() => run(() => goAhead(reply))}
             />
           }
         >
           <PlayIcon className="size-3 fill-current text-success" />
         </TooltipTrigger>
-        <TooltipPopup side="top">{GO_AHEAD_LABEL}</TooltipPopup>
+        <TooltipPopup side="top">{m(GO_AHEAD_LABEL)}</TooltipPopup>
       </Tooltip>
       {canReply && props.onReply ? (
         <Tooltip>
@@ -209,14 +217,14 @@ export function AssistantReactionActions(props: {
                 type="button"
                 size="xs"
                 variant="ghost"
-                aria-label={REPLY_LABEL}
+                aria-label={m(REPLY_LABEL)}
                 onClick={props.onReply}
               />
             }
           >
             <ReplyIcon className="size-3" />
           </TooltipTrigger>
-          <TooltipPopup side="top">{REPLY_LABEL}</TooltipPopup>
+          <TooltipPopup side="top">{m(REPLY_LABEL)}</TooltipPopup>
         </Tooltip>
       ) : null}
     </>
@@ -238,6 +246,7 @@ function ReactionChips(props: {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem | undefined;
   readonly reactions: ReadonlyArray<OrchestrationV2MessageReactionEmoji>;
 }) {
+  const gt = useGT();
   const { available, react } = useReplyReactions(props.environmentId);
   const reply = reactableReply(props.projectedItem);
   const removable = available && reply !== null;
@@ -251,7 +260,7 @@ function ReactionChips(props: {
             size="micro"
             variant="outline"
             disabled={!removable}
-            aria-label={`Remove ${emoji}`}
+            aria-label={gt("Remove {emoji}", { emoji })}
             onClick={() => {
               if (reply !== null) void react(reply, emoji, false);
             }}
@@ -261,7 +270,7 @@ function ReactionChips(props: {
         {emoji}
       </TooltipTrigger>
       <TooltipPopup side="top">
-        {removable ? `Remove ${emoji}` : `You reacted ${emoji}`}
+        {removable ? gt("Remove {emoji}", { emoji }) : gt("You reacted {emoji}", { emoji })}
       </TooltipPopup>
     </Tooltip>
   ));

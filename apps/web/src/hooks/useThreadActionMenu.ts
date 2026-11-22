@@ -372,7 +372,7 @@ export function useThreadActionMenu(input: {
           return;
         case "account-failover:enabled":
         case "account-failover:disabled":
-          await reportFailure("Failed to update the usage-limit setting", () =>
+          await reportFailure(m(msg("Failed to update the usage-limit setting")), () =>
             setThreadAccountFailover(threadRef, action === "account-failover:enabled"),
           );
           return;

@@ -15,7 +15,9 @@ import {
   serializeAssistantReplyReference,
 } from "@t3tools/shared/assistantCitations";
 import * as DateTime from "effect/DateTime";
+import { msg } from "gt-react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import { formatDayAwareTimestamp } from "../../timestampFormat";
 
 type ReplyItem = Extract<OrchestrationV2TurnItem, { readonly type: "assistant_message" }>;
@@ -58,11 +60,14 @@ export function reactableReply(
 }
 
 /** Whether the silent 👍 sets or clears the reaction. */
-export function thumbsUpAction(reactions: ReadonlyArray<OrchestrationV2MessageReactionEmoji> = []) {
+export function thumbsUpAction(
+  reactions: ReadonlyArray<OrchestrationV2MessageReactionEmoji> = [],
+  resolve: MessageResolver = m,
+) {
   const reacted = reactions.includes("👍");
   return {
     reacted,
-    label: reacted ? "Remove 👍" : "React 👍 (no reply)",
+    label: reacted ? resolve(msg("Remove 👍")) : resolve(msg("React 👍 (no reply)")),
   } as const;
 }
 
@@ -125,11 +130,14 @@ export function goAheadReplyReference(
       });
 }
 
+// Sent to the agent as the user's message, so it stays English.
+const GO_AHEAD_TEXT = "👍 Go ahead.";
+
 /** What "Go ahead" sends: the approval, after the reference to the reply it approves if any. */
 export function goAheadText(reference: AssistantReplyReference | null): string {
   return reference === null
-    ? "👍 Go ahead."
-    : `${serializeAssistantReplyReference(reference)} 👍 Go ahead.`;
+    ? GO_AHEAD_TEXT
+    : `${serializeAssistantReplyReference(reference)} ${GO_AHEAD_TEXT}`;
 }
 
 /** What Reply puts in the composer: the reply named by the time its footer shows and its first line. */
@@ -152,7 +160,10 @@ export function replyReferenceLabel(
   reference: AssistantReplyReference,
   timestampFormat: TimestampFormat,
   nowMs?: number,
+  resolve: MessageResolver = m,
 ): string {
   const time = formatDayAwareTimestamp(reference.repliedAt, timestampFormat, nowMs);
-  return reference.excerpt ? `Replying to ${time} · ${reference.excerpt}` : `Replying to ${time}`;
+  return reference.excerpt
+    ? resolve(msg("Replying to {time} · {excerpt}", { time, excerpt: reference.excerpt }))
+    : resolve(msg("Replying to {time}", { time }));
 }

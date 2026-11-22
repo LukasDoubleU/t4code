@@ -153,10 +153,12 @@ const isSidebarProjectSortOrder = Schema.is(SidebarProjectSortOrder);
 
 const QUIET_EXPERTS_OFF = "off";
 const QUIET_EXPERTS_HOURS = [1, 4, 8, 24, 72] as const;
-function quietExpertsLabel(hours: number | null): string {
-  if (hours === null) return "Off";
-  if (hours % 24 === 0) return hours === 24 ? "1 day" : `${hours / 24} days`;
-  return hours === 1 ? "1 hour" : `${hours} hours`;
+function quietExpertsLabel(hours: number | null, gt: ReturnType<typeof useGT>): string {
+  if (hours === null) return gt("Off", { $context: "setting value, turned off" });
+  if (hours % 24 === 0) {
+    return gt("{count, plural, one {{count} day} other {{count} days}}", { count: hours / 24 });
+  }
+  return gt("{count, plural, one {{count} hour} other {{count} hours}}", { count: hours });
 }
 
 const TIMESTAMP_FORMAT_LABELS = {
@@ -996,12 +998,14 @@ export function GeneralSettingsPanel() {
         />
         <SettingsRow
           {...setting("quiet-experts")}
-          description="Experts with nothing for you fold into one row at the end of the Experts section once they have been quiet this long. A message, a run or a request for you brings one back."
+          description={gt(
+            "Experts with nothing for you fold into one row at the end of the Experts section once they have been quiet this long. A message, a run or a request for you brings one back.",
+          )}
           resetAction={
             settings.sidebarExpertsQuietAfterHours !==
             DEFAULT_UNIFIED_SETTINGS.sidebarExpertsQuietAfterHours ? (
               <SettingResetButton
-                label="fold quiet experts"
+                ariaLabel={gt("Reset fold quiet experts to default")}
                 onClick={() =>
                   updateSettings({
                     sidebarExpertsQuietAfterHours:
@@ -1021,18 +1025,22 @@ export function GeneralSettingsPanel() {
                 });
               }}
             >
-              <SelectTrigger size="sm" className="w-full sm:w-44" aria-label="Fold quiet experts">
+              <SelectTrigger
+                size="sm"
+                className="w-full sm:w-44"
+                aria-label={gt("Fold quiet experts")}
+              >
                 <SelectValue>
-                  {quietExpertsLabel(settings.sidebarExpertsQuietAfterHours)}
+                  {quietExpertsLabel(settings.sidebarExpertsQuietAfterHours, gt)}
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 <SelectItem hideIndicator value={QUIET_EXPERTS_OFF}>
-                  Off
+                  {gt("Off", { $context: "setting value, turned off" })}
                 </SelectItem>
                 {QUIET_EXPERTS_HOURS.map((hours) => (
                   <SelectItem hideIndicator key={hours} value={String(hours)}>
-                    {quietExpertsLabel(hours)}
+                    {quietExpertsLabel(hours, gt)}
                   </SelectItem>
                 ))}
               </SelectPopup>
@@ -1281,11 +1289,13 @@ export function GeneralSettingsPanel() {
         />
         <SettingsRow
           {...setting("always-show-message-times")}
-          description="Show each message's time without hovering it. Its buttons still appear on hover."
+          description={gt(
+            "Show each message's time without hovering it. Its buttons still appear on hover.",
+          )}
           resetAction={
             settings.alwaysShowMessageTimes !== DEFAULT_UNIFIED_SETTINGS.alwaysShowMessageTimes ? (
               <SettingResetButton
-                label="always show message times"
+                ariaLabel={gt("Reset always show message times to default")}
                 onClick={() =>
                   updateSettings({
                     alwaysShowMessageTimes: DEFAULT_UNIFIED_SETTINGS.alwaysShowMessageTimes,
@@ -1298,17 +1308,19 @@ export function GeneralSettingsPanel() {
             <Switch
               checked={settings.alwaysShowMessageTimes}
               onCheckedChange={(checked) => updateSettings({ alwaysShowMessageTimes: checked })}
-              aria-label="Always show message times"
+              aria-label={gt("Always show message times")}
             />
           }
         />
         <SettingsRow
           {...setting("message-time-style")}
-          description="How always-shown message times read: relative, like “10m ago”, or the time of day."
+          description={gt(
+            "How always-shown message times read: relative, like “10m ago”, or the time of day.",
+          )}
           resetAction={
             settings.messageTimeStyle !== DEFAULT_UNIFIED_SETTINGS.messageTimeStyle ? (
               <SettingResetButton
-                label="message times"
+                ariaLabel={gt("Reset message times to default")}
                 onClick={() =>
                   updateSettings({ messageTimeStyle: DEFAULT_UNIFIED_SETTINGS.messageTimeStyle })
                 }
@@ -1325,7 +1337,7 @@ export function GeneralSettingsPanel() {
                 }
               }}
             >
-              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Message times">
+              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label={gt("Message times")}>
                 <SelectValue>{MESSAGE_TIME_STYLE_LABELS[settings.messageTimeStyle]}</SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -2161,11 +2173,13 @@ export function ThreadsSettingsPanel() {
 
       <ProviderFallbackSettings />
 
-      <SettingsSection id="pinned-threads" title="Pinned threads">
+      <SettingsSection id="pinned-threads" title={gt("Pinned threads")}>
         <SettingsRow
           serverScoped
           {...setting("pinned-thread-memory")}
-          description="A pinned thread keeps its notes in a memory file and reads them again after every compaction. Turned off, no thread gets the file; existing files stay."
+          description={gt(
+            "A pinned thread keeps its notes in a memory file and reads them again after every compaction. Turned off, no thread gets the file; existing files stay.",
+          )}
           settingKeys={["pinnedThreadsKeepMemory"]}
           control={
             <ScopedSwitch
@@ -2174,7 +2188,7 @@ export function ThreadsSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ pinnedThreadsKeepMemory: Boolean(checked) })
               }
-              aria-label="Pinned threads keep a memory"
+              aria-label={gt("Pinned threads keep a memory")}
             />
           }
         />

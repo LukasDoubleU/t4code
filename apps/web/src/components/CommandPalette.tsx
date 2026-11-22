@@ -581,7 +581,9 @@ function OpenCommandPaletteDialog(props: {
           },
           messages,
         );
-  const activeThreadIdCopyTarget = activeThread ? threadIdCopyTarget(activeThread.id, messages) : null;
+  const activeThreadIdCopyTarget = activeThread
+    ? threadIdCopyTarget(activeThread.id, messages)
+    : null;
   const copyActiveThreadReference = async () => {
     if (activeThreadReferenceCopyTarget === null) return;
     await copyThreadReference(activeThreadReferenceCopyTarget);
@@ -1406,7 +1408,9 @@ function OpenCommandPaletteDialog(props: {
       title: gt("New thread in..."),
       icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
-      groups: [{ value: NEW_THREAD_IN_GROUP, label: gt("Projects"), items: projectThreadItems.items }],
+      groups: [
+        { value: NEW_THREAD_IN_GROUP, label: gt("Projects"), items: projectThreadItems.items },
+      ],
       ...(projectThreadItems.highlightedItemValue === null
         ? {}
         : { initialHighlightedItemValue: projectThreadItems.highlightedItemValue }),
@@ -1436,7 +1440,10 @@ function OpenCommandPaletteDialog(props: {
       searchTerms: ["new topic", "topic", "expert", activeExpert.title],
       title: (
         <T>
-          New topic of <span className="font-semibold">{activeExpert.title}</span>
+          New topic of{" "}
+          <span className="font-semibold">
+            <Var>{activeExpert.title}</Var>
+          </span>
         </T>
       ),
       searchTitle: gt("New topic of {title}", { title: activeExpert.title }),
@@ -1518,7 +1525,7 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:jump-to-my-last-message",
-      title: "Jump to my last message",
+      title: gt("Jump to my last message"),
       searchTerms: ["jump", "my last message", "scroll", "prompt", "what did I say"],
       icon: <CornerLeftUpIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "chat.jumpToMyLastMessage",
@@ -1528,7 +1535,7 @@ function OpenCommandPaletteDialog(props: {
       actionItems.push({
         kind: "action",
         value: "action:catch-me-up",
-        title: "Catch me up",
+        title: gt("Catch me up"),
         searchTerms: ["catch up", "brief", "summary", "what happened", "needs me"],
         icon: <NewspaperIcon className={ITEM_ICON_CLASS} />,
         shortcutCommand: "chat.catchUp",
@@ -1541,7 +1548,7 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:cite-selection",
-      title: "Cite selection in composer",
+      title: gt("Cite selection in composer"),
       searchTerms: ["cite", "quote", "selection", "assistant", "reply"],
       icon: <QuoteIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "chat.citeSelection",
@@ -1553,7 +1560,7 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:go-ahead",
-      title: "👍 Go ahead with the latest reply",
+      title: gt("👍 Go ahead with the latest reply"),
       searchTerms: ["go ahead", "approve", "thumbs up", "react", "reply", "continue"],
       icon: <PlayIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "chat.goAhead",
@@ -1650,7 +1657,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:copy-thread-id",
       searchTerms: ["copy", "thread id", "id"],
-      title: "Copy thread ID",
+      title: gt("Copy thread ID"),
       description: activeThreadIdCopyTarget.description,
       icon: <HashIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyId",
@@ -1878,7 +1885,7 @@ function OpenCommandPaletteDialog(props: {
     kind: "action",
     value: "action:experts-feed",
     searchTerms: ["experts", "feed", "pinned", "replies", "messages", "inbox"],
-    title: "Open experts feed",
+    title: gt("Open experts feed"),
     icon: <MessagesSquareIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/experts" });

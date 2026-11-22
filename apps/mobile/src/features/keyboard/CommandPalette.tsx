@@ -404,7 +404,7 @@ export function CommandPalette(props: {
       actions.unshift({
         key: "newTopic",
         kind: "action",
-        title: `New topic of ${activeThread.title}`,
+        title: gt("New topic of {title}", { title: activeThread.title }),
         searchTerms: ["new topic", "topic", "expert"],
         run: () =>
           selectDetail({

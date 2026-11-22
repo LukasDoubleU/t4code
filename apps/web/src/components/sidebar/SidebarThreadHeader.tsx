@@ -101,7 +101,7 @@ export function SidebarThreadHeader({
       </div>
       <div className="flex shrink-0 items-center">
         <SidebarViewOptionsMenu
-          trigger={<SidebarHeaderIconButton label="Sort and group threads" />}
+          trigger={<SidebarHeaderIconButton label={gt("Sort and group threads")} />}
         />
         {hasProjects ? (
           <>

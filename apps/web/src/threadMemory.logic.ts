@@ -3,6 +3,9 @@ import {
   type FilesystemEntryMetadata,
   type ThreadId,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "./i18n/messages";
 
 /** Null while an environment keeps no memories: a server without them, or the setting off. */
 export function activeThreadMemoryDirectory(
@@ -34,20 +37,40 @@ export const MEMORY_STALE_TURNS = 20;
  * not exist yet; `updated` is its modification time as "5m ago".
  * `unchangedTurns` counts the turns since the file last changed.
  */
-export function threadMemoryTooltipLabel(input: {
-  readonly entry: FilesystemEntryMetadata | null | undefined;
-  readonly failed: boolean;
-  readonly updated: string | null;
-  readonly unchangedTurns?: number | undefined;
-}): string {
-  if (input.entry === undefined) return input.failed ? "Memory" : "Memory…";
+export function threadMemoryTooltipLabel(
+  input: {
+    readonly entry: FilesystemEntryMetadata | null | undefined;
+    readonly failed: boolean;
+    readonly updated: string | null;
+    readonly unchangedTurns?: number | undefined;
+  },
+  resolve: MessageResolver = m,
+): string {
+  if (input.entry === undefined)
+    return input.failed ? resolve(msg("Memory")) : resolve(msg("Memory…"));
   const stale =
     input.unchangedTurns !== undefined && input.unchangedTurns >= MEMORY_STALE_TURNS
       ? input.unchangedTurns
       : null;
   if (input.entry === null || input.entry.kind !== "file") {
-    return stale === null ? "No notes yet" : `No notes yet after ${stale} turns`;
+    return stale === null
+      ? resolve(msg("No notes yet"))
+      : resolve(
+          msg("No notes yet after {count, plural, one {{count} turn} other {{count} turns}}", {
+            count: stale,
+          }),
+        );
   }
-  const label = input.updated === null ? "Memory" : `Memory updated ${input.updated}`;
-  return stale === null ? label : `${label} · unchanged for ${stale} turns`;
+  const label =
+    input.updated === null
+      ? resolve(msg("Memory"))
+      : resolve(msg("Memory updated {updated}", { updated: input.updated }));
+  return stale === null
+    ? label
+    : resolve(
+        msg("{label} · unchanged for {count, plural, one {{count} turn} other {{count} turns}}", {
+          label,
+          count: stale,
+        }),
+      );
 }

@@ -9,11 +9,14 @@ import {
   withAssistantCitationComment,
 } from "@t3tools/shared/assistantCitations";
 
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 import type { ChatPassageReaction } from "../../types";
 
 const PASSAGE_EXCERPT_LENGTH = 32;
 
-export const PASSAGE_GO_AHEAD_LABEL = "👍 Go ahead with this passage: starts a turn";
+export const PASSAGE_GO_AHEAD_LABEL = msg("👍 Go ahead with this passage: starts a turn");
 
 /** The passage a citation quotes, as a reaction stores it. */
 export function citationPassage(citation: AssistantCitation): AssistantPassage {
@@ -30,15 +33,20 @@ export function passageGoAheadText(citation: AssistantCitation): string {
  * The selection toolbar's buttons. Reactions need a finished reply of the thread itself, which
  * its source marks with the reply's item, and a server that stores them.
  */
-export function selectionToolbarState(input: {
-  readonly text: string;
-  readonly reactionItemId: TurnItemId | null;
-  readonly reactionsAvailable: boolean;
-}) {
+export function selectionToolbarState(
+  input: {
+    readonly text: string;
+    readonly reactionItemId: TurnItemId | null;
+    readonly reactionsAvailable: boolean;
+  },
+  resolve: MessageResolver = m,
+) {
   const tooLong = input.text.length > ASSISTANT_CITATION_MAX_TEXT_LENGTH;
   return {
     tooLong,
-    citeLabel: tooLong ? "Selection is too long to cite" : "Cite selection in composer",
+    citeLabel: tooLong
+      ? resolve(msg("Selection is too long to cite"))
+      : resolve(msg("Cite selection in composer")),
     reactionItemId: input.reactionsAvailable ? input.reactionItemId : null,
   } as const;
 }
@@ -51,7 +59,10 @@ export function passageExcerpt(text: string): string {
 }
 
 /** A chip per passage reaction, in the order the passages appear in the reply. */
-export function passageReactionChips(reactions: ReadonlyArray<ChatPassageReaction>) {
+export function passageReactionChips(
+  reactions: ReadonlyArray<ChatPassageReaction>,
+  resolve: MessageResolver = m,
+) {
   return reactions
     .toSorted((left, right) => left.passage.start - right.passage.start)
     .map((reaction) => {
@@ -60,7 +71,9 @@ export function passageReactionChips(reactions: ReadonlyArray<ChatPassageReactio
         ...reaction,
         key: `${reaction.passage.start}:${reaction.passage.end}`,
         excerpt,
-        removeLabel: `Remove ${reaction.emoji} on “${excerpt}”`,
+        removeLabel: resolve(
+          msg("Remove {emoji} on “{excerpt}”", { emoji: reaction.emoji, excerpt }),
+        ),
       };
     });
 }

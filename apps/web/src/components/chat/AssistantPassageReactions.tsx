@@ -8,6 +8,7 @@ import type {
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
+import { useGT, useMessages } from "gt-react";
 import { PlayIcon, ThumbsDownIcon, ThumbsUpIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
@@ -37,6 +38,8 @@ export function AssistantSelectionReactions(props: {
   /** Called once a button sent its command, like Cite, to let go of the selection. */
   readonly onDone: () => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const passage = citationPassage(props.citation);
   const actions: ReadonlyArray<{
     readonly label: string;
@@ -44,17 +47,17 @@ export function AssistantSelectionReactions(props: {
     readonly run: () => Promise<void>;
   }> = [
     {
-      label: "React 👍 to this passage (no reply)",
+      label: gt("React 👍 to this passage (no reply)"),
       icon: <ThumbsUpIcon aria-hidden="true" />,
       run: () => props.reactions.react(props.reply, "👍", true, passage),
     },
     {
-      label: "React 👎 to this passage (no reply)",
+      label: gt("React 👎 to this passage (no reply)"),
       icon: <ThumbsDownIcon aria-hidden="true" />,
       run: () => props.reactions.react(props.reply, "👎", true, passage),
     },
     {
-      label: PASSAGE_GO_AHEAD_LABEL,
+      label: m(PASSAGE_GO_AHEAD_LABEL),
       icon: <PlayIcon aria-hidden="true" className="fill-current text-success" />,
       run: () => props.reactions.goAheadOnPassage(props.reply, props.citation),
     },
@@ -118,6 +121,7 @@ function PassageChips(props: {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem | undefined;
   readonly reactions: ReadonlyArray<ChatPassageReaction>;
 }) {
+  const m = useMessages();
   const { available, react } = useReplyReactions(props.environmentId);
   const reply = available ? reactableReply(props.projectedItem) : null;
   const clearHighlight = useRef<(() => void) | null>(null);
@@ -140,7 +144,7 @@ function PassageChips(props: {
 
   return (
     <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1">
-      {passageReactionChips(props.reactions).map((chip) => (
+      {passageReactionChips(props.reactions, m).map((chip) => (
         <span
           key={chip.key}
           className={cn(

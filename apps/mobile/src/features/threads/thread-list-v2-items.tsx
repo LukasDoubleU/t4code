@@ -949,27 +949,27 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         input: { threadId: thread.id, icon },
       }).then((result) => {
         if (result._tag === "Success") return;
-        Dialog.alert("Could not change icon", "The thread's icon could not be changed.");
+        Dialog.alert(gt("Could not change icon"), gt("The thread's icon could not be changed."));
       });
     },
-    [setIcon, thread.environmentId, thread.id],
+    [gt, setIcon, thread.environmentId, thread.id],
   );
   const handleChangeIcon = useCallback(() => {
     Dialog.prompt({
-      title: "Change icon",
-      message: "Type or paste an emoji.",
+      title: gt("Change icon"),
+      message: gt("Type or paste an emoji."),
       initialValue: thread.icon?.kind === "emoji" ? thread.icon.emoji : "",
-      confirmText: "Save",
+      confirmText: gt("Save"),
       onConfirm: (value) => {
         const emoji = emojiIconInput(value);
         if (emoji === null) {
-          Dialog.alert("Could not change icon", "Type or paste an emoji.");
+          Dialog.alert(gt("Could not change icon"), gt("Type or paste an emoji."));
           return;
         }
         setThreadIcon({ kind: "emoji", emoji });
       },
     });
-  }, [setThreadIcon, thread.icon]);
+  }, [gt, setThreadIcon, thread.icon]);
   const markThreadUnread = useAtomCommand(threadEnvironment.markUnread, { reportFailure: false });
   const handleAcknowledgeWoke = useCallback(() => {
     if (props.wokeAt === null) return;

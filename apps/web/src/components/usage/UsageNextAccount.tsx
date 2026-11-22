@@ -7,6 +7,7 @@ import {
   type WeeklyModelScope,
   weeklyModelScopes,
 } from "@t3tools/shared/usageNextAccount";
+import { T, useGT, Var } from "gt-react";
 import { useId } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
@@ -24,10 +25,14 @@ import {
 import { LimitWindows } from "./UsageLimits";
 import { AccountAvatar, AccountName } from "./UsageLimitsPooled";
 
-function modelChoiceLabel(choice: string, scopes: readonly WeeklyModelScope[]): string {
-  if (choice === "other") return "For other models";
+function modelChoiceLabel(
+  choice: string,
+  scopes: readonly WeeklyModelScope[],
+  gt: ReturnType<typeof useGT>,
+): string {
+  if (choice === "other") return gt("For other models");
   const scope = scopes.find((candidate) => `scope:${candidate.key}` === choice);
-  return scope ? `For ${scope.label}` : "For any model";
+  return scope ? gt("For {scope}", { scope: scope.label }) : gt("For any model");
 }
 
 function CandidateRow({
@@ -96,6 +101,7 @@ function NextAccountGroup({
   readonly where: (candidate: NextAccountCandidate) => string | null;
   readonly now: number;
 }) {
+  const gt = useGT();
   const label = providerClients.get(driver)?.label ?? String(driver);
   const pick = ranked[0]?.status.kind === "ready" ? ranked[0] : null;
   const rest = pick ? ranked.slice(1) : ranked;
@@ -116,7 +122,7 @@ function NextAccountGroup({
       ) : null}
       <div
         role="group"
-        aria-label={`Use next for ${label}`}
+        aria-label={gt("Use next for {label}", { label })}
         className="flex flex-col gap-1 rounded-lg border border-border/60 p-3"
       >
         {pick ? (
@@ -130,15 +136,22 @@ function NextAccountGroup({
           />
         ) : (
           <>
-            <p className="text-sm font-medium text-foreground">No account is ready</p>
+            <p className="text-sm font-medium text-foreground">
+              <T>No account is ready</T>
+            </p>
             <p className="text-xs text-muted-foreground">
               {soonest ? (
-                <>
-                  <AccountName account={soonest.account} className="font-medium text-foreground" />{" "}
-                  is next. {describe(soonest)}
-                </>
+                <T>
+                  <Var>
+                    <AccountName
+                      account={soonest.account}
+                      className="font-medium text-foreground"
+                    />
+                  </Var>{" "}
+                  is next. <Var>{describe(soonest)}</Var>
+                </T>
               ) : (
-                "Refresh Limits for a new reading."
+                gt("Refresh Limits for a new reading.")
               )}
             </p>
           </>
@@ -146,7 +159,9 @@ function NextAccountGroup({
       </div>
       {rest.length > 0 ? (
         <ol
-          aria-label={pick ? `More ${label} accounts` : `${label} accounts`}
+          aria-label={
+            pick ? gt("More {label} accounts", { label }) : gt("{label} accounts", { label })
+          }
           className="flex flex-col divide-y divide-border/60 rounded-lg border border-border/60"
         >
           {rest.map((candidate) => (
@@ -177,6 +192,7 @@ export function UsageNextAccount({
   readonly accounts: readonly LimitAccount[];
   readonly now: number;
 }) {
+  const gt = useGT();
   const [preferences, update] = useNextAccountPreferences();
   const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
   const headingId = useId();
@@ -207,14 +223,14 @@ export function UsageNextAccount({
     if (account.environments.length > 0) {
       return account.environments.map((entry) => entry.label).join(", ");
     }
-    return account.sourceLabel ? `Via ${account.sourceLabel}` : null;
+    return account.sourceLabel ? gt("Via {source}", { source: account.sourceLabel }) : null;
   };
 
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <h2 id={headingId} className="text-sm font-medium text-foreground">
-          Use next
+          <T>Use next</T>
         </h2>
         <div className="ms-auto flex flex-wrap items-center justify-end gap-1">
           <label
@@ -225,10 +241,10 @@ export function UsageNextAccount({
               id={startNewThreadsId}
               size="sm"
               checked={preferences.startNewThreads !== false}
-              aria-label="Start new threads on the recommended account"
+              aria-label={gt("Start new threads on the recommended account")}
               onCheckedChange={(checked) => update({ startNewThreads: checked })}
             />
-            Start new threads on the recommended account
+            <T>Start new threads on the recommended account</T>
           </label>
           <Select
             value={String(preferences.minSessionPercent)}
@@ -240,17 +256,19 @@ export function UsageNextAccount({
             }}
           >
             <SelectTrigger
-              aria-label="Session room needed"
+              aria-label={gt("Session room needed")}
               size="compact"
               variant="ghost"
               className="w-auto min-w-0"
             >
-              <SelectValue>{`Needs ${preferences.minSessionPercent}% session`}</SelectValue>
+              <SelectValue>
+                {gt("Needs {percent}% session", { percent: preferences.minSessionPercent })}
+              </SelectValue>
             </SelectTrigger>
             <SelectPopup align="end" alignItemWithTrigger={false}>
               {SESSION_ROOM_OPTIONS.map((percent) => (
                 <SelectItem key={percent} value={String(percent)}>
-                  {`Needs ${percent}% session`}
+                  {gt("Needs {percent}% session", { percent })}
                 </SelectItem>
               ))}
             </SelectPopup>
@@ -263,17 +281,17 @@ export function UsageNextAccount({
               }}
             >
               <SelectTrigger
-                aria-label="Model to rank for"
+                aria-label={gt("Model to rank for")}
                 size="compact"
                 variant="ghost"
                 className="w-auto min-w-0"
               >
-                <SelectValue>{modelChoiceLabel(modelChoice, scopes)}</SelectValue>
+                <SelectValue>{modelChoiceLabel(modelChoice, scopes, gt)}</SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
                 {["any", ...scopes.map((scope) => `scope:${scope.key}`), "other"].map((choice) => (
                   <SelectItem key={choice} value={choice}>
-                    {modelChoiceLabel(choice, scopes)}
+                    {modelChoiceLabel(choice, scopes, gt)}
                   </SelectItem>
                 ))}
               </SelectPopup>

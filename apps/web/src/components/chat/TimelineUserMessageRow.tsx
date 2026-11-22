@@ -910,7 +910,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         onClick={() => ctx.onOpenThread(senderThreadId, ctx.activeThreadEnvironmentId)}
         tone="muted"
       >
-        Open thread
+        <T>Open thread</T>
       </InlineButton>
     ) : sentFrom && senderEnvironment ? (
       <Link
@@ -918,7 +918,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         params={{ environmentId: sentFrom.environmentId, threadId: sentFrom.threadId }}
         className="rounded-sm text-xs text-muted-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
       >
-        Open thread
+        <T>Open thread</T>
       </Link>
     ) : null;
   const footerButtons = (
@@ -942,7 +942,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       {promptLink !== null && (
         <MessageCopyButton
           text={promptLink}
-          label="Copy prompt link"
+          label={gt("Copy prompt link")}
           icon={LinkIcon}
           variant="ghost"
         />

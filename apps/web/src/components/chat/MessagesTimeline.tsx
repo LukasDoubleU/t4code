@@ -1621,7 +1621,9 @@ function SinceLastVisitDivider() {
   return (
     <div className="chat-content-lane flex items-center gap-3 py-2 text-info text-xs">
       <span aria-hidden="true" className="h-px flex-1 bg-info/40" />
-      <span className="shrink-0">Since your last visit</span>
+      <span className="shrink-0">
+        <T>Since your last visit</T>
+      </span>
       <span aria-hidden="true" className="h-px flex-1 bg-info/40" />
     </div>
   );

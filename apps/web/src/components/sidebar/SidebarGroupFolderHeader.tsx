@@ -10,6 +10,7 @@ import {
   HandIcon,
   type LucideIcon,
 } from "lucide-react";
+import { msg, useMessages } from "gt-react";
 import { memo, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -23,11 +24,31 @@ const STATUS_FOLDERS: Record<
   SidebarStatusGroup,
   { readonly label: string; readonly Icon: LucideIcon; readonly className: string }
 > = {
-  needs_you: { label: "Needs you", Icon: HandIcon, className: "text-warning-foreground" },
-  failed: { label: "Failed", Icon: CircleAlertIcon, className: "text-error" },
-  working: { label: "Working", Icon: CircleDashedIcon, className: "text-info" },
-  completed: { label: "Completed", Icon: CircleCheckIcon, className: "text-success" },
-  idle: { label: "Idle", Icon: CircleIcon, className: "text-muted-foreground" },
+  needs_you: {
+    label: msg("Needs you", { $context: "thread status, waiting for the user" }),
+    Icon: HandIcon,
+    className: "text-warning-foreground",
+  },
+  failed: {
+    label: msg("Failed", { $context: "thread status" }),
+    Icon: CircleAlertIcon,
+    className: "text-error",
+  },
+  working: {
+    label: msg("Working", { $context: "thread status" }),
+    Icon: CircleDashedIcon,
+    className: "text-info",
+  },
+  completed: {
+    label: msg("Completed", { $context: "thread status" }),
+    Icon: CircleCheckIcon,
+    className: "text-success",
+  },
+  idle: {
+    label: msg("Idle", { $context: "thread status" }),
+    Icon: CircleIcon,
+    className: "text-muted-foreground",
+  },
 };
 
 const FOLDER_DOT_CLASS_NAME = {
@@ -38,10 +59,10 @@ const FOLDER_DOT_CLASS_NAME = {
 } as const;
 
 const FOLDER_DOT_LABEL = {
-  attention: ", needs you",
-  failed: ", failed",
-  unread: ", done",
-  working: ", working",
+  attention: msg(", needs you", { $context: "folder status, read after its name" }),
+  failed: msg(", failed", { $context: "folder status, read after its name" }),
+  unread: msg(", done", { $context: "folder status, read after its name" }),
+  working: msg(", working", { $context: "folder status, read after its name" }),
 } as const;
 
 const NO_VISITS: Readonly<Record<string, string>> = {};
@@ -51,6 +72,7 @@ type SidebarGroupFolder = Exclude<SidebarFolderHeader<unknown>, { readonly kind:
 function folderTitle(
   header: SidebarGroupFolder,
   machineByEnvironmentId: ReadonlyMap<EnvironmentId, EnvironmentMachineKind>,
+  resolve: ReturnType<typeof useMessages>,
 ): { readonly label: string; readonly icon: ReactNode } {
   if (header.kind === "machine") {
     return {
@@ -65,7 +87,10 @@ function folderTitle(
     };
   }
   const { label, Icon, className } = STATUS_FOLDERS[header.status];
-  return { label, icon: <Icon aria-hidden className={cn("size-4 shrink-0", className)} /> };
+  return {
+    label: resolve(label),
+    icon: <Icon aria-hidden className={cn("size-4 shrink-0", className)} />,
+  };
 }
 
 /** A machine or status folder. Unlike a project folder it is no place to start a thread. */
@@ -77,6 +102,7 @@ export const SidebarGroupFolderHeader = memo(function SidebarGroupFolderHeader(p
   machineByEnvironmentId: ReadonlyMap<EnvironmentId, EnvironmentMachineKind>;
   onToggle: (folderKey: string) => void;
 }) {
+  const m = useMessages();
   const { header, collapsed, hiddenInbox } = props;
   // A status folder already names its threads' state, so only a closed machine folder
   // flags what it hides.
@@ -97,7 +123,7 @@ export const SidebarGroupFolderHeader = memo(function SidebarGroupFolderHeader(p
         })),
       )
     : null;
-  const { label, icon } = folderTitle(header, props.machineByEnvironmentId);
+  const { label, icon } = folderTitle(header, props.machineByEnvironmentId, m);
   return (
     <li data-testid="sidebar-group-folder" className="relative mt-2 list-none first:mt-0">
       <button
@@ -113,7 +139,7 @@ export const SidebarGroupFolderHeader = memo(function SidebarGroupFolderHeader(p
         </span>
         {folderDot ? (
           <span className={cn("size-1.5 shrink-0 rounded-full", FOLDER_DOT_CLASS_NAME[folderDot])}>
-            <span className="sr-only">{FOLDER_DOT_LABEL[folderDot]}</span>
+            <span className="sr-only">{m(FOLDER_DOT_LABEL[folderDot])}</span>
           </span>
         ) : null}
         {collapsed && hiddenInbox.length > 0 ? (

@@ -484,18 +484,20 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "provider-fallback",
-    title: "Provider fallback",
+    title: msg("Provider fallback"),
     to: "/settings/threads",
     scope: "project-defaults",
     searchTerms: [
-      "fallback chain failover next provider quota usage limit out of credit budget monthly per run openrouter api key antigravity codex opencode pi",
+      msg(
+        "fallback chain failover next provider quota usage limit out of credit budget monthly per run openrouter api key antigravity codex opencode pi",
+      ),
     ],
   },
   {
     id: "pinned-thread-memory",
-    title: "Pinned threads keep a memory",
+    title: msg("Pinned threads keep a memory"),
     to: "/settings/threads",
-    searchTerms: ["memory notes file compaction pin expert context"],
+    searchTerms: [msg("memory notes file compaction pin expert context")],
   },
   {
     id: "working-shelf",
@@ -505,9 +507,9 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "quiet-experts",
-    title: "Fold quiet experts",
+    title: msg("Fold quiet experts"),
     to: "/settings/general",
-    searchTerms: ["hide idle inactive pinned experts sidebar quiet window hours"],
+    searchTerms: [msg("hide idle inactive pinned experts sidebar quiet window hours")],
   },
   {
     id: "boring-sidebar",
@@ -772,15 +774,15 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "always-show-message-times",
-    title: "Always show message times",
+    title: msg("Always show message times"),
     to: "/settings/general",
-    searchTerms: ["timestamp time chat message hover visible"],
+    searchTerms: [msg("timestamp time chat message hover visible")],
   },
   {
     id: "message-time-style",
-    title: "Message times",
+    title: msg("Message times"),
     to: "/settings/general",
-    searchTerms: ["timestamp relative ago clock time of day chat message"],
+    searchTerms: [msg("timestamp relative ago clock time of day chat message")],
   },
   {
     id: "response-streaming",

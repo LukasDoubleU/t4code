@@ -3997,11 +3997,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
           animated: true,
         });
       } else if (step.type === "failed") {
-        Dialog.alert("Could not load earlier activity", step.error);
+        Dialog.alert(m(msg("Could not load earlier activity")), step.error);
       } else {
         Dialog.alert(
-          "No message from you here",
-          "You have not written in this thread yet, or it is too far back.",
+          m(msg("No message from you here")),
+          m(msg("You have not written in this thread yet, or it is too far back.")),
         );
       }
     },
@@ -4624,7 +4624,9 @@ function SinceLastVisitDivider() {
   return (
     <View className="mb-3 flex-row items-center gap-3" accessibilityRole="text">
       <View className="h-px flex-1 bg-primary/40" />
-      <Text className="font-sans text-xs text-primary-text">Since your last visit</Text>
+      <Text className="font-sans text-xs text-primary-text">
+        <T>Since your last visit</T>
+      </Text>
       <View className="h-px flex-1 bg-primary/40" />
     </View>
   );

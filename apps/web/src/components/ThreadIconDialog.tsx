@@ -1,4 +1,5 @@
 import type { ProjectIconOverride } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { lazy, Suspense, useEffect } from "react";
 import { create } from "zustand";
 
@@ -32,6 +33,7 @@ function finish(icon: ProjectIconOverride | null) {
 }
 
 export function ThreadIconDialogHost() {
+  const gt = useGT();
   const request = useRequest((state) => state.request);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- settles the pending icon request, a promise outside React, when the host unmounts.
   useEffect(() => () => finish(null), []);
@@ -41,7 +43,7 @@ export function ThreadIconDialogHost() {
       <ProjectIconPickerDialog
         current={request.current}
         projectName={request.threadTitle}
-        title="Choose thread icon"
+        title={gt("Choose thread icon")}
         open
         onOpenChange={(open) => {
           if (!open) finish(null);

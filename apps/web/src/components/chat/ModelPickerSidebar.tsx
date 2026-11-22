@@ -1,7 +1,7 @@
 import { Toolbar } from "@base-ui/react/toolbar";
 import { type ProviderInstanceId } from "@t3tools/contracts";
 import { memo, useLayoutEffect, useRef, useState } from "react";
-import { msg, T, useMessages } from "gt-react";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { GaugeIcon, StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -62,6 +62,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   /** The account Usage → Limits says to use next. */
   recommendedInstanceIds?: ReadonlySet<ProviderInstanceId>;
 }) {
+  const gt = useGT();
   const m = useMessages();
   const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
     props.onSelectInstance(instanceId);
@@ -191,7 +192,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   isUnavailable || isContextDisabled
                     ? tooltip
                     : isRecommended
-                      ? `${entry.displayName}, use next`
+                      ? gt("{name}, use next", { name: entry.displayName })
                       : entry.displayName
                 }
               >

@@ -1,4 +1,5 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useMessages } from "gt-react";
 
 import { useRelativeTimeState } from "../hooks/useRelativeTimeState";
 import { useThreadShell } from "../state/entities";
@@ -11,6 +12,7 @@ export function ThreadMemoryLastUpdate(props: {
   readonly threadRef: ScopedThreadRef;
   readonly path: string;
 }) {
+  const m = useMessages();
   const metadata = useEnvironmentQuery(
     threadMemoryMetadata({
       environmentId: props.threadRef.environmentId,
@@ -20,15 +22,18 @@ export function ThreadMemoryLastUpdate(props: {
   const thread = useThreadShell(props.threadRef);
   const entry = metadata.data === null ? undefined : (metadata.data.entries[0] ?? null);
   const updated = useRelativeTimeState(entry?.modifiedAt ?? null);
-  return threadMemoryTooltipLabel({
-    entry,
-    failed: metadata.error !== null,
-    unchangedTurns: thread?.source.memoryUnchangedTurns,
-    updated:
-      updated.status !== "relative"
-        ? null
-        : updated.suffix === null
-          ? updated.value
-          : `${updated.value} ${updated.suffix}`,
-  });
+  return threadMemoryTooltipLabel(
+    {
+      entry,
+      failed: metadata.error !== null,
+      unchangedTurns: thread?.source.memoryUnchangedTurns,
+      updated:
+        updated.status !== "relative"
+          ? null
+          : updated.suffix === null
+            ? updated.value
+            : `${updated.value} ${updated.suffix}`,
+    },
+    m,
+  );
 }

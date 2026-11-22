@@ -374,6 +374,7 @@ export function sortNewThreadPickerProjects<
   isPinned: (project: TProject) => boolean = () => false,
 ): TProject[] {
   const location = (project: TProject) =>
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- sort key only, never shown.
     locationByEnvironmentId.get(project.environmentId) ?? { kind: "remote", label: "Remote" };
   return projects.toSorted(
     (left, right) =>

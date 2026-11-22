@@ -328,7 +328,11 @@ function SidebarThreadTooltip({
         {thread.attention ? (
           <div className="flex min-w-0 items-start gap-2 text-warning-foreground">
             <HandIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
-            <div className="min-w-0 break-words">Needs you: {thread.attention.reason}</div>
+            <div className="min-w-0 break-words">
+              <T>
+                Needs you: <Var>{thread.attention.reason}</Var>
+              </T>
+            </div>
           </div>
         ) : null}
         {runningStatus && runningStartedAt !== undefined ? (
@@ -623,13 +627,13 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
   background: (
     <>
       <SendToBackIcon aria-hidden className="size-3" />
-      Background
+      <T>Background</T>
     </>
   ),
   front: (
     <>
       <BringToFrontIcon aria-hidden className="size-3" />
-      Bring to front
+      <T>Bring to front</T>
     </>
   ),
 };
@@ -976,7 +980,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   // The agent's call for the user outranks all but its own question or approval.
   const topStatus: SidebarTopStatus | null =
     attention !== null && status !== "approval" && status !== "input"
-      ? { label: "Needs you", icon: "attention", className: "text-warning-foreground" }
+      ? { label: gt("Needs you"), icon: "attention", className: "text-warning-foreground" }
       : runStatus;
   const isWokeStatus = topStatus?.icon === "woke";
   const isAttentionStatus = topStatus?.icon === "attention";
@@ -1048,23 +1052,29 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           render={
             <button
               type="button"
-              aria-label={`Dismiss Needs you: ${attention.reason}`}
+              aria-label={gt("Dismiss Needs you: {reason}", { reason: attention.reason })}
               disabled={!canOperateThread}
               onClick={handleDismissAttentionClick}
               className="inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default disabled:no-underline"
             >
               <HandIcon aria-hidden className={cn("shrink-0", iconClassName)} />
               <span role="status" className={iconOnly ? "sr-only" : undefined}>
-                Needs you
+                <T>Needs you</T>
               </span>
             </button>
           }
         />
         <TooltipPopup side="top">
-          {iconOnly ? <span className="block font-medium">Needs you</span> : null}
+          {iconOnly ? (
+            <span className="block font-medium">
+              <T>Needs you</T>
+            </span>
+          ) : null}
           {attention.reason}
           {canOperateThread ? (
-            <span className="block text-muted-foreground">Click to dismiss</span>
+            <span className="block text-muted-foreground">
+              <T>Click to dismiss</T>
+            </span>
           ) : null}
         </TooltipPopup>
       </Tooltip>
@@ -1408,7 +1418,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const pinIndicator =
     showPin && variant !== "expert" ? (
       <PinIcon
-        aria-label="Pinned"
+        aria-label={gt("Pinned", { $context: "thread is pinned" })}
         role="img"
         className="size-3 shrink-0 text-muted-foreground/65"
       />
@@ -1597,7 +1607,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             {title}
             {isRegeneratingTitle ? (
               <span role="status" className="sr-only">
-                Regenerating title
+                <T>Regenerating title</T>
               </span>
             ) : null}
             {/* Clips before the title drops below its minimum, so the status stays in view. */}

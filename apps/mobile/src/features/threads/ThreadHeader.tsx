@@ -49,7 +49,7 @@ export function ThreadHeader(props: {
   const menus = [
     gitMenu,
     terminalMenu,
-    props.catchUp ? threadCatchUpAppBarMenu(props.catchUp) : null,
+    props.catchUp ? threadCatchUpAppBarMenu(props.catchUp, m) : null,
   ].filter((menu): menu is AppBarMenu => menu !== null);
 
   return (

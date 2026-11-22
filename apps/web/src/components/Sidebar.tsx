@@ -2692,10 +2692,20 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 ]
               : []),
             ...(toBackground.length > 0
-              ? [{ id: "move-to-background", label: `Move to background (${toBackground.length})` }]
+              ? [
+                  {
+                    id: "move-to-background",
+                    label: gt("Move to background ({count})", { count: toBackground.length }),
+                  },
+                ]
               : []),
             ...(toFront.length > 0
-              ? [{ id: "bring-to-front", label: `Bring to front (${toFront.length})` }]
+              ? [
+                  {
+                    id: "bring-to-front",
+                    label: gt("Bring to front ({count})", { count: toFront.length }),
+                  },
+                ]
               : []),
             ...(titleRegenerationMenuItem
               ? [
@@ -3195,8 +3205,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               toastManager.add(
                 stackedThreadToast({
                   type: "error",
-                  title: "Failed to update the usage-limit setting",
-                  description: error instanceof Error ? error.message : "An error occurred.",
+                  title: gt("Failed to update the usage-limit setting"),
+                  description: error instanceof Error ? error.message : gt("An error occurred."),
                 }),
               );
             }
@@ -3223,8 +3233,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               toastManager.add(
                 stackedThreadToast({
                   type: "error",
-                  title: "Could not start a topic",
-                  description: error instanceof Error ? error.message : "An error occurred.",
+                  title: gt("Could not start a topic"),
+                  description: error instanceof Error ? error.message : gt("An error occurred."),
                 }),
               );
             }

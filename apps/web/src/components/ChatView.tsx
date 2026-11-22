@@ -981,7 +981,9 @@ export default function ChatView(props: ChatViewProps) {
     const parentRef = delegatedFromRef;
     return {
       title: delegatedFromThread?.title ?? launcher.title,
-      ...(launchedBy === null ? {} : { label: topicOf !== null ? "Topic of" : "Started by" }),
+      ...(launchedBy === null
+        ? {}
+        : { label: topicOf !== null ? gt("Topic of") : gt("Started by") }),
       ...(launchedBy !== null && parentRef.environmentId === activeThread?.environmentId
         ? {}
         : {

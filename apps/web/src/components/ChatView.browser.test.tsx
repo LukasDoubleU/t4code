@@ -868,27 +868,14 @@ it("/side sends the draft's attachments and context, and keeps them when it does
     1,
   );
 
-  // A reply alone is enough to send.
-  await page.getByRole("button", { name: "Reply to this response" }).first().click();
-  await userEvent.click(editor);
-  await insertText("/side ");
-  await userEvent.keyboard("{Enter}");
-  await sentMessage(
-    {
-      context: expect.objectContaining({
-        records: [expect.objectContaining({ kind: "response" })],
-      }),
-    },
-    2,
-  );
-
+  // Upstream's "Reply to this response" chip is not wired on T4, so no reply-only send here.
   // A failed start puts the message back after the draft typed meanwhile.
   holdFork = true;
   await sendImageToSideChat();
   await insertText("next draft");
   await vi.waitFor(() =>
     expect(dispatchedCommands().filter((command) => command.type === "thread.fork")).toHaveLength(
-      3,
+      2,
     ),
   );
   await rejectPendingCommand("Side chats are paused.");

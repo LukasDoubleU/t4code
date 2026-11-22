@@ -12,6 +12,7 @@ import {
   threadCatchUpBasis,
 } from "@t3tools/client-runtime/state/thread-catch-up";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { msg, T, useGT } from "gt-react-native";
 import { memo, useContext, useEffect, useEffectEvent } from "react";
 import { Pressable, View } from "react-native";
 
@@ -20,6 +21,7 @@ import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
+import { m as resolveMessage, type MessageResolver } from "../../i18n/messages";
 import { orchestrationEnvironment } from "../../state/orchestration";
 import { useRemoteEnvironmentRuntime } from "../../state/use-remote-environment-registry";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -53,24 +55,27 @@ const catchMeUp = (header: ThreadCatchUpHeader) => () =>
   requestThreadCatchUpAction("catch-up", header.threadKey);
 
 /** The thread bar's Catch up menu. */
-export function threadCatchUpAppBarMenu(header: ThreadCatchUpHeader): AppBarMenu {
+export function threadCatchUpAppBarMenu(
+  header: ThreadCatchUpHeader,
+  resolve: MessageResolver = resolveMessage,
+): AppBarMenu {
   return {
-    title: "Catch up",
+    title: resolve(msg("Catch up", { $context: "menu title, summarizes a thread" })),
     icon: "doc.text",
     items: [
       ...(header.catchUpAvailable
         ? [
             {
               id: "catch-me-up",
-              title: "Catch me up",
-              subtitle: "A short brief on what happened",
+              title: resolve(msg("Catch me up")),
+              subtitle: resolve(msg("A short brief on what happened")),
               onPress: catchMeUp(header),
             },
           ]
         : []),
       {
         id: "jump-to-my-last-message",
-        title: "Jump to my last message",
+        title: resolve(msg("Jump to my last message")),
         onPress: jumpToMyLastMessage(header),
       },
     ],
@@ -83,6 +88,7 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
   readonly thread: EnvironmentThreadShell;
   readonly top: number;
 }) {
+  const gt = useGT();
   const registry = useContext(RegistryContext);
   const threadKey = scopedThreadKey(scopeThreadRef(props.environmentId, props.thread.id));
   const catchUpAvailable =
@@ -108,7 +114,10 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
         const error = squashAtomCommandFailure(result);
         return {
           ok: false,
-          message: error instanceof Error ? error.message : "Could not write a brief.",
+          message:
+            error instanceof Error
+              ? error.message
+              : resolveMessage(msg("Could not write a brief.")),
         };
       },
     });
@@ -130,11 +139,11 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
       <View className="gap-2.5 rounded-[20px] border border-border bg-card-alt p-4">
         <View className="flex-row items-center gap-2">
           <Text className="flex-1 font-t3-bold text-2xs uppercase tracking-[1.1px] text-foreground-secondary">
-            Catch me up
+            <T>Catch me up</T>
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Dismiss brief"
+            accessibilityLabel={gt("Dismiss brief")}
             hitSlop={10}
             onPress={() => closeThreadCatchUp(registry, threadKey)}
           >
@@ -145,36 +154,42 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
           state.loading ? (
             <View className="flex-row items-center gap-2">
               <AppActivityIndicator colorClassName="accent-foreground-muted" />
-              <Text className="font-sans text-sm text-foreground-secondary">Writing a brief…</Text>
+              <Text className="font-sans text-sm text-foreground-secondary">
+                <T>Writing a brief…</T>
+              </Text>
             </View>
           ) : null
         ) : (
           <>
-            <BriefPart label="Needs you">
-              {brief.needsYou ?? "Nothing needs you right now."}
+            <BriefPart label={gt("Needs you")}>
+              {brief.needsYou ?? gt("Nothing needs you right now.")}
             </BriefPart>
-            <BriefPart label="What happened">
+            <BriefPart label={gt("What happened")}>
               {brief.happened.length === 0
-                ? "Nothing new."
+                ? gt("Nothing new.")
                 : brief.happened.map((line) => `• ${line}`).join("\n")}
             </BriefPart>
-            {brief.next.length > 0 ? <BriefPart label="What's next">{brief.next}</BriefPart> : null}
+            {brief.next.length > 0 ? (
+              <BriefPart label={gt("What's next")}>{brief.next}</BriefPart>
+            ) : null}
           </>
         )}
         {brief !== null && state.loading ? (
-          <Text className="font-sans text-xs text-foreground-muted">Updating…</Text>
+          <Text className="font-sans text-xs text-foreground-muted">
+            <T>Updating…</T>
+          </Text>
         ) : stale ? (
           <View className="flex-row flex-wrap items-center gap-2.5">
             <Text className="font-sans text-xs text-foreground-muted">
-              New activity since this brief.
+              <T>New activity since this brief.</T>
             </Text>
-            <Button label="Refresh" tone="text" onPress={() => request()} />
+            <Button label={gt("Refresh")} tone="text" onPress={() => request()} />
           </View>
         ) : null}
         {state.error !== null && !state.loading ? (
           <View className="flex-row flex-wrap items-center gap-2.5">
             <Text className="font-sans text-xs text-warning-foreground">{state.error}</Text>
-            <Button label="Retry" tone="text" onPress={() => request()} />
+            <Button label={gt("Retry")} tone="text" onPress={() => request()} />
           </View>
         ) : null}
       </View>

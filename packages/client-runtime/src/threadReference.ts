@@ -7,6 +7,8 @@ import { threadContextRecord } from "@t3tools/shared/composerContextReferences";
 import { hostedThreadLink } from "@t3tools/shared/threadLinks";
 
 import { resolveThreadCurrentPullRequestLink } from "./threadPullRequests.ts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 export interface ThreadReferenceCopyTarget {
   readonly kind: "pull-request" | "thread";
@@ -29,6 +31,7 @@ export function threadChipCopyTarget(
   threadRef: ScopedThreadRef,
   title: string,
   hostedAppUrl?: string,
+  resolve: MFunctionType = mFallback,
 ): ThreadReferenceCopyTarget {
   const record = threadContextRecord(threadRef, title);
   return {
@@ -37,32 +40,38 @@ export function threadChipCopyTarget(
     description: record.title,
     fragment: { version: 1, source: { environmentId: threadRef.environmentId }, records: [record] },
     clipboardTarget: "thread",
-    successTitle: "Thread copied",
-    failureTitle: "Failed to copy thread",
+    successTitle: resolve(msg("Thread copied")),
+    failureTitle: resolve(msg("Failed to copy thread")),
   };
 }
 
 /** The thread's own id as plain text, for scripts and the `t3` CLI, whether or not it has a pull request. */
-export function threadIdCopyTarget(threadId: string): ThreadReferenceCopyTarget {
+export function threadIdCopyTarget(
+  threadId: string,
+  resolve: MFunctionType = mFallback,
+): ThreadReferenceCopyTarget {
   return {
     kind: "thread",
     value: threadId,
     description: threadId,
     clipboardTarget: "thread ID",
-    successTitle: "Thread ID copied",
-    failureTitle: "Failed to copy thread ID",
+    successTitle: resolve(msg("Thread ID copied")),
+    failureTitle: resolve(msg("Failed to copy thread ID")),
   };
 }
 
-export function resolveThreadReferenceCopyTarget(input: {
-  readonly threadRef: ScopedThreadRef;
-  readonly title: string;
-  /** Undefined means no PR panel; null means its URL is not available yet. */
-  readonly openPanelPullRequestUrl?: string | null | undefined;
-  readonly pullRequests?: ReadonlyArray<ThreadPullRequestLink> | undefined;
-  readonly linkedPullRequestUrl?: string | null;
-  readonly hostedAppUrl?: string;
-}): ThreadReferenceCopyTarget | null {
+export function resolveThreadReferenceCopyTarget(
+  input: {
+    readonly threadRef: ScopedThreadRef;
+    readonly title: string;
+    /** Undefined means no PR panel; null means its URL is not available yet. */
+    readonly openPanelPullRequestUrl?: string | null | undefined;
+    readonly pullRequests?: ReadonlyArray<ThreadPullRequestLink> | undefined;
+    readonly linkedPullRequestUrl?: string | null;
+    readonly hostedAppUrl?: string;
+  },
+  resolve: MFunctionType = mFallback,
+): ThreadReferenceCopyTarget | null {
   if (input.openPanelPullRequestUrl === null) return null;
   const pullRequestUrl =
     input.openPanelPullRequestUrl ??
@@ -74,8 +83,8 @@ export function resolveThreadReferenceCopyTarget(input: {
         value: pullRequestUrl,
         description: pullRequestUrl,
         clipboardTarget: "pull request link",
-        successTitle: "PR link copied",
-        failureTitle: "Failed to copy PR link",
+        successTitle: resolve(msg("PR link copied")),
+        failureTitle: resolve(msg("Failed to copy PR link")),
       }
-    : threadChipCopyTarget(input.threadRef, input.title, input.hostedAppUrl);
+    : threadChipCopyTarget(input.threadRef, input.title, input.hostedAppUrl, resolve);
 }

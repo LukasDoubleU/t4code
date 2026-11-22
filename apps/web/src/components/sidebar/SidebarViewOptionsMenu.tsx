@@ -1,3 +1,4 @@
+import { msg, T, useMessages } from "gt-react";
 import { ArrowUpDownIcon } from "lucide-react";
 import type { ReactElement } from "react";
 
@@ -22,16 +23,16 @@ import {
 } from "../ui/menu";
 
 const SORT_OPTIONS: ReadonlyArray<{ readonly value: SidebarThreadSort; readonly label: string }> = [
-  { value: "manual", label: "Manual" },
-  { value: "last_message", label: "Last message" },
-  { value: "status", label: "Status" },
+  { value: "manual", label: msg("Manual", { $context: "sort order, as arranged by hand" }) },
+  { value: "last_message", label: msg("Last message") },
+  { value: "status", label: msg("Status", { $context: "sort order, by thread status" }) },
 ];
 
 const GROUP_OPTIONS: ReadonlyArray<{ readonly value: SidebarGrouping; readonly label: string }> = [
-  { value: "none", label: "None" },
-  { value: "project", label: "Project" },
-  { value: "machine", label: "Machine" },
-  { value: "status", label: "Status" },
+  { value: "none", label: msg("None", { $context: "grouping, no grouping" }) },
+  { value: "project", label: msg("Project") },
+  { value: "machine", label: msg("Machine") },
+  { value: "status", label: msg("Status", { $context: "grouping, by thread status" }) },
 ];
 
 /** Client settings back these choices, so each device keeps its own. */
@@ -39,6 +40,7 @@ export function SidebarViewOptionsMenu(props: {
   // The sidebar header passes its own icon button: importing it here would close an import cycle.
   readonly trigger: ReactElement;
 }) {
+  const m = useMessages();
   const { sort, grouping } = useClientSettings(selectSidebarViewOptions);
   const backgroundSection = useClientSettings((s) => s.sidebarBackgroundSection);
   // The Working section orders the flat list by return time; folders replace it.
@@ -52,9 +54,11 @@ export function SidebarViewOptionsMenu(props: {
       <MenuPopup align="end">
         <MenuGroup>
           <MenuGroupLabel>
-            Sort
+            <T>Sort</T>
             {workingShelfOrders ? (
-              <span className="block font-normal">Working section orders by return time</span>
+              <span className="block font-normal">
+                <T>Working section orders by return time</T>
+              </span>
             ) : null}
           </MenuGroupLabel>
           <MenuRadioGroup
@@ -71,14 +75,16 @@ export function SidebarViewOptionsMenu(props: {
                 disabled={workingShelfOrders}
                 closeOnClick
               >
-                {option.label}
+                {m(option.label)}
               </MenuRadioItem>
             ))}
           </MenuRadioGroup>
         </MenuGroup>
         <MenuSeparator />
         <MenuGroup>
-          <MenuGroupLabel>Group</MenuGroupLabel>
+          <MenuGroupLabel>
+            <T>Group</T>
+          </MenuGroupLabel>
           <MenuRadioGroup
             value={grouping}
             onValueChange={(value) => {
@@ -88,7 +94,7 @@ export function SidebarViewOptionsMenu(props: {
           >
             {GROUP_OPTIONS.map((option) => (
               <MenuRadioItem key={option.value} value={option.value} closeOnClick>
-                {option.label}
+                {m(option.label)}
               </MenuRadioItem>
             ))}
           </MenuRadioGroup>
@@ -101,7 +107,7 @@ export function SidebarViewOptionsMenu(props: {
             void updateClientSettings({ sidebarBackgroundSection: checked })
           }
         >
-          Background section
+          <T>Background section</T>
         </MenuCheckboxItem>
       </MenuPopup>
     </Menu>

@@ -9,6 +9,7 @@ import type {
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { useState } from "react";
 
 import { getCustomModelOptionsByInstance } from "../../modelSelection";
@@ -36,7 +37,7 @@ import {
   withBudgetField,
 } from "./ProviderFallbackSettings.logic";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { SETTINGS_PICKER_TRIGGER_CLASSNAME, SettingsRow, SettingsSection } from "./settingsLayout";
 import {
   useScopedSettings,
@@ -48,13 +49,15 @@ import {
 
 // Re-enabling lifts parking and cool-downs and checks a refused key again.
 const reenableLabel: Partial<Record<ProviderFallbackEntryState, string>> = {
-  parked: "Re-enable",
-  cooling: "Retry now",
-  refused: "Check again",
+  parked: msg("Re-enable"),
+  cooling: msg("Retry now"),
+  refused: msg("Check again"),
 };
 
 /** The ordered chain a thread moves along when a provider's quota or budget runs out. */
 export function ProviderFallbackSettings() {
+  const gt = useGT();
+  const setting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const canWrite = useScopedSettingsWriteAllowed();
@@ -104,8 +107,11 @@ export function ProviderFallbackSettings() {
     if (chain.some((other, at) => at !== index && entryKey(other) === entryKey(next))) {
       toastManager.add({
         type: "warning",
-        title: "Already in the chain",
-        description: `${next.model} on this provider is entry ${chain.findIndex((other) => entryKey(other) === entryKey(next)) + 1}.`,
+        title: gt("Already in the chain"),
+        description: gt("{model} on this provider is entry {entry}.", {
+          model: next.model,
+          entry: chain.findIndex((other) => entryKey(other) === entryKey(next)) + 1,
+        }),
       });
       return;
     }
@@ -124,7 +130,7 @@ export function ProviderFallbackSettings() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not re-enable the entry",
+          title: gt("Could not re-enable the entry"),
           description: String(squashAtomCommandFailure(result)),
         }),
       );
@@ -137,7 +143,7 @@ export function ProviderFallbackSettings() {
 
   return (
     <SettingsSection
-      {...searchableSetting("provider-fallback")}
+      {...setting("provider-fallback")}
       headerAction={
         editable ? (
           <Button
@@ -147,7 +153,7 @@ export function ProviderFallbackSettings() {
             onClick={() => nextNew && save([...chain, nextNew])}
           >
             <PlusIcon className="size-3" aria-hidden />
-            Add entry
+            <T>Add entry</T>
           </Button>
         ) : null
       }
@@ -155,31 +161,41 @@ export function ProviderFallbackSettings() {
       <SettingsRow
         serverScoped
         settingKeys={["providerFallbackChain"]}
-        title="Fallback chain"
+        title={gt("Fallback chain")}
         description={
           mixed
-            ? "The selected environments have different chains; a change here sets one chain on all of them."
+            ? gt(
+                "The selected environments have different chains; a change here sets one chain on all of them.",
+              )
             : isProjectScope
-              ? "This project follows the environment's chain until you change it here. An empty chain turns fallback off for the project."
-              : "When a provider's usage limit, credit or budget runs out, the thread continues on the next ready entry. Earlier entries take over again once they reset."
+              ? gt(
+                  "This project follows the environment's chain until you change it here. An empty chain turns fallback off for the project.",
+                )
+              : gt(
+                  "When a provider's usage limit, credit or budget runs out, the thread continues on the next ready entry. Earlier entries take over again once they reset.",
+                )
         }
         control={
           isProjectScope && source === "environment" && chain.length > 0 ? (
             <Button size="xs" variant="outline" onClick={() => save([])}>
-              Off for this project
+              <T>Off for this project</T>
             </Button>
           ) : null
         }
       />
       {chain.length === 0 ? (
         <SettingsRow
-          title="No entries"
-          description="Fallback is off. Add an entry for each provider instance and model, in the order to try them."
+          title={gt("No entries")}
+          description={gt(
+            "Fallback is off. Add an entry for each provider instance and model, in the order to try them.",
+          )}
         />
       ) : null}
       <SettingsRow
-        title="Spending limits"
-        description="The limit on the API key itself, such as OpenRouter's, is the real safety net. OpenRouter keys without a limit are refused."
+        title={gt("Spending limits")}
+        description={gt(
+          "The limit on the API key itself, such as OpenRouter's, is the real safety net. OpenRouter keys without a limit are refused.",
+        )}
       />
       {chain.map((entry, index) => (
         <FallbackEntryRow
@@ -242,9 +258,11 @@ function FallbackEntryRow({
   readonly onMove: (offset: -1 | 1) => void;
   readonly onRemove: () => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const instance = instanceEntries.find((candidate) => candidate.instanceId === entry.instanceId);
-  const described = status === undefined ? null : describeStatus(status, formatTime);
-  const budget = status === undefined ? null : describeBudget(status);
+  const described = status === undefined ? null : describeStatus(status, formatTime, m);
+  const budget = status === undefined ? null : describeBudget(status, m);
   const setBudgetField = (field: "monthlyUsd" | "perRunUsd" | "group", text: string) => {
     const next = withBudgetField(entry, field, text);
     if (next !== null) onChange(next);
@@ -262,7 +280,7 @@ function FallbackEntryRow({
             {budget === null ? null : <span>{budget}</span>}
             {status === undefined || reenableLabel[status.state] === undefined ? null : (
               <Button size="xs" variant="outline" disabled={!canReenable} onClick={onReenable}>
-                {reenableLabel[status.state]}
+                {m(reenableLabel[status.state]!)}
               </Button>
             )}
           </span>
@@ -274,7 +292,7 @@ function FallbackEntryRow({
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label="Move up"
+              aria-label={gt("Move up")}
               disabled={index === 0}
               onClick={() => onMove(-1)}
             >
@@ -283,13 +301,18 @@ function FallbackEntryRow({
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label="Move down"
+              aria-label={gt("Move down")}
               disabled={index === count - 1}
               onClick={() => onMove(1)}
             >
               <ArrowDownIcon />
             </Button>
-            <Button size="icon-xs" variant="ghost" aria-label="Remove entry" onClick={onRemove}>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label={gt("Remove entry")}
+              onClick={onRemove}
+            >
               <Trash2Icon />
             </Button>
           </div>
@@ -319,8 +342,8 @@ function FallbackEntryRow({
           disabled={!editable}
           value={entry.budget === undefined ? "" : String(entry.budget.monthlyUsd)}
           onCommit={(text) => setBudgetField("monthlyUsd", text)}
-          placeholder="Monthly USD"
-          aria-label={`Monthly budget for entry ${index + 1}`}
+          placeholder={gt("Monthly USD")}
+          aria-label={gt("Monthly budget for entry {entry}", { entry: index + 1 })}
         />
         <DraftInput
           size="sm"
@@ -329,8 +352,8 @@ function FallbackEntryRow({
           disabled={!editable}
           value={entry.budget === undefined ? "" : String(entry.budget.perRunUsd)}
           onCommit={(text) => setBudgetField("perRunUsd", text)}
-          placeholder="Per run USD"
-          aria-label={`Per-run budget for entry ${index + 1}`}
+          placeholder={gt("Per run USD")}
+          aria-label={gt("Per-run budget for entry {entry}", { entry: index + 1 })}
         />
         <DraftInput
           size="sm"
@@ -338,12 +361,14 @@ function FallbackEntryRow({
           disabled={!editable || entry.budget === undefined}
           value={entry.budget?.group ?? ""}
           onCommit={(text) => setBudgetField("group", text)}
-          placeholder="Budget group"
-          aria-label={`Budget group for entry ${index + 1}`}
+          placeholder={gt("Budget group")}
+          aria-label={gt("Budget group for entry {entry}", { entry: index + 1 })}
         />
         {entry.budget === undefined ? null : (
           <span className="text-xs text-muted-foreground">
-            Up to {formatUsd(entry.budget.perRunUsd)} a run
+            <T>
+              Up to <Var>{formatUsd(entry.budget.perRunUsd)}</Var> a run
+            </T>
           </span>
         )}
       </div>

@@ -1,6 +1,10 @@
 import { isUserAuthoredMessage } from "@t3tools/client-runtime/state/thread-catch-up";
+import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
-import { isAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
+import {
+  isAttachmentOnlyBootstrapPrompt,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 import type { Nodes } from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -105,9 +109,24 @@ export function markdownPlainText(markdown: string): string {
   return markdownNodeText(markdownPreviewParser.parse(markdown)).replace(/\s+/g, " ").trim();
 }
 
-function compactMinimapPreview(text: string | null | undefined) {
-  const compact = text?.replace(/\s+/g, " ").trim() ?? "";
+// The tooltip shows a few lines; bound parsing work for long messages and streaming responses.
+function markdownMinimapPreview(markdown: string | null) {
+  if (markdown === null) return null;
+  const compact = markdownNodeText(markdownPreviewParser.parse(markdown.slice(0, 1_500)))
+    .replace(/\s+/g, " ")
+    .trim();
   return compact.length > 0 ? compact : null;
+}
+
+// Before markdown parsing, which would reduce a citation link to "Assistant quote".
+function userMinimapPreview(userText: string | null) {
+  return markdownMinimapPreview(
+    userText === null
+      ? null
+      : assistantCitationsToPlainText(
+          replaceComposerContextReferences(userText, (reference) => reference.label),
+        ),
+  );
 }
 
 function itemsToMarks(
@@ -213,18 +232,13 @@ export function resolveTimelineMinimapPreview(
     return {
       kind: "group",
       turnCount: mark.items.length,
-      firstUserText: compactMinimapPreview(first.userText),
-      lastUserText: compactMinimapPreview(last.userText),
+      firstUserText: userMinimapPreview(first.userText),
+      lastUserText: userMinimapPreview(last.userText),
     };
   }
   return {
     kind: "turn",
-    userText: compactMinimapPreview(first.userText),
-    // The tooltip shows three lines; bound parsing work while long responses stream.
-    assistantText: compactMinimapPreview(
-      first.assistantText === null
-        ? null
-        : markdownNodeText(markdownPreviewParser.parse(first.assistantText.slice(0, 1_500))),
-    ),
+    userText: userMinimapPreview(first.userText),
+    assistantText: markdownMinimapPreview(first.assistantText),
   };
 }

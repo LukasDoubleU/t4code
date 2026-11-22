@@ -27,6 +27,7 @@ import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ModelManifest from "../provider/ModelManifest.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
@@ -114,7 +115,9 @@ export const layerWithRuntime = <A, E, R>(layer: Layer.Layer<A, E, R>) =>
     Layer.provideMerge(ServerSettings.layerTest({ pinnedThreadsKeepMemory: true })),
     Layer.provideMerge(layerServerConfig),
     Layer.provideMerge(SqlitePersistence.layerMemory),
-    Layer.provideMerge(Layer.merge(NodeServices.layer, NodeCrypto.layer)),
+    Layer.provideMerge(
+      Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, ModelManifest.layerTest),
+    ),
   );
 
 export const seedProject = Effect.flatMap(ProjectStore.ProjectStoreV2, (projects) =>

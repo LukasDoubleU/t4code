@@ -4,8 +4,10 @@ import {
   nextJumpToMyLastMessageStep,
   subscribeThreadCatchUpAction,
 } from "@t3tools/client-runtime/state/thread-catch-up";
+import { msg } from "gt-react";
 import { useEffect, useEffectEvent, useRef, type RefObject } from "react";
 
+import { m } from "../../i18n/messages";
 import { toastManager } from "../ui/toast";
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
 import type { MessagesTimelineHistoryControls } from "./MessagesTimeline";
@@ -56,11 +58,17 @@ export function useJumpToMyLastMessage(input: {
       } else {
         toastManager.add(
           step.type === "failed"
-            ? { type: "warning", title: "Could not load earlier turns", description: step.error }
+            ? {
+                type: "warning",
+                title: m(msg("Could not load earlier turns")),
+                description: step.error,
+              }
             : {
                 type: "info",
-                title: "No message from you here",
-                description: "You have not written in this thread yet, or it is too far back.",
+                title: m(msg("No message from you here")),
+                description: m(
+                  msg("You have not written in this thread yet, or it is too far back."),
+                ),
               },
         );
       }

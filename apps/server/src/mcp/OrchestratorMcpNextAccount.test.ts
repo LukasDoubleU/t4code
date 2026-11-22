@@ -155,7 +155,9 @@ const capabilitiesFor = (
             Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
               list: () => Effect.succeed(providers.map((entry) => entry.instanceId)),
             }),
-            Layer.mock(ProjectService.ProjectService)({}),
+            Layer.mock(ProjectService.ProjectService)({
+              getById: () => Effect.succeedNone,
+            }),
             Layer.mock(SecretRequests.SecretRequests)({}),
             Layer.mock(RemoteDelegation.RemoteDelegation)({}),
             Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),

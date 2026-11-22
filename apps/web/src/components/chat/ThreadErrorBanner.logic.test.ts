@@ -46,4 +46,23 @@ describe("resolveThreadErrorBanner", () => {
       }).visible,
     ).toBe(true);
   });
+
+  it("shows a server error again when a later run fails with the same error", () => {
+    const dismissed = resolveThreadErrorBanner({
+      threadKey: "env:thread-c",
+      localError: undefined,
+      serverError: "Turn failed",
+      serverErrorSource: "run-a",
+    });
+    dismissThreadErrorBannerForSession(dismissed.bannerKey);
+
+    expect(
+      resolveThreadErrorBanner({
+        threadKey: "env:thread-c",
+        localError: undefined,
+        serverError: "Turn failed",
+        serverErrorSource: "run-b",
+      }).visible,
+    ).toBe(true);
+  });
 });

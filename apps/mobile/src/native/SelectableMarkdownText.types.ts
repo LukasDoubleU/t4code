@@ -79,6 +79,7 @@ export interface SelectableMarkdownTextProps {
   /** Shows classic emoticons such as `:D` as emoji; for chat messages only. */
   readonly emoticons?: boolean;
   readonly onLinkPress?: (href: string) => void;
+  readonly onCiteText?: (text: string) => void;
   readonly fileContextMenu?: (href: string) => MarkdownFileContextMenu | undefined;
   readonly onFileContextMenuAction?: (href: string, actionId: string) => void;
   readonly linkCustomization?: (href: string) => MarkdownLinkCustomization | undefined;

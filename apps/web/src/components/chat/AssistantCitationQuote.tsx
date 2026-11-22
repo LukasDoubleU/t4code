@@ -5,6 +5,7 @@ import {
   type AssistantReference,
 } from "@t3tools/shared/assistantCitations";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
 
 import {
@@ -38,6 +39,7 @@ export function useAssistantCitationSourceLink(citation: AssistantReference) {
 
 /** A citation in a sent message: the quote, two lines until expanded, then the user's comment. */
 export function AssistantCitationQuote({ citation }: { citation: AssistantCitation }) {
+  const gt = useGT();
   const sourceLink = useAssistantCitationSourceLink(citation);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
@@ -61,7 +63,7 @@ export function AssistantCitationQuote({ citation }: { citation: AssistantCitati
     <span className="my-1.5 block" data-markdown-copy={serializeAssistantCitation(citation)}>
       <Link
         {...sourceLink}
-        title="Go to source"
+        title={gt("Go to source")}
         className="chat-markdown-citation block rounded-sm border-l-2 border-border pl-3 text-muted-foreground no-underline hover:text-foreground focus-visible:outline-2 focus-visible:outline-foreground"
       >
         <span
@@ -83,7 +85,7 @@ export function AssistantCitationQuote({ citation }: { citation: AssistantCitati
           onClick={() => setExpanded((value) => !value)}
           className="ml-1"
         >
-          {expanded ? "Show less" : "Show full quote"}
+          {expanded ? gt("Show less") : gt("Show full quote")}
         </Button>
       ) : null}
       {citation.comment ? (

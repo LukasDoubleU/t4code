@@ -13,8 +13,10 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
+import { msg } from "gt-react";
 
 import { stackedThreadToast, toastManager } from "./components/ui/toast";
+import { m } from "./i18n/messages";
 import { connectionAtomRuntime } from "./connection/runtime";
 import { useOpenInPreferredEditor } from "./editorPreferences";
 import { useCopyToClipboard } from "./hooks/useCopyToClipboard";
@@ -67,10 +69,10 @@ export function useOpenThreadMemory() {
   const openInPreferredEditor = useOpenInPreferredEditor(primaryEnvironmentId, availableEditors);
   const { copyToClipboard } = useCopyToClipboard<{ path: string }>({
     onCopy: ({ path }) => {
-      toastManager.add({ type: "success", title: "Memory path copied", description: path });
+      toastManager.add({ type: "success", title: m(msg("Memory path copied")), description: path });
     },
     onError: (_error, { path }) => {
-      toastManager.add({ type: "info", title: "Memory file", description: path });
+      toastManager.add({ type: "info", title: m(msg("Memory file")), description: path });
     },
   });
   return async (threadRef: ScopedThreadRef, path: string) => {
@@ -84,7 +86,7 @@ export function useOpenThreadMemory() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not open memory",
+          title: m(msg("Could not open memory")),
           description: error instanceof Error ? error.message : path,
         }),
       );
@@ -121,8 +123,8 @@ export function useFreshStartThread() {
   return async (threadRef: ScopedThreadRef) => {
     const confirmed = await readLocalApi()?.dialogs.confirm(
       [
-        "Start this thread fresh?",
-        "A new pinned thread takes its place and its memory, and this one is settled.",
+        m(msg("Start this thread fresh?")),
+        m(msg("A new pinned thread takes its place and its memory, and this one is settled.")),
       ].join("\n"),
     );
     if (confirmed !== true) return;
@@ -136,8 +138,8 @@ export function useFreshStartThread() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not start fresh",
-          description: error instanceof Error ? error.message : "An error occurred.",
+          title: m(msg("Could not start fresh")),
+          description: error instanceof Error ? error.message : m(msg("An error occurred.")),
         }),
       );
       return;

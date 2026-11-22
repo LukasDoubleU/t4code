@@ -36,6 +36,7 @@ import {
   FolderPlusIcon,
   MessageSquareDashedIcon,
 } from "lucide-react";
+import { T, useGT } from "gt-react";
 import { type KeyboardEvent, useRef, useState } from "react";
 
 import { useHandleNewThread } from "../../hooks/useHandleNewThread";
@@ -110,6 +111,7 @@ export function NewThreadDialogHost() {
 }
 
 function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
+  const gt = useGT();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { environments } = useEnvironments();
   const projects = useProjects();
@@ -256,7 +258,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
     busyRef.current = false;
     setIsBusy(false);
     if (result._tag === "Failure") {
-      reportFailure("Could not start the thread", squashAtomCommandFailure(result));
+      reportFailure(gt("Could not start the thread"), squashAtomCommandFailure(result));
       return;
     }
     if (result.value) close();
@@ -284,7 +286,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
       return true;
     }
     if (!readEnvironmentScope(targetEnvironmentId, AuthOrchestrationOperateScope)) {
-      reportFailure("Cannot add project", new Error("This connection cannot add projects."));
+      reportFailure(gt("Cannot add project"), new Error("This connection cannot add projects."));
       return false;
     }
     const projectId = newProjectId();
@@ -300,7 +302,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
     });
     if (created._tag === "Failure") {
       if (!isAtomCommandInterrupted(created)) {
-        reportFailure("Failed to add project", squashAtomCommandFailure(created));
+        reportFailure(gt("Failed to add project"), squashAtomCommandFailure(created));
       }
       return false;
     }
@@ -320,7 +322,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
         !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
       ) {
         reportFailure(
-          "Clone unavailable",
+          gt("Clone unavailable"),
           new Error("This connection needs permission to write source control and add projects."),
         );
         return false;
@@ -339,7 +341,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
       });
       if (started._tag === "Failure") {
         if (!isAtomCommandInterrupted(started)) {
-          reportFailure("Clone failed", squashAtomCommandFailure(started));
+          reportFailure(gt("Clone failed"), squashAtomCommandFailure(started));
         }
         return false;
       }
@@ -414,7 +416,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
         return [
           {
             value: "machines",
-            label: "Machines",
+            label: gt("Machines"),
             items: machines.map((machine) => ({
               kind: "action",
               value: `machine:${machine.environmentId}`,
@@ -422,7 +424,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
               title: machine.label,
               description: machine.isConnected
                 ? machine.isPrimary
-                  ? "This device"
+                  ? gt("This device")
                   : undefined
                 : machine.status,
               disabled: !machine.isConnected,
@@ -455,8 +457,11 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
                       kind: "action",
                       value: "new-project:create",
                       searchTerms: [],
-                      title: `Create ${name}`,
-                      description: `New Git repository in ${newProjectsRoot} on ${machineLabel}`,
+                      title: gt("Create {name}", { name }),
+                      description: gt("New Git repository in {newProjectsRoot} on {machineLabel}", {
+                        newProjectsRoot,
+                        machineLabel,
+                      }),
                       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
                       run: () =>
                         runExclusive(() =>
@@ -493,7 +498,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
         kind: "action",
         value: "project:none",
         searchTerms: ["no project", "without project", "none"],
-        title: "No project",
+        title: gt("No project"),
         icon: <MessageSquareDashedIcon className={ITEM_ICON_CLASS} />,
         run: () =>
           runExclusive(async () => {
@@ -509,8 +514,8 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
         kind: "action",
         value: "add:folder",
         searchTerms: ["open folder", "add project", "local", "directory", "browse", "existing"],
-        title: "Open folder…",
-        description: `A folder on ${machineLabel}`,
+        title: gt("Open folder…"),
+        description: gt("A folder on {machineLabel}", { machineLabel }),
         icon: <FolderOpenIcon className={ITEM_ICON_CLASS} />,
         titleTrailingContent: CHEVRON,
         keepOpen: true,
@@ -520,8 +525,8 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
         kind: "action",
         value: "add:clone",
         searchTerms: ["clone repository", "git", "url", "github", "remote", "ssh", "https"],
-        title: "Clone repository…",
-        description: "owner/repo, an HTTPS or an SSH URL",
+        title: gt("Clone repository…"),
+        description: gt("owner/repo, an HTTPS or an SSH URL"),
         icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
         titleTrailingContent: CHEVRON,
         keepOpen: true,
@@ -533,8 +538,8 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
         kind: "action",
         value: "add:new",
         searchTerms: ["new project", "create", "empty", "git init"],
-        title: "New project…",
-        description: `A new Git repository in ${newProjectsRoot}`,
+        title: gt("New project…"),
+        description: gt("A new Git repository in {newProjectsRoot}", { newProjectsRoot }),
         icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
         titleTrailingContent: CHEVRON,
         keepOpen: true,
@@ -543,10 +548,11 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
     }
     const projectsGroup = {
       value: "projects",
-      label: machines.length > 1 ? `Projects on ${machineLabel}` : "Projects",
+      label:
+        machines.length > 1 ? gt("Projects on {machineLabel}", { machineLabel }) : gt("Projects"),
       items: projectItems,
     };
-    const addGroup = { value: "add", label: "Add a project", items: addItems };
+    const addGroup = { value: "add", label: gt("Add a project"), items: addItems };
     const machineGroup = {
       value: "machine",
       label: "",
@@ -557,7 +563,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
                 kind: "action" as const,
                 value: "machine:switch",
                 searchTerms: ["switch machine", "environment", "remote", "server"],
-                title: "Switch machine",
+                title: gt("Switch machine"),
                 description: machineLabel,
                 icon: (
                   <EnvironmentMachineIcon
@@ -583,13 +589,13 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
       return [
         {
           value: "folders",
-          label: "Folders",
+          label: gt("Folders", { $context: "directories in a file browser" }),
           items: folder.entries.map((entry) => ({
             kind: "action",
             value: `folder:${entry.fullPath}`,
             searchTerms: [],
             title: entry.name,
-            ...(entry.isGitRepo ? { description: "Git repository" } : {}),
+            ...(entry.isGitRepo ? { description: gt("Git repository") } : {}),
             icon: entry.isGitRepo ? (
               <FolderGit2Icon className={ITEM_ICON_CLASS} />
             ) : (
@@ -607,7 +613,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
     return [
       {
         value: "places",
-        label: "Places",
+        label: gt("Places", { $context: "suggested starting folders" }),
         items: folderRoots.map((root) => ({
           kind: "action",
           value: `place:${root}`,
@@ -624,7 +630,10 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
       },
       {
         value: "repositories",
-        label: repositoryRoot === null ? "Repositories" : `Repositories in ${repositoryRoot}`,
+        label:
+          repositoryRoot === null
+            ? gt("Repositories")
+            : gt("Repositories in {repositoryRoot}", { repositoryRoot }),
         items: newRepositoriesIn(repositoryBrowse.data, machineProjectRoots).map((entry) => ({
           kind: "action",
           value: `repository:${entry.fullPath}`,
@@ -644,7 +653,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
       return [
         {
           value: "folders",
-          label: "Folders",
+          label: gt("Folders", { $context: "directories in a file browser" }),
           items: folder.entries.map((entry) => ({
             kind: "action",
             value: `folder:${entry.fullPath}`,
@@ -669,8 +678,11 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
             kind: "action",
             value: "clone:start",
             searchTerms: [],
-            title: `Clone ${query.trim()}`,
-            description: `Into ${destinationPath} on ${machineLabel}`,
+            title: gt("Clone {repository}", { repository: query.trim() }),
+            description: gt("Into {destinationPath} on {machineLabel}", {
+              destinationPath,
+              machineLabel,
+            }),
             icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
             run: () => clone(parsed.remoteUrl, destinationPath),
           },
@@ -678,7 +690,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
             kind: "action",
             value: "clone:elsewhere",
             searchTerms: [],
-            title: "Clone into another folder…",
+            title: gt("Clone into another folder…"),
             icon: <FolderIcon className={ITEM_ICON_CLASS} />,
             titleTrailingContent: CHEVRON,
             keepOpen: true,
@@ -697,13 +709,17 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
     if (!isFolderStep || !isPathQuery) return null;
     if (browseAccess.error) return browseAccess.error;
     if (browseQuery.error) return browseQuery.error;
-    if (browseQuery.isPending && browseQuery.data === null) return "Loading folders…";
-    if (step === "clone" && cloneTargetPath !== null) return `Enter clones into ${cloneTargetPath}`;
+    if (browseQuery.isPending && browseQuery.data === null) return gt("Loading folders…");
+    if (step === "clone" && cloneTargetPath !== null)
+      return gt("Enter clones into {cloneTargetPath}", { cloneTargetPath });
     if (folder.target) {
-      return `Enter adds ${folder.target.path}${folder.target.isGitRepo ? " (Git repository)" : ""}`;
+      return gt("Enter adds {path}{suffix}", {
+        path: folder.target.path,
+        suffix: folder.target.isGitRepo ? gt(" (Git repository)") : "",
+      });
     }
     if (folder.browsePath.filterQuery.length > 0 && !browseQuery.isPending) {
-      return `No folder named “${folder.browsePath.filterQuery}” here`;
+      return gt("No folder named “{name}” here", { name: folder.browsePath.filterQuery });
     }
     return null;
   })();
@@ -711,34 +727,38 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
   const placeholder = (() => {
     switch (step) {
       case "machine":
-        return "Choose a machine…";
+        return gt("Choose a machine…");
       case "project":
-        return `Search projects on ${machineLabel}, or type a path or clone URL…`;
+        return gt("Search projects on {machineLabel}, or type a path or clone URL…", {
+          machineLabel,
+        });
       case "folder":
-        return `Type a folder path on ${machineLabel}, e.g. ~/code/app`;
+        return gt("Type a folder path on {machineLabel}, e.g. ~/code/app", { machineLabel });
       case "clone":
         return cloneDestination === null
           ? "owner/repo, https://… or git@…"
-          : `Folder to clone ${cloneDestination.directoryName} into`;
+          : gt("Folder to clone {directoryName} into", {
+              directoryName: cloneDestination.directoryName,
+            });
       case "new-project":
-        return "Name the new project";
+        return gt("Name the new project");
     }
   })();
 
   const emptyStateMessage = (() => {
     switch (step) {
       case "machine":
-        return "No machine is connected. Add one in Settings → Connections.";
+        return gt("No machine is connected. Add one in Settings → Connections.");
       case "project":
-        return "No matching projects.";
+        return gt("No matching projects.");
       case "folder":
-        return isPathQuery ? "No folders here." : "No matching folders.";
+        return isPathQuery ? gt("No folders here.") : gt("No matching folders.");
       case "clone":
         return cloneDestination === null
-          ? "Paste owner/repo, an HTTPS or an SSH clone URL."
-          : "No folders here.";
+          ? gt("Paste owner/repo, an HTTPS or an SSH clone URL.")
+          : gt("No folders here.");
       case "new-project":
-        return "Type a name and press Enter.";
+        return gt("Type a name and press Enter.");
     }
   })();
 
@@ -769,9 +789,10 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
   };
 
   const footerActionLabel = (() => {
-    if (!isFolderStep || !isPathQuery || highlightedItemValue !== null) return "Select";
-    if (step === "clone") return "Clone";
-    return folder.target ? "Add" : undefined;
+    if (!isFolderStep || !isPathQuery || highlightedItemValue !== null)
+      return gt("Select", { $context: "confirm the highlighted row" });
+    if (step === "clone") return gt("Clone", { $context: "verb, clones a repository" });
+    return folder.target ? gt("Add", { $context: "verb, adds a folder as a project" }) : undefined;
   })();
 
   return (
@@ -782,7 +803,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
       }}
     >
       <CommandDialogPopup
-        aria-label="New thread"
+        aria-label={gt("New thread")}
         className="overflow-hidden"
         // Global shortcuts pause while this is open, as they do for the palette.
         data-command-palette="true"
@@ -791,14 +812,14 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
       >
         <CommandPaletteContent
           key={`${step}-${cloneDestination === null ? "" : "destination"}-${isPathQuery}`}
-          aria-label="New thread"
+          aria-label={gt("New thread")}
           autoHighlight={isFolderStep && isPathQuery ? false : "always"}
-          escapeLabel="Close"
+          escapeLabel={gt("Close", { $context: "verb, closes the dialog" })}
           footerActionLabel={footerActionLabel}
           footerTrailing={
             step === "folder" && folderPicker.canPick(environmentId) ? (
               <CommandFooterAction disabled={isBusy} onClick={() => void pickNativeFolder()}>
-                Browse…
+                <T>Browse…</T>
               </CommandFooterAction>
             ) : null
           }
@@ -811,7 +832,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
                     <button
                       type="button"
                       className="flex cursor-pointer items-center"
-                      aria-label="Back"
+                      aria-label={gt("Back", { $context: "go to the previous step" })}
                       onClick={() => goBack()}
                     >
                       <ArrowLeftIcon className={ADDON_ICON_CLASS} />
@@ -845,7 +866,7 @@ function NewThreadDialog({ request }: { request: NewThreadDialogRequest }) {
               if (item.kind !== "action" || item.disabled) return;
               void item
                 .run()
-                .catch((error: unknown) => reportFailure("Something went wrong", error));
+                .catch((error: unknown) => reportFailure(gt("Something went wrong"), error));
             }}
             emptyStateMessage={emptyStateMessage}
           />

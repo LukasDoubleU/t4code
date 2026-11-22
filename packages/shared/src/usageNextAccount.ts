@@ -4,9 +4,22 @@ import type {
   ServerProviderUsageWindow,
 } from "@t3tools/contracts";
 
-import { formatDuration, type LimitAccount, remainingPercent } from "./usageLimits.ts";
+import { type LimitAccount, remainingPercent } from "./usageLimits.ts";
 
 const DAY = 24 * 60 * 60_000;
+const HOUR = 60 * 60_000;
+const MINUTE = 60_000;
+
+// The server reads these reasons too, so they stay English like the rest of this module.
+function formatDuration(ms: number): string {
+  const remaining = Math.max(0, ms);
+  const days = Math.floor(remaining / DAY);
+  const hours = Math.floor((remaining % DAY) / HOUR);
+  const minutes = Math.floor((remaining % HOUR) / MINUTE);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
 
 export const DEFAULT_MIN_SESSION_PERCENT = 25;
 

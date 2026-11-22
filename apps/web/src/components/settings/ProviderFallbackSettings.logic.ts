@@ -3,6 +3,9 @@ import type {
   ProviderFallbackEntry,
   ProviderFallbackEntryStatus,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 export type FallbackChain = ReadonlyArray<ProviderFallbackEntry>;
 
@@ -90,31 +93,67 @@ export type StatusTone = "success" | "warning" | "error" | "secondary";
 export function describeStatus(
   status: ProviderFallbackEntryStatus,
   formatTime: (iso: string) => string,
+  resolve: MessageResolver = m,
 ): { readonly label: string; readonly tone: StatusTone; readonly detail: string | null } {
-  const until = status.until === null ? "" : ` until ${formatTime(status.until)}`;
+  const time = status.until === null ? null : formatTime(status.until);
   switch (status.state) {
     case "ready":
-      return { label: "Ready", tone: "success", detail: null };
+      return {
+        label: resolve(msg("Ready", { $context: "provider status, available to use" })),
+        tone: "success",
+        detail: null,
+      };
     case "cooling":
-      return { label: `Cooling down${until}`, tone: "warning", detail: status.reason };
+      return {
+        label:
+          time === null
+            ? resolve(msg("Cooling down"))
+            : resolve(msg("Cooling down until {time}", { time })),
+        tone: "warning",
+        detail: status.reason,
+      };
     case "parked":
-      return { label: "Parked: out of credit", tone: "error", detail: status.reason };
+      return { label: resolve(msg("Parked: out of credit")), tone: "error", detail: status.reason };
     case "budget":
-      return { label: `Budget used up${until}`, tone: "warning", detail: null };
+      return {
+        label:
+          time === null
+            ? resolve(msg("Budget used up"))
+            : resolve(msg("Budget used up until {time}", { time })),
+        tone: "warning",
+        detail: null,
+      };
     case "unavailable":
       return {
-        label: "Unavailable",
+        label: resolve(msg("Unavailable", { $context: "provider status" })),
         tone: "secondary",
-        detail: "The provider is off, missing, or not enabled for this project.",
+        detail: resolve(msg("The provider is off, missing, or not enabled for this project.")),
       };
     case "refused":
-      return { label: "Refused", tone: "error", detail: status.reason };
+      return {
+        label: resolve(msg("Refused", { $context: "provider status, key was rejected" })),
+        tone: "error",
+        detail: status.reason,
+      };
   }
 }
 
-export function describeBudget(status: ProviderFallbackEntryStatus): string | null {
+export function describeBudget(
+  status: ProviderFallbackEntryStatus,
+  resolve: MessageResolver = m,
+): string | null {
   if (status.budget === null) return null;
   const { spentUsd, reservedUsd, monthlyUsd } = status.budget;
-  const reserved = reservedUsd > 0 ? ` (+${formatUsd(reservedUsd)} reserved)` : "";
-  return `${formatUsd(spentUsd)}${reserved} of ${formatUsd(monthlyUsd)} this month`;
+  const spent = formatUsd(spentUsd);
+  const monthly = formatUsd(monthlyUsd);
+  if (reservedUsd > 0) {
+    return resolve(
+      msg("{spent} (+{reserved} reserved) of {monthly} this month", {
+        spent,
+        reserved: formatUsd(reservedUsd),
+        monthly,
+      }),
+    );
+  }
+  return resolve(msg("{spent} of {monthly} this month", { spent, monthly }));
 }

@@ -1,4 +1,5 @@
 import { PRIMARY_LOCAL_ENVIRONMENT_ID, type EnvironmentId } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 
 import {
   desktopLocalBackendId,
@@ -21,6 +22,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
  * names the machine as well as the path.
  */
 export function useNativeProjectFolderPicker() {
+  const gt = useGT();
   const { environments } = useEnvironments();
   const desktopLocalBootstraps = useDesktopLocalBootstraps();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -109,8 +111,8 @@ export function useNativeProjectFolderPicker() {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not add WSL project",
-          description: "Start the matching WSL backend, then choose the folder again.",
+          title: gt("Could not add WSL project"),
+          description: gt("Start the matching WSL backend, then choose the folder again."),
         }),
       );
       return null;

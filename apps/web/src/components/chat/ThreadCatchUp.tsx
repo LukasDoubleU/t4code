@@ -11,9 +11,11 @@ import {
   threadCatchUpBasis,
 } from "@t3tools/client-runtime/state/thread-catch-up";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { msg, T, useGT } from "gt-react";
 import { NewspaperIcon, XIcon } from "lucide-react";
 import { memo, useContext, useEffect, useEffectEvent } from "react";
 
+import { m } from "../../i18n/messages";
 import { useQuietThreadShell } from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
 import { orchestrationEnvironment } from "../../state/orchestration";
@@ -34,6 +36,7 @@ export function useThreadCatchUpAvailable(environmentId: EnvironmentId | null): 
 
 /** Catch me up in the chat header. "My last message" floats above the composer instead. */
 export function ThreadCatchUpControls(props: { readonly threadRef: ScopedThreadRef }) {
+  const gt = useGT();
   const catchUpAvailable = useThreadCatchUpAvailable(props.threadRef.environmentId);
   const threadKey = scopedThreadKey(props.threadRef);
   if (!catchUpAvailable) return null;
@@ -44,14 +47,16 @@ export function ThreadCatchUpControls(props: { readonly threadRef: ScopedThreadR
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Catch me up"
+            aria-label={gt("Catch me up")}
             onClick={() => requestThreadCatchUpAction("catch-up", threadKey)}
           />
         }
       >
         <NewspaperIcon />
       </TooltipTrigger>
-      <TooltipPopup side="bottom">Catch me up</TooltipPopup>
+      <TooltipPopup side="bottom">
+        <T>Catch me up</T>
+      </TooltipPopup>
     </Tooltip>
   );
 }
@@ -60,6 +65,7 @@ export function ThreadCatchUpControls(props: { readonly threadRef: ScopedThreadR
 export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
   readonly threadRef: ScopedThreadRef;
 }) {
+  const gt = useGT();
   const { threadRef } = props;
   const registry = useContext(RegistryContext);
   const threadKey = scopedThreadKey(threadRef);
@@ -85,7 +91,7 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
         const error = squashAtomCommandFailure(result);
         return {
           ok: false,
-          message: error instanceof Error ? error.message : "Could not write a brief.",
+          message: error instanceof Error ? error.message : m(msg("Could not write a brief.")),
         };
       },
     });
@@ -106,29 +112,35 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
         surface="glass"
         controlAlignment="first-line"
         role="region"
-        aria-label="Catch me up"
+        aria-label={gt("Catch me up")}
       >
         <NewspaperIcon />
-        <AlertTitle>Catch me up</AlertTitle>
+        <AlertTitle>
+          <T>Catch me up</T>
+        </AlertTitle>
         <AlertDescription>
           {brief === null ? (
             state.loading ? (
               <p className="flex items-center gap-2">
                 <Spinner size="sm" />
-                Writing a brief…
+                <T>Writing a brief…</T>
               </p>
             ) : null
           ) : (
             <dl className="flex flex-col gap-1.5 text-foreground">
               <div>
-                <dt className="text-muted-foreground text-xs">Needs you</dt>
-                <dd>{brief.needsYou ?? "Nothing needs you right now."}</dd>
+                <dt className="text-muted-foreground text-xs">
+                  <T>Needs you</T>
+                </dt>
+                <dd>{brief.needsYou ?? gt("Nothing needs you right now.")}</dd>
               </div>
               <div>
-                <dt className="text-muted-foreground text-xs">What happened</dt>
+                <dt className="text-muted-foreground text-xs">
+                  <T>What happened</T>
+                </dt>
                 <dd>
                   {brief.happened.length === 0 ? (
-                    "Nothing new."
+                    gt("Nothing new.")
                   ) : (
                     <ul className="list-disc ps-4">
                       {brief.happened.map((line) => (
@@ -140,7 +152,9 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
               </div>
               {brief.next.length > 0 ? (
                 <div>
-                  <dt className="text-muted-foreground text-xs">What's next</dt>
+                  <dt className="text-muted-foreground text-xs">
+                    <T>What's next</T>
+                  </dt>
                   <dd>{brief.next}</dd>
                 </div>
               ) : null}
@@ -149,13 +163,13 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
           {brief !== null && state.loading ? (
             <p className="flex items-center gap-2 text-xs">
               <Spinner size="xs" />
-              Updating…
+              <T>Updating…</T>
             </p>
           ) : stale ? (
             <p className="flex items-center gap-2 text-xs">
-              New activity since this brief.
+              <T>New activity since this brief.</T>
               <Button variant="outline" size="xs" onClick={() => request()}>
-                Refresh
+                <T>Refresh</T>
               </Button>
             </p>
           ) : null}
@@ -163,7 +177,7 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
             <p className="flex items-center gap-2 text-xs">
               {state.error}
               <Button variant="outline" size="xs" onClick={() => request()}>
-                Retry
+                <T>Retry</T>
               </Button>
             </p>
           ) : null}
@@ -172,7 +186,7 @@ export const ThreadCatchUpCard = memo(function ThreadCatchUpCard(props: {
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label="Dismiss brief"
+            aria-label={gt("Dismiss brief")}
             onClick={() => closeThreadCatchUp(registry, threadKey)}
           >
             <XIcon />

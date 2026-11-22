@@ -1,3 +1,4 @@
+import { T, useGT } from "gt-react";
 import { ChevronDownIcon, CornerLeftUpIcon, PaperclipIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -14,7 +15,7 @@ export function WorkspaceFileDropOverlay() {
         className="flex items-center gap-2 rounded-full border border-primary/25 bg-background/95 px-4 py-2.5 text-sm font-medium text-foreground shadow-lg"
       >
         <PaperclipIcon className="size-4 text-primary" aria-hidden="true" />
-        Drop files to attach
+        <T>Drop files to attach</T>
       </div>
     </div>
   );
@@ -71,9 +72,10 @@ export function ScrollToEndButton(props: {
   readonly summary: string | null;
   readonly onScrollToEnd: () => void;
 }) {
+  const gt = useGT();
   return (
     <TimelineFloatingButton
-      label="Scroll to end"
+      label={gt("Scroll to end")}
       icon={<ChevronDownIcon className="size-3.5" />}
       detail={props.summary}
       onClick={props.onScrollToEnd}
@@ -82,9 +84,10 @@ export function ScrollToEndButton(props: {
 }
 
 export function MyLastMessageButton(props: { readonly onJump: () => void }) {
+  const gt = useGT();
   return (
     <TimelineFloatingButton
-      label="My last message"
+      label={gt("My last message")}
       icon={<CornerLeftUpIcon className="size-3.5" />}
       onClick={props.onJump}
     />

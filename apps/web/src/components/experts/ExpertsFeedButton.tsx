@@ -1,4 +1,5 @@
 import { useLocation, useNavigate } from "@tanstack/react-router";
+import { T, useGT } from "gt-react";
 import { MessagesSquareIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -7,6 +8,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /** Opens the Experts feed from the Experts section header. */
 export function ExpertsFeedButton() {
+  const gt = useGT();
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const open = useLocation({ select: (location) => location.pathname === "/experts" });
@@ -17,7 +19,7 @@ export function ExpertsFeedButton() {
           <Button
             size="icon-xs"
             variant="ghost-muted"
-            aria-label="Experts feed"
+            aria-label={gt("Experts feed")}
             aria-pressed={open}
             data-testid="sidebar-experts-feed"
             onClick={() => {
@@ -29,7 +31,9 @@ export function ExpertsFeedButton() {
       >
         <MessagesSquareIcon />
       </TooltipTrigger>
-      <TooltipPopup side="top">Experts feed: every expert's replies in one list</TooltipPopup>
+      <TooltipPopup side="top">
+        <T>Experts feed: every expert's replies in one list</T>
+      </TooltipPopup>
     </Tooltip>
   );
 }

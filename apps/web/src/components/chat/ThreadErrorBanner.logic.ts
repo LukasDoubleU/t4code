@@ -13,6 +13,8 @@ export function resolveThreadErrorBanner(input: {
   readonly threadKey: string;
   readonly localError: LocalThreadErrorEntry | undefined;
   readonly serverError: string | null;
+  /** The run the server's error came from, so a later run's same error shows again. */
+  readonly serverErrorSource?: string | null;
 }) {
   const localError = input.localError?.message ?? null;
   const error = localError ?? input.serverError;
@@ -20,7 +22,7 @@ export function resolveThreadErrorBanner(input: {
   // Each failed action raises its own local error, so dismissing one never hides the next.
   const bannerKey =
     localError === null
-      ? `${input.threadKey}\u0000${error}`
+      ? `${input.threadKey}\u0000${input.serverErrorSource ?? ""}\u0000${error}`
       : `${input.threadKey}\u0000${error}\u0000${input.localError?.at}`;
   return { error, bannerKey, visible: !sessionDismissedThreadErrorBannerKeys.has(bannerKey) };
 }

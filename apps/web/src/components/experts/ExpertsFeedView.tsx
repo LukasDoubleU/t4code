@@ -32,6 +32,7 @@ import {
   ReplyIcon,
   type LucideIcon,
 } from "lucide-react";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { memo, useRef, useState, type ReactNode } from "react";
 
 import { composerSubmissionIntentForKey } from "../../composer-logic";
@@ -74,6 +75,7 @@ import { expertKey, mergeExpertTails, selectFeedExperts } from "./ExpertsFeed.lo
 const STICK_TO_BOTTOM_PX = 48;
 
 export function ExpertsFeedView() {
+  const gt = useGT();
   const threads = useThreadShells();
   const delegatedUnderParent = useDelegatedUnderParent();
   const serverConfigs = useServerConfigs();
@@ -105,18 +107,25 @@ export function ExpertsFeedView() {
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
       <WorkspacePageHeader electron={isElectron}>
-        <WorkspaceBreadcrumb ariaLabel="Experts feed">
+        <WorkspaceBreadcrumb ariaLabel={gt("Experts feed")}>
           <WorkspaceBreadcrumbItem current>
-            <h1 className="truncate">Experts</h1>
+            <h1 className="truncate">
+              <T>Experts</T>
+            </h1>
           </WorkspaceBreadcrumbItem>
         </WorkspaceBreadcrumb>
       </WorkspacePageHeader>
       {experts.length === 0 ? (
         <Empty className="flex-1">
           <EmptyHeader className="max-w-md">
-            <EmptyTitle>No experts yet</EmptyTitle>
+            <EmptyTitle>
+              <T>No experts yet</T>
+            </EmptyTitle>
             <EmptyDescription>
-              Pin a thread to make it an expert. Its replies show up here, with the other experts'.
+              <T>
+                Pin a thread to make it an expert. Its replies show up here, with the other
+                experts'.
+              </T>
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -134,8 +143,10 @@ export function ExpertsFeedView() {
           <ol ref={listRef} className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6">
             {unreadable.length > 0 ? (
               <li className="text-xs text-muted-foreground">
-                Replies of {unreadable.map((expert) => expert.title).join(", ")} could not be
-                loaded.
+                <T>
+                  Replies of <Var>{unreadable.map((expert) => expert.title).join(", ")}</Var> could
+                  not be loaded.
+                </T>
               </li>
             ) : null}
             {entries.length === 0 && loading ? (
@@ -228,7 +239,7 @@ const FeedEntry = memo(function FeedEntry(props: {
             onClick={() => props.onReplyingChange(props.entryKey)}
           >
             <ReplyIcon />
-            Reply
+            <T>Reply</T>
           </Button>
         ) : null}
       </div>
@@ -238,7 +249,7 @@ const FeedEntry = memo(function FeedEntry(props: {
           {...threadLink}
           className="self-start text-xs text-muted-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
         >
-          Read the rest in the thread
+          <T>Read the rest in the thread</T>
         </Link>
       ) : null}
       {props.replying ? (
@@ -252,6 +263,7 @@ function FeedMessageBody(props: {
   readonly expert: EnvironmentThreadShell;
   readonly message: OrchestrationV2ThreadTailMessage;
 }) {
+  const gt = useGT();
   const { expert, message } = props;
   const project = useProject(scopeProjectRef(expert.environmentId, expert.projectId));
   const presentation = resolveUserMessagePresentation({
@@ -281,7 +293,9 @@ function FeedMessageBody(props: {
       <div className="rounded-2xl bg-message px-3 py-2 text-sm text-message-foreground">
         <Clamped>
           <p className="whitespace-pre-wrap wrap-break-word">
-            <span className="text-muted-foreground">You: </span>
+            <span className="text-muted-foreground">
+              <T>You: </T>
+            </span>
             {text}
           </p>
         </Clamped>
@@ -293,7 +307,7 @@ function FeedMessageBody(props: {
   ) : (
     <FoldedMessage
       icon={presentation.attribution === "automation" ? CalendarClockIcon : MessagesSquareIcon}
-      label={presentation.attribution === "automation" ? "Automation" : "T3 Code"}
+      label={presentation.attribution === "automation" ? gt("Automation") : "T3 Code"}
       text={text}
     />
   );
@@ -304,6 +318,7 @@ function AgentMessage(props: {
   readonly message: OrchestrationV2ThreadTailMessage;
   readonly text: string;
 }) {
+  const m = useMessages();
   const { senderThreadId, sentFrom } = props.message;
   const senderEnvironment = useEnvironment(sentFrom?.environmentId ?? null);
   // A sender on a linked machine is known by name only unless this client is connected there.
@@ -317,11 +332,14 @@ function AgentMessage(props: {
   return (
     <FoldedMessage
       icon={MessagesSquareIcon}
-      label={agentMessageSenderLabel({
-        senderTitle: sender?.title,
-        sentFrom,
-        environmentLabel: senderEnvironment?.label,
-      })}
+      label={agentMessageSenderLabel(
+        {
+          senderTitle: sender?.title,
+          sentFrom,
+          environmentLabel: senderEnvironment?.label,
+        },
+        m,
+      )}
       text={props.text}
     />
   );
@@ -369,6 +387,7 @@ function FoldedMessage(props: {
 
 /** Long text shows its start until "Show more". */
 function Clamped(props: { readonly children: ReactNode }) {
+  const gt = useGT();
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const measureRef = (element: HTMLDivElement | null) => {
@@ -393,7 +412,7 @@ function Clamped(props: { readonly children: ReactNode }) {
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
         >
-          {expanded ? "Show less" : "Show more"}
+          {expanded ? gt("Show less") : gt("Show more")}
         </Button>
       ) : null}
     </div>
@@ -415,6 +434,7 @@ function ReplyComposer(props: {
   readonly expert: EnvironmentThreadShell;
   readonly onClose: () => void;
 }) {
+  const gt = useGT();
   const { expert } = props;
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -448,7 +468,7 @@ function ReplyComposer(props: {
     });
     setSending(false);
     if (result._tag === "Failure") {
-      reportFailure(`Could not send to ${expert.title}`, result);
+      reportFailure(gt("Could not send to {title}", { title: expert.title }), result);
       return;
     }
     props.onClose();
@@ -460,8 +480,8 @@ function ReplyComposer(props: {
         autoFocus
         value={text}
         disabled={sending}
-        aria-label={`Reply to ${expert.title}`}
-        placeholder={`Reply to ${expert.title}`}
+        aria-label={gt("Reply to {title}", { title: expert.title })}
+        placeholder={gt("Reply to {title}", { title: expert.title })}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
@@ -487,14 +507,18 @@ function ReplyComposer(props: {
       />
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="ghost" onClick={props.onClose}>
-          Cancel
+          <T>Cancel</T>
         </Button>
         <Button
           size="sm"
           disabled={message.length === 0 || sending}
           onClick={() => void send(false)}
         >
-          {running ? (followUpBehavior === "queue" ? "Queue" : "Steer") : "Send"}
+          {running
+            ? followUpBehavior === "queue"
+              ? gt("Queue", { $context: "verb, queues a follow-up" })
+              : gt("Steer", { $context: "verb, steers the running turn" })
+            : gt("Send")}
         </Button>
       </div>
     </div>

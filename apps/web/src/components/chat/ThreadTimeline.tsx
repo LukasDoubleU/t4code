@@ -70,6 +70,7 @@ export function ThreadTimeline({
   return (
     <MessagesTimeline
       {...timelineProps}
+      syncing={syncing}
       timelineEntries={displayedEntries}
       sinceLastVisitAt={sinceLastVisitAt}
     />

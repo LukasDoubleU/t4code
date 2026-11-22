@@ -134,8 +134,7 @@ export function agentMessageSenderLabel(
   },
   resolve: MFunctionType = mFallback,
 ): string {
-  const title =
-    input.senderTitle?.trim() || input.sentFrom?.title.trim() || resolve(msg("Agent"));
+  const title = input.senderTitle?.trim() || input.sentFrom?.title.trim() || resolve(msg("Agent"));
   if (input.sentFrom === undefined) return title;
   const machine = input.environmentLabel?.trim() || input.sentFrom.label.trim();
   return machine ? `${title} · ${machine}` : title;

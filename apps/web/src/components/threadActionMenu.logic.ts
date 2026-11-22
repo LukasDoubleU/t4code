@@ -298,7 +298,11 @@ export function buildThreadActionMenuItems(
               },
             ]
           : []),
-        { id: "copy-thread", label: resolve(msg("Thread", { $context: "copy the thread contents" })), icon: "message-square" },
+        {
+          id: "copy-thread",
+          label: resolve(msg("Thread", { $context: "copy the thread contents" })),
+          icon: "message-square",
+        },
       ],
     },
     { id: "project-settings", label: resolve(msg("Project settings")), icon: "settings" },
@@ -318,7 +322,13 @@ export function buildThreadActionMenuItems(
   ];
   const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
     ...(state.needsYou === true
-      ? [{ id: "dismiss-attention" as const, label: resolve(msg("Dismiss Needs you")), icon: "check" }]
+      ? [
+          {
+            id: "dismiss-attention" as const,
+            label: resolve(msg("Dismiss Needs you")),
+            icon: "check",
+          },
+        ]
       : []),
     ...(state.canFind
       ? [{ id: "find" as const, label: resolve(msg("Find in thread")), icon: "text-search" }]
@@ -333,7 +343,13 @@ export function buildThreadActionMenuItems(
         ]
       : []),
     ...(state.canStartTopic === true
-      ? [{ id: "start-topic" as const, label: resolve(msg("Start new topic")), icon: "messages-square" }]
+      ? [
+          {
+            id: "start-topic" as const,
+            label: resolve(msg("Start new topic")),
+            icon: "messages-square",
+          },
+        ]
       : []),
     ...(state.supports.pinning
       ? [
@@ -370,14 +386,24 @@ export function buildThreadActionMenuItems(
       ? [
           { id: "change-icon" as const, label: resolve(msg("Change icon…")), icon: "smile" },
           ...(state.hasOwnIcon === true
-            ? [{ id: "use-project-icon" as const, label: resolve(msg("Use project icon")), icon: "folder" }]
+            ? [
+                {
+                  id: "use-project-icon" as const,
+                  label: resolve(msg("Use project icon")),
+                  icon: "folder",
+                },
+              ]
             : []),
         ]
       : []),
     ...(state.supports.settlement
       ? [
           state.isSettled
-            ? { id: "unsettle" as const, label: resolve(msg("Un-settle thread")), icon: "circle-check" }
+            ? {
+                id: "unsettle" as const,
+                label: resolve(msg("Un-settle thread")),
+                icon: "circle-check",
+              }
             : { id: "settle" as const, label: resolve(msg("Settle thread")), icon: "circle-check" },
         ]
       : []),
@@ -415,11 +441,23 @@ export function buildThreadActionMenuItems(
           },
         ]
       : state.background?.placement === "front"
-        ? [{ id: "bring-to-front" as const, label: resolve(msg("Bring to front")), icon: "bring-to-front" }]
+        ? [
+            {
+              id: "bring-to-front" as const,
+              label: resolve(msg("Bring to front")),
+              icon: "bring-to-front",
+            },
+          ]
         : []),
     { id: "mark-unread", label: resolve(msg("Mark unread")), icon: "mail-open" },
     { id: "copy-thread-id", label: resolve(msg("Copy thread ID")), icon: "hash" },
-    { id: "more", label: resolve(msg("More")), icon: "ellipsis", separatorBefore: true, children: more },
+    {
+      id: "more",
+      label: resolve(msg("More")),
+      icon: "ellipsis",
+      separatorBefore: true,
+      children: more,
+    },
   ];
   return state.canOperate ? items : items.map(disableOperations);
 }

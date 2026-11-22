@@ -5,6 +5,7 @@ import {
   type AssistantCitation,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { QuoteIcon } from "lucide-react";
 import { use, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -82,6 +83,7 @@ export function AssistantSelectionToolbar({
   const reactions = useReplyReactions(threadRef.environmentId);
   const actionsRef = useRef<ReturnType<typeof observeSelectionActions> | null>(null);
   const backgroundThread = use(BackgroundThreadContext);
+  const gt = useGT();
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the toolbar DOM node and clamps its position inside the window before paint
   useLayoutEffect(() => {
@@ -235,7 +237,7 @@ export function AssistantSelectionToolbar({
   }, [backgroundThread, threadRef, viewport]);
 
   if (!selection) return null;
-  const { tooLong, citeLabel, reactionItemId } = selectionToolbarState({
+  const { tooLong, reactionItemId } = selectionToolbarState({
     text: selection.citation.text,
     reactionItemId: selection.reactionItemId,
     reactionsAvailable: reactions.available,
@@ -257,7 +259,7 @@ export function AssistantSelectionToolbar({
     <div
       ref={toolbarRef}
       role="group"
-      aria-label="Selected text"
+      aria-label={gt("Selected text")}
       className="fixed z-50 flex max-w-[calc(100vw-1rem)] items-center gap-1"
       style={{ left: selection.position.x, top: selection.position.y }}
       onPointerDown={(event) => event.preventDefault()}
@@ -274,11 +276,15 @@ export function AssistantSelectionToolbar({
         size="xs"
         variant="glass"
         disabled={tooLong}
-        aria-label={citeLabel}
+        aria-label={
+          tooLong ? gt("Selection is too long to cite") : gt("Cite selection in composer")
+        }
         onClick={cite}
       >
         <QuoteIcon aria-hidden="true" className="size-3.5" />
-        {tooLong ? "Shorten selection" : "Cite"}
+        {tooLong
+          ? gt("Shorten selection")
+          : gt("Cite", { $context: "verb, button that quotes the selected text" })}
       </Button>
       {reactionItemId === null ? null : (
         <AssistantSelectionReactions

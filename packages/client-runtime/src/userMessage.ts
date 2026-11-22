@@ -17,17 +17,19 @@ import {
 import { filePreviewKind } from "@t3tools/shared/filePreview";
 import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 /** The working row while T3 Code's own compaction runs. */
 export const IDLE_COMPACTING_LABELS = {
-  beforeCacheExpires: "Compacting while idle…",
-  onReturn: "Compacting…",
+  beforeCacheExpires: msg("Compacting while idle…"),
+  onReturn: msg("Compacting…"),
 } satisfies Record<OrchestrationV2IdleCompaction, string>;
 
 /** Leads the finished compaction's token counts, in place of "Context compacted". */
 export const IDLE_COMPACTION_TITLES = {
-  beforeCacheExpires: "Context compacted while idle",
-  onReturn: "Context compacted before sending",
+  beforeCacheExpires: msg("Context compacted while idle"),
+  onReturn: msg("Context compacted before sending"),
 } satisfies Record<OrchestrationV2IdleCompaction, string>;
 
 const LEGACY_AUTOMATION_PREFIX = /^\[Triggered by schedule task: [^\r\n]+\]\r?\n\r?\n/;
@@ -122,14 +124,18 @@ export function resolveUserMessagePresentation(message: {
  * The label of a folded message from another agent. A thread on a linked machine is named with
  * that machine, since a title alone reads as a thread here.
  */
-export function agentMessageSenderLabel(input: {
-  /** The sending thread's current title, when this client sees that thread. */
-  readonly senderTitle: string | undefined;
-  readonly sentFrom: Pick<OrchestrationV2SentFrom, "title" | "label"> | undefined;
-  /** This client's own name for the sender's machine, when it is connected there. */
-  readonly environmentLabel?: string | undefined;
-}): string {
-  const title = input.senderTitle?.trim() || input.sentFrom?.title.trim() || "Agent";
+export function agentMessageSenderLabel(
+  input: {
+    /** The sending thread's current title, when this client sees that thread. */
+    readonly senderTitle: string | undefined;
+    readonly sentFrom: Pick<OrchestrationV2SentFrom, "title" | "label"> | undefined;
+    /** This client's own name for the sender's machine, when it is connected there. */
+    readonly environmentLabel?: string | undefined;
+  },
+  resolve: MFunctionType = mFallback,
+): string {
+  const title =
+    input.senderTitle?.trim() || input.sentFrom?.title.trim() || resolve(msg("Agent"));
   if (input.sentFrom === undefined) return title;
   const machine = input.environmentLabel?.trim() || input.sentFrom.label.trim();
   return machine ? `${title} · ${machine}` : title;

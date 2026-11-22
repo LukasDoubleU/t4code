@@ -1,13 +1,16 @@
 import { AuthPreviewOperateScope, type EnvironmentId } from "@t3tools/contracts";
 import type { AnyRouter } from "@tanstack/react-router";
+import { msg } from "gt-react";
 
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
+import { m } from "~/i18n/messages";
 import { isPreviewAvailableFor } from "../browser/previewRuntime";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { openNewThreadDialog } from "../components/newThread/newThreadDialogStore";
 import { dispatchPreviewAction, type PreviewAction } from "../components/preview/previewActionBus";
 import { isAppModalPage } from "../components/sidebar/mainAppLocation";
+import { isBrowserSurfaceFocused } from "../lib/previewFocus";
 import {
   createNewThreadHandler,
   readLastUsedProjectKey,
@@ -112,6 +115,13 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       const environmentId = readRouteEnvironmentId();
       if (environmentId && canOperatePreview(environmentId)) dispatchPreviewAction(action);
     };
+  // Unclaimed, zoom keys reach the desktop menu accelerators or the browser's own zoom.
+  const zoomCommand =
+    (action: PreviewAction): CommandHandler =>
+    (event) => {
+      if (!isBrowserSurfaceFocused()) return false;
+      previewCommand(action)(event);
+    };
 
   return registerCommands(
     {
@@ -139,8 +149,8 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
           toastManager.add(
             stackedThreadToast({
               type: "info",
-              title: "Preview is desktop-only",
-              description: "Open T3 Code in the desktop app to use the in-app preview.",
+              title: m(msg("Preview is desktop-only")),
+              description: m(msg("Open T3 Code in the desktop app to use the in-app preview.")),
             }),
           );
           return;
@@ -149,9 +159,9 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       },
       "preview.refresh": previewCommand("refresh"),
       "preview.focusUrl": previewCommand("focus-url"),
-      "preview.zoomIn": previewCommand("zoom-in"),
-      "preview.zoomOut": previewCommand("zoom-out"),
-      "preview.resetZoom": previewCommand("reset-zoom"),
+      "preview.zoomIn": zoomCommand("zoom-in"),
+      "preview.zoomOut": zoomCommand("zoom-out"),
+      "preview.resetZoom": zoomCommand("reset-zoom"),
       "preview.find": previewCommand("find"),
     },
     {

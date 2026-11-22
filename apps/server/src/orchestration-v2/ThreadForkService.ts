@@ -111,7 +111,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         creationSource: input.creationSource,
         id: input.targetThreadId,
         title: input.title ?? `${input.sourceProjection.thread.title} fork`,
-        // The source's title job completes only on the source thread.
+        // The source's title job and rename stay with the source thread.
         titleRegeneration: null,
         // The source's fresh-start links and call for the user stay with the source.
         continuedFrom: undefined,
@@ -119,6 +119,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         attention: null,
         // Side chats live in the parent's view, so none is a topic of the parent's expert.
         ...(input.sideChat ? { launchedBy: undefined, memoryUnchangedTurns: undefined } : {}),
+        titleRenamed: false,
         activeProviderThreadId: null,
         lineage: {
           parentThreadId: input.sourceProjection.thread.id,

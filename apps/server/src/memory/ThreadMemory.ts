@@ -71,13 +71,23 @@ export function threadMemoryNudge(path: string): string {
   ].join(" ");
 }
 
-function contextNearlyFull(usage: OrchestrationV2ProviderTurnTokenUsage): boolean {
+/**
+ * Whether the context has used `share` of the point where it compacts or runs out. Providers
+ * that report neither never are.
+ */
+export function contextNearLimit(
+  usage: OrchestrationV2ProviderTurnTokenUsage,
+  share: number,
+): boolean {
   const limit = Math.min(
     usage.maxTokens != null && usage.maxTokens > 0 ? usage.maxTokens : Infinity,
     usage.autoCompactThreshold ?? Infinity,
   );
-  return Number.isFinite(limit) && usage.usedTokens >= limit * MEMORY_NUDGE_CONTEXT_SHARE;
+  return Number.isFinite(limit) && usage.usedTokens >= limit * share;
 }
+
+const contextNearlyFull = (usage: OrchestrationV2ProviderTurnTokenUsage) =>
+  contextNearLimit(usage, MEMORY_NUDGE_CONTEXT_SHARE);
 
 /**
  * Whether the next turn should be told to save its memory: the newest usage report is near the

@@ -1,6 +1,7 @@
 import {
   CommandId,
   IDLE_COMPACTION_TEXT,
+  isUserPinnedThread,
   MessageId,
   resolveIdleCompaction,
   resolveProjectProviderInstanceEnabled,
@@ -13,6 +14,7 @@ import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
 import * as Stream from "effect/Stream";
 
+import * as ThreadMemory from "../memory/ThreadMemory.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { idleCompactionWindow } from "./IdleCompaction.ts";
@@ -20,10 +22,10 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
 /**
- * Beta: when a run completes on a Claude instance set to compact before the
- * cache expires, waits until shortly before its prompt cache expires and sends
- * `/compact` as a visible T3 Code turn. Timers live in
- * memory, so a server restart skips compactions that were still waiting.
+ * When a run completes on a Claude thread, waits until the window `idleCompactionWindow` names
+ * (a minute after the turn near the limit, or shortly before the prompt cache expires) and sends
+ * `/compact` as a visible T3 Code turn. Timers live in memory, so a server restart skips
+ * compactions that were still waiting.
  */
 export const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
@@ -42,7 +44,7 @@ export const make = Effect.gen(function* () {
           : thread.providerInstanceId === "claudeAgent";
         if (
           !claudeInstance ||
-          resolveIdleCompaction(current, thread.providerInstanceId) !== "beforeCacheExpires" ||
+          resolveIdleCompaction(current, thread.providerInstanceId) === "off" ||
           !resolveProjectProviderInstanceEnabled(
             current,
             thread.projectId,
@@ -79,8 +81,6 @@ export const make = Effect.gen(function* () {
           },
         );
         if (
-          resolveIdleCompaction(current, records.thread.providerInstanceId) !==
-            "beforeCacheExpires" ||
           !resolveProjectProviderInstanceEnabled(
             current,
             records.thread.projectId,
@@ -100,7 +100,25 @@ export const make = Effect.gen(function* () {
           continue;
         }
         const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
-        const window = idleCompactionWindow(records, nowMs);
+        const mode = resolveIdleCompaction(current, records.thread.providerInstanceId);
+        let window = idleCompactionWindow(records, nowMs, mode);
+        const providerThreadId = records.thread.activeProviderThreadId;
+        // The memory reminder rides on the next turn, which would be this `/compact`. Leave that
+        // turn to the user, so the agent saves its memory before Claude compacts.
+        if (
+          window?.reason === "nearLimit" &&
+          providerThreadId !== null &&
+          current.pinnedThreadsKeepMemory &&
+          isUserPinnedThread(records.thread) &&
+          ThreadMemory.memoryNudgeDue(
+            (yield* projections.getThreadRecords(threadId, ["providerTurns"], {
+              providerTurnThreadIds: [providerThreadId],
+            })).providerTurns,
+            providerThreadId,
+          )
+        ) {
+          window = idleCompactionWindow(records, nowMs, mode, false);
+        }
         if (window?.runId !== runId) return;
         if (nowMs < window.startMs) {
           yield* Effect.sleep(Duration.millis(window.startMs - nowMs));
@@ -116,6 +134,7 @@ export const make = Effect.gen(function* () {
           attachments: [],
           createdBy: "agent",
           creationSource: "server",
+          // Marks every compaction the server sends on its own; a new tag would fail older clients.
           idleCompaction: "beforeCacheExpires",
           dispatchMode: { type: "start_immediately" },
         });

@@ -187,11 +187,18 @@ describe("resolveTimelineMinimapPreview", () => {
     });
     const preview = resolveTimelineMinimapPreview({
       id: "turn-1",
-      rowIndex: 0,
-      userText: `${quote}\nWhere do ${file} and [math.ts](src/math.ts) cover this?`,
-      assistantText: null,
+      firstItemIndex: 0,
+      items: [
+        {
+          id: "turn-1",
+          rowIndex: 0,
+          userText: `${quote}\nWhere do ${file} and [math.ts](src/math.ts) cover this?`,
+          assistantText: null,
+          userAuthored: true,
+        },
+      ],
     });
-    expect(preview?.userText).toBe(
+    expect(preview?.kind === "turn" ? preview.userText : null).toBe(
       "The cache misses on a cold start. Where do README.md and math.ts cover this?",
     );
   });

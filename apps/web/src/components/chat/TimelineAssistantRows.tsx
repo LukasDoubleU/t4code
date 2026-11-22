@@ -2,7 +2,7 @@ import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipel
 import { MessageId, type RunId, type TurnItemId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
 import { agentWorkingDirectories } from "@t3tools/client-runtime/workspace-basename-lookup";
-import { T, useGT, useMessages } from "gt-react";
+import { T, useGT } from "gt-react";
 import { memo, use, useState } from "react";
 import { type ChatMessage, type TurnDiffSummary } from "../../types";
 import ChatMarkdown from "../ChatMarkdown";
@@ -255,7 +255,6 @@ function AssistantMessageMeta({
   const timeOnlyInTurnFold =
     ctx.turnFoldReplies.get(message.runId ?? "")?.messageId === message.id &&
     !ctx.tallTurnFoldReplyIds.has(message.id);
-  const m = useMessages();
 
   return (
     <div

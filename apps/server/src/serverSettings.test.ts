@@ -4,6 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_SERVER_SETTINGS,
   globalIdleCompaction,
+  resolveIdleCompaction,
   type ManagedPolicyDocument,
   ModelSelection,
   ProjectId,
@@ -300,8 +301,77 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
     Effect.gen(function* () {
       const service = yield* ServerSettingsModule.ServerSettingsService;
       const settings = yield* service.getSettings;
-      assert.equal(settings.idleCompaction, "onReturn");
-      assert.strictEqual(settings.compactIdleThreads, false);
+      assert.equal(settings.idleCompaction, "beforeCacheExpires");
+      assert.strictEqual(settings.compactIdleThreads, true);
+    }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect.each([
+    { saved: { idleCompaction: "onReturn" }, expected: "beforeCacheExpires" },
+    { saved: { compactIdleThreads: "onReturn" }, expected: "beforeCacheExpires" },
+    { saved: { compactIdleThreads: false }, expected: "beforeCacheExpires" },
+    { saved: { idleCompaction: "off" }, expected: "off" },
+    { saved: { compactIdleThreads: "off" }, expected: "off" },
+    {
+      saved: { idleCompaction: "onReturn", idleCompactionDefaultSwitched: true },
+      expected: "onReturn",
+    },
+  ] as const)(
+    "switches a saved idle compaction of When you return once: $saved",
+    ({ saved, expected }) =>
+      Effect.gen(function* () {
+        const config = yield* ServerConfig.ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const service = yield* ServerSettingsModule.ServerSettingsService;
+        const claude = ProviderInstanceId.make("claude_work");
+        const codex = ProviderInstanceId.make("codex_work");
+        yield* fs.writeFileString(
+          config.settingsPath,
+          JSON.stringify({
+            ...saved,
+            providerInstances: {
+              [claude]: { driver: "claudeAgent", config: { idleCompaction: "onReturn" } },
+              [codex]: { driver: "codex", config: {} },
+            },
+          }),
+        );
+
+        const settings = yield* service.getSettings;
+        assert.equal(settings.idleCompaction, expected);
+        assert.strictEqual(settings.compactIdleThreads, expected === "beforeCacheExpires");
+        assert.equal(
+          resolveIdleCompaction(settings, claude),
+          saved.idleCompactionDefaultSwitched ? "onReturn" : "beforeCacheExpires",
+        );
+        assert.deepEqual(settings.providerInstances[codex]?.config, {});
+        yield* service.updateSettings({ defaultAutoPull: true });
+        const stored = JSON.parse(yield* fs.readFileString(config.settingsPath));
+        assert.isTrue(stored.idleCompactionDefaultSwitched);
+        assert.equal(globalIdleCompaction(stored), expected);
+      }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect("keeps When you return chosen after the switch across a restart", () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const fs = yield* FileSystem.FileSystem;
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      yield* fs.writeFileString(config.settingsPath, `{ "idleCompaction": "onReturn" }`);
+      assert.equal((yield* service.getSettings).idleCompaction, "beforeCacheExpires");
+
+      yield* service.updateSettings({ idleCompaction: "onReturn" });
+      const restarted = yield* Effect.gen(function* () {
+        const fresh = yield* ServerSettingsModule.ServerSettingsService;
+        return yield* fresh.getSettings;
+      }).pipe(
+        Effect.provide(
+          Layer.fresh(ServerSettingsModule.layer).pipe(
+            Layer.provide(Layer.merge(ServerSecretStore.layer, ManagedPolicy.layerTest())),
+          ),
+        ),
+      );
+      assert.equal(restarted.idleCompaction, "onReturn");
+      assert.strictEqual(restarted.compactIdleThreads, false);
     }).pipe(Effect.provide(layerServerSettings())),
   );
 
@@ -2583,7 +2653,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
             const config = yield* ServerConfig.ServerConfig;
             const fs = yield* FileSystem.FileSystem;
             const chosen = compactIdleThreads ? "beforeCacheExpires" : "onReturn";
-            yield* fs.writeFileString(config.settingsPath, JSON.stringify({ compactIdleThreads }));
+            yield* fs.writeFileString(
+              config.settingsPath,
+              JSON.stringify({ compactIdleThreads, idleCompactionDefaultSwitched: true }),
+            );
 
             assert.equal((yield* service.getSettings).idleCompaction, chosen);
             yield* service.updateSettings({ defaultAutoPull: true });

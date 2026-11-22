@@ -246,7 +246,7 @@ const PACKAGE_FIELD_TEXT: ReadonlyMap<string, string> = new Map([
   ["Automatic", msg("Automatic", { $context: "placeholder, chosen automatically when empty" })],
   ["Registry default", msg("Registry default")],
   ["When you return", msg("When you return")],
-  ["Before the cache expires (beta)", msg("Before the cache expires (beta)")],
+  ["Before the cache expires", msg("Before the cache expires")],
   ["Never", msg("Never", { $context: "option, never compact idle threads" })],
   ["Use default", msg("Use default")],
   ["Google account", msg("Google account")],

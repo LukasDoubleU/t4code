@@ -74,9 +74,10 @@ composer commands.
 **Compact idle threads** in **Settings > Providers > Advanced** controls this for threads
 over 200,000 tokens. Each Claude provider's settings can override it:
 
-- **When you return** shows the **Compact** chip described above. This is the default.
-- **Before the cache expires (beta)** tries to compact an idle thread shortly before its
-  prompt cache expires, while the history is still cached.
+- **When you return** shows the **Compact** chip described above.
+- **Before the cache expires** tries to compact an idle thread shortly before its
+  prompt cache expires, while the history is still cached, so your next message
+  does not wait for it. This is the default.
   The compaction appears in the thread as a `/compact` turn sent by T3 Code.
   If the window is missed, such as when you enable this mode after the cache has
   expired or the server restarts before compaction runs, it falls back to

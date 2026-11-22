@@ -668,6 +668,29 @@ function foldLegacyProjectSettings(
   };
 }
 
+// idleCompactionDefaultSwitched keeps a later choice of "When you return" across restarts.
+// A policy that sets the mode keeps it; the switch only replaces the user's own choice.
+function switchIdleCompactionDefault(
+  settings: ServerSettings,
+  policySetsMode: boolean,
+): ServerSettings {
+  if (settings.idleCompactionDefaultSwitched) return settings;
+  const providerInstances = Object.fromEntries(
+    Object.entries(settings.providerInstances).map(([instanceId, instance]) => {
+      const config = instance.config;
+      return typeof config === "object" &&
+        config !== null &&
+        (config as { readonly idleCompaction?: unknown }).idleCompaction === "onReturn"
+        ? [instanceId, { ...instance, config: { ...config, idleCompaction: "beforeCacheExpires" } }]
+        : [instanceId, instance];
+    }),
+  ) as ServerSettings["providerInstances"];
+  const switched = { ...settings, providerInstances, idleCompactionDefaultSwitched: true };
+  return !policySetsMode && globalIdleCompaction(settings) === "onReturn"
+    ? withIdleCompaction(switched, "beforeCacheExpires")
+    : switched;
+}
+
 const make = Effect.gen(function* () {
   const { settingsPath } = yield* ServerConfig.ServerConfig;
   const fs = yield* FileSystem.FileSystem;
@@ -831,6 +854,8 @@ const make = Effect.gen(function* () {
 
     // A file that failed to decode must stay on disk for the user to repair.
     const settingsFileTrusted = Option.isNone(parseFailure);
+    // Not written here: repeating the switch is harmless, and the next save keeps the marker.
+    settings = switchIdleCompactionDefault(settings, managed.defaults.idleCompaction !== undefined);
     const providerHistory = yield* sql<{
       readonly providerName: string;
       readonly providerInstanceId: string | null;

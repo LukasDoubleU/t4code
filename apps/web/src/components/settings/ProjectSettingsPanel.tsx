@@ -53,6 +53,7 @@ import {
   ProjectFaviconPickerDialog,
 } from "./ProjectFaviconPickerDialog";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
+import { ProjectGitHubTokenSettings } from "./ProjectGitHubTokenSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import {
   defaultProjectIcon,
@@ -692,6 +693,7 @@ function ProjectDetail({
         </SettingsSection>
         <ProjectDefaultsSettings category="project" />
         <ProjectActionsSettings />
+        <ProjectGitHubTokenSettings members={group.memberProjects} />
         {checkoutChoices}
         <SettingsSection title={gt("Danger")}>
           <SettingsRow

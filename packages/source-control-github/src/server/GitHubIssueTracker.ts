@@ -97,9 +97,10 @@ function reasonFor(
   switch (error._tag) {
     case "GitHubCliMissingError":
       return "missing-tool";
+    case "GitHubApiAuthenticationError":
+      return error.credential === "project" ? "failed" : "unauthenticated";
     case "GitHubNotSignedInError":
     case "GitHubHostDisabledError":
-    case "GitHubApiAuthenticationError":
       return "unauthenticated";
     case "GitHubApiRateLimitError":
     case "SourceControlRateLimitPausedError":
@@ -137,7 +138,9 @@ export const make = Effect.gen(function* () {
         reason: reasonFor(error),
         detail: GraphQLClientError.isGraphQLClientError(error)
           ? `GitHub returned an unreadable ${operation} response.`
-          : FAILURE_DETAIL[reasonFor(error)],
+          : error._tag === "GitHubApiAuthenticationError" && error.credential === "project"
+            ? error.message
+            : FAILURE_DETAIL[reasonFor(error)],
         ...("retryAt" in error && error.retryAt !== undefined ? { retryAt: error.retryAt } : {}),
         cause: error,
       });

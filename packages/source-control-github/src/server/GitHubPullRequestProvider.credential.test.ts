@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import * as SourceControlRateLimit from "@t3tools/source-control-core/server/SourceControlRateLimit";
+import { ProjectCredential } from "@t3tools/source-control-core/server/ProjectCredential";
 import * as TestSourceControlHost from "@t3tools/source-control-testing/TestSourceControlHost";
 
 import * as GitHubCredentials from "./GitHubCredentials.ts";
@@ -20,6 +21,28 @@ const appSignedOut = Layer.mock(GitHubAppSignIn.GitHubAppSignIn)({
   token: () => Effect.succeedNone,
   invalidate: () => Effect.void,
 });
+
+const makeProvider = (
+  credentials: Layer.Layer<GitHubCredentials.GitHubCredentials>,
+  http: Layer.Layer<HttpClient.HttpClient>,
+) =>
+  GitHubPullRequestProvider.make.pipe(
+    Effect.provide(
+      GitHubPullRequestApi.layer.pipe(
+        Layer.provideMerge(GitHubAppAccess.layer),
+        // GraphQL reads go over `http` too, through the same credential and quota as REST.
+        Layer.provide(
+          GitHubRest.layer.pipe(
+            Layer.provideMerge(Layer.mergeAll(credentials, http, appSignedOut)),
+            Layer.provideMerge(GitHubQuota.layer),
+            Layer.provideMerge(SourceControlRateLimit.layer),
+          ),
+        ),
+        Layer.provide(TestSourceControlHost.layer()),
+        Layer.provide(NodeServices.layer),
+      ),
+    ),
+  );
 
 it.effect("keeps branch deletion on the credential that passed source repository permissions", () =>
   Effect.gen(function* () {
@@ -108,23 +131,7 @@ it.effect("keeps branch deletion on the credential that passed source repository
         }),
       ),
     );
-    const provider = yield* GitHubPullRequestProvider.make.pipe(
-      Effect.provide(
-        GitHubPullRequestApi.layer.pipe(
-          Layer.provideMerge(GitHubAppAccess.layer),
-          // GraphQL reads go over `http` too, through the same credential and quota as REST.
-          Layer.provide(
-            GitHubRest.layer.pipe(
-              Layer.provideMerge(Layer.mergeAll(credentials, http, appSignedOut)),
-              Layer.provideMerge(GitHubQuota.layer),
-              Layer.provideMerge(SourceControlRateLimit.layer),
-            ),
-          ),
-          Layer.provide(TestSourceControlHost.layer()),
-          Layer.provide(NodeServices.layer),
-        ),
-      ),
-    );
+    const provider = yield* makeProvider(credentials, http);
     const reference = { cwd: "/a", repository: "acme/web", host: "github.com", number: 1 };
     assert.isDefined(provider.withVerifiedCredential);
     yield* provider.withVerifiedCredential!({ cwd: "/a", host: "github.com" }, () =>
@@ -153,5 +160,46 @@ it.effect("keeps branch deletion on the credential that passed source repository
         "Bearer account-a",
       ],
     );
+  }),
+);
+
+it.effect("names a refused project token when the verified login is read with it", () =>
+  Effect.gen(function* () {
+    const sent: Array<string | undefined> = [];
+    const credentials = Layer.succeed(
+      GitHubCredentials.GitHubCredentials,
+      GitHubCredentials.GitHubCredentials.of({
+        get: (host) =>
+          Effect.succeed({
+            host,
+            token: Redacted.make("machine"),
+            source: "gh" as const,
+            fingerprint: `${host}:machine`,
+          }),
+        saved: () => Effect.succeedNone,
+        fingerprint: (host, token) => Effect.succeed(`${host}:${token}`),
+        invalidate: () => Effect.void,
+      }),
+    );
+    const http = Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make((request) =>
+        Effect.sync(() => {
+          sent.push(request.headers["authorization"]);
+          return HttpClientResponse.fromWeb(request, new Response(null, { status: 401 }));
+        }),
+      ),
+    );
+    const provider = yield* makeProvider(credentials, http);
+    const error = yield* Effect.flip(provider.getViewer({ cwd: "/a", host: "github.com" })).pipe(
+      Effect.provideService(ProjectCredential, {
+        projectId: "project-1",
+        tokenFor: () => Effect.succeedSome(Redacted.make("project-token")),
+      }),
+    );
+    assert.strictEqual(error.reason, "failed");
+    assert.include(error.detail, "this project's own token");
+    assert.notInclude(error.detail, "project-token");
+    assert.deepStrictEqual(sent, ["Bearer project-token"]);
   }),
 );

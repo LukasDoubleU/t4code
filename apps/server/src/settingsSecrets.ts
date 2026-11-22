@@ -4,6 +4,7 @@ import {
   CloudSpeechCredentials,
   CodexSettings,
   EasDeviceHostConfig,
+  ProjectSettingsOverrides,
   type ProviderInstanceConfig,
   type ServerSettings,
   type SettingsSecretValue,
@@ -51,6 +52,7 @@ const textGeneratorSecretFields = secretSettingsFields(TextGeneratorConfig);
 const voiceSecretFields = secretSettingsFields(CloudSpeechCredentials);
 const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
 const simlockDeviceHostSecretFields = secretSettingsFields(SimlockDeviceHostConfig);
+const projectOverrideSecretFields = secretSettingsFields(ProjectSettingsOverrides);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 export interface SettingsSecret {
@@ -247,8 +249,22 @@ function mapSecretFieldGroups(
       ) as SimlockDeviceHostConfig,
   );
 
+  const projectSettingsOverrides = Object.fromEntries(
+    Object.entries(settings.projectSettingsOverrides).map(([projectId, entry]) => [
+      projectId,
+      mapFields(
+        entry,
+        projectOverrideSecretFields,
+        (field, serverHost) =>
+          `project-${encode(projectId)}-${encode(field)}` +
+          (serverHost === null ? "" : `-${encode(serverHost)}`),
+      ),
+    ]),
+  ) as ServerSettings["projectSettingsOverrides"];
+
   return {
     ...settings,
+    projectSettingsOverrides,
     cloudSpeechCredentials: mapFields(
       settings.cloudSpeechCredentials,
       voiceSecretFields,

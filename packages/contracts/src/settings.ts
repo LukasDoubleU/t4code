@@ -1346,7 +1346,11 @@ export const ProjectSettingsOverrides = Schema.Struct({
   providerInstances: Schema.optionalKey(
     Schema.Record(ProviderInstanceId, ProjectProviderInstanceOverride),
   ),
-} satisfies Record<ProjectScopedServerSettingKey | "providerInstances", unknown>);
+  /** The project's own GitHub token by host, used instead of the machine's for its requests. */
+  gitHubTokens: Schema.optionalKey(
+    Schema.Record(TrimmedNonEmptyString, SettingsSecretValue).pipe(secretSetting),
+  ),
+} satisfies Record<ProjectScopedServerSettingKey | "providerInstances" | "gitHubTokens", unknown>);
 export type ProjectSettingsOverrides = typeof ProjectSettingsOverrides.Type;
 
 // Whole-entry writers must round-trip unknown keys; keep the type closed to catch misspellings.

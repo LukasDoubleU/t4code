@@ -27,6 +27,10 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Tool } from "effect/ai";
 
+import { ProjectCredential } from "@t3tools/source-control-core/server/ProjectCredential";
+import type { SourceControlDriverInstance } from "@t3tools/source-control-core/server/driver";
+import * as Redacted from "effect/Redacted";
+
 import * as GitManager from "../../../git/GitManager.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import {
@@ -37,6 +41,8 @@ import * as ProjectService from "../../../project/ProjectService.ts";
 import * as PullRequestWatchService from "../../../pullRequest/PullRequestWatchService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
 import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
+import * as ProjectGitHubToken from "../../../sourceControl/projectGitHubToken.ts";
+import * as ProjectGitHubTokenTestkit from "../../../sourceControl/projectGitHubToken.testkit.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as McpToolAccessTestkit from "../../McpToolAccess.testkit.ts";
@@ -1185,6 +1191,65 @@ describe("source control tools", () => {
         .call("pull_request_respond", { body: "Done", resolved: true })
         .pipe(Effect.flip);
       expect(error._tag).toBe("PullRequestNothingToDoError");
+    }),
+  );
+
+  it.effect("posts with the project's own GitHub token and never shows it to the agent", () =>
+    Effect.gen(function* () {
+      const sent: Array<string> = [];
+      const tokens = yield* ProjectGitHubToken.ProjectGitHubTokens.pipe(
+        Effect.provide(
+          ProjectGitHubTokenTestkit.layer({
+            settings: {
+              projectSettingsOverrides: {
+                [PROJECT_ID]: { gitHubTokens: { "github.com": "project-token-value" } },
+              },
+            },
+            roots: { [makeProject().workspaceRoot]: PROJECT_ID },
+          }),
+        ),
+      );
+      // The GitHub driver as the server builds it; its request policy asks for the token this way.
+      const github = tokens.scope({
+        pullRequests: {
+          comment: (input: { readonly host: string }) =>
+            ProjectCredential.pipe(
+              Effect.flatMap((project) =>
+                project === null ? Effect.succeedNone : project.tokenFor(input.host),
+              ),
+              Effect.orDie,
+              Effect.map((token) => {
+                sent.push(Option.match(token, { onNone: () => "machine", onSome: Redacted.value }));
+              }),
+            ),
+        },
+        sourceControl: {},
+      } as unknown as SourceControlDriverInstance).pullRequests!;
+      const harness = yield* makeHarness({
+        thread: branchThread,
+        pullRequests: {
+          // PullRequestService sends a project's requests from its workspace root.
+          comment: (input) =>
+            github
+              .comment({
+                cwd: makeProject().workspaceRoot,
+                host: input.host ?? "github.com",
+                repository: input.repository,
+                number: input.number,
+                body: input.body,
+              })
+              .pipe(
+                Effect.mapError(
+                  (error) =>
+                    new PullRequestOperationError({ operation: "comment", detail: error.detail }),
+                ),
+              ),
+        },
+      });
+      const result = yield* harness.call("pull_request_respond", { body: "Fixed." });
+      expect(result).toMatchObject({ number: 42, replied: true });
+      expect(sent).toEqual(["project-token-value"]);
+      expect(JSON.stringify(result)).not.toContain("project-token-value");
     }),
   );
 

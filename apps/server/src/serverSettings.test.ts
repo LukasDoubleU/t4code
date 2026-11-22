@@ -1647,6 +1647,49 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
   );
 
   it.effect(
+    "keeps a project's GitHub token in the secret store and never sends it to clients",
+    () =>
+      Effect.gen(function* () {
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const projectId = ProjectId.make("project-with-token");
+        const token = "project-token-value";
+
+        const saved = yield* serverSettings.updateSettings({
+          projectSettingsOverrides: { [projectId]: { gitHubTokens: { "github.com": token } } },
+        });
+        assert.notInclude(yield* fileSystem.readFileString(serverConfig.settingsPath), token);
+        const forClient = ServerSettingsModule.redactServerSettingsForClient(saved, {
+          secretReferences: true,
+        }).projectSettingsOverrides;
+        assert.notInclude(JSON.stringify(forClient), token);
+        assert.equal(forClient[projectId]?.gitHubTokens?.["github.com"], SECRET_REDACTED);
+
+        const tokenNow = Effect.map(
+          serverSettings.getSettings,
+          (settings) => settings.projectSettingsOverrides[projectId]?.gitHubTokens?.["github.com"],
+        );
+        // A client echoes the redacted entry back; an older one leaves the field out.
+        yield* serverSettings.updateSettings({
+          projectSettingsOverrides: {
+            [projectId]: { ...forClient[projectId], defaultAutoPull: true },
+          },
+        });
+        assert.equal(yield* tokenNow, token);
+        yield* serverSettings.updateSettings({
+          projectSettingsOverrides: { [projectId]: { defaultAutoPull: false } },
+        });
+        assert.equal(yield* tokenNow, token);
+
+        yield* serverSettings.updateSettings({
+          projectSettingsOverrides: { [projectId]: { gitHubTokens: { "github.com": "" } } },
+        });
+        assert.equal(yield* tokenNow, "");
+      }).pipe(Effect.provide(layerServerSettings())),
+  );
+
+  it.effect(
     "keeps source control host secrets in the secret store and tells clients only that one is set",
     () =>
       Effect.gen(function* () {
@@ -1913,6 +1956,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
           bitbucket: { accessToken: personal("Bitbucket/token") },
           github: { tokens: { "github.com": personal("GitHub/token"), "ghe.acme.test": work } },
         },
+        projectSettingsOverrides: {
+          [ProjectId.make("with-token")]: {
+            gitHubTokens: { "github.com": personal("Project/token"), "ghe.acme.test": work },
+          },
+        },
         cloudSpeechCredentials: { openai: personal("Voice/key"), xai: work },
         usageLimitSources: {
           [hub]: {
@@ -1957,6 +2005,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
         "github.com": "",
         "ghe.acme.test": work,
       });
+      assert.deepEqual(
+        removed.projectSettingsOverrides[ProjectId.make("with-token")]?.gitHubTokens,
+        {
+          "github.com": "",
+          "ghe.acme.test": work,
+        },
+      );
       assert.equal(removed.usageLimitSources[hub]?.managementKey, "");
       assert.deepEqual(removed.cloudSpeechCredentials, { openai: "", xai: work, openrouter: "" });
       assert.equal(removed.easDeviceHosts[0]?.accessToken, "");
@@ -1971,6 +2026,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
         "cloudSpeechCredentials.openai",
         "cloudSpeechCredentials.xai",
         "cloudSpeechCredentials.openrouter",
+        "projectSettingsOverrides.*.gitHubTokens.*",
         "easDeviceHosts.[].accessToken",
         "simlockDeviceHosts.[].agentToken",
         "usageLimitSources.*.managementKey",

@@ -12,6 +12,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as TestClock from "effect/testing/TestClock";
 import * as Tracer from "effect/Tracer";
@@ -25,6 +26,7 @@ import * as GitHubRequestPolicy from "./GitHubRequestPolicy.ts";
 import * as GitHubCredentials from "./GitHubCredentials.ts";
 import * as GitHubQuota from "./GitHubQuota.ts";
 import * as SourceControlRateLimit from "@t3tools/source-control-core/server/SourceControlRateLimit";
+import { ProjectCredential } from "@t3tools/source-control-core/server/ProjectCredential";
 import type * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
 import * as TestSourceControlHost from "@t3tools/source-control-testing/TestSourceControlHost";
 import * as GitHubAppSignIn from "./GitHubAppSignIn.ts";
@@ -41,7 +43,10 @@ const appSignedOut = Layer.mock(GitHubAppSignIn.GitHubAppSignIn)({
 
 const NOW = Date.parse("2026-10-05T12:00:00.000Z");
 
-function harness(respond: (request: HttpClientRequest.HttpClientRequest) => Response) {
+function harness(
+  respond: (request: HttpClientRequest.HttpClientRequest) => Response,
+  options?: { readonly saved?: string },
+) {
   const requests: Array<HttpClientRequest.HttpClientRequest> = [];
   let tokens = ["first", "second"];
   let invalidations = 0;
@@ -59,7 +64,17 @@ function harness(respond: (request: HttpClientRequest.HttpClientRequest) => Resp
             fingerprint: `${host}:${tokens[0]}`,
           };
         }),
-      saved: () => Effect.succeedNone,
+      saved: (host) =>
+        Effect.succeed(
+          options?.saved === undefined
+            ? Option.none()
+            : Option.some({
+                host,
+                token: Redacted.make(options.saved),
+                source: "settings" as const,
+                fingerprint: `${host}:${options.saved}`,
+              }),
+        ),
       fingerprint: (host, token) => Effect.succeed(`${host}:${token}`),
       invalidate: () =>
         Effect.sync(() => {
@@ -581,6 +596,60 @@ describe("GitHubRest", () => {
       expect(requests.map((request) => request.headers.authorization)).toEqual([
         "Bearer first",
         "Bearer second",
+      ]);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("sends a project's own token before every machine credential, on its host only", () => {
+    const { layer, requests } = harness(() => json({ ok: true }), { saved: "machine-saved" });
+    const project = (hosts: Record<string, string>) =>
+      Effect.provideService(ProjectCredential, {
+        projectId: "project-1",
+        tokenFor: (host) =>
+          Effect.succeed(Option.map(Option.fromNullishOr(hosts[host]), Redacted.make)),
+      });
+    return Effect.gen(function* () {
+      const api = yield* GitHubRest.GitHubRest;
+      const read = (host: string) => api.rest({ host, operation: "user", path: "user" });
+      yield* read("github.com").pipe(project({ "github.com": "project-token" }));
+      yield* read("github.com");
+      yield* read("github.com").pipe(project({ "ghe.acme.test": "project-token" }));
+      yield* read("ghe.acme.test").pipe(project({ "ghe.acme.test": "project-token" }));
+      expect(requests.map((request) => request.headers.authorization)).toEqual([
+        "Bearer project-token",
+        "Bearer machine-saved",
+        "Bearer machine-saved",
+        "Bearer project-token",
+      ]);
+      expect(yield* api.appCredential("github.com").pipe(project({ "github.com": "p" }))).toEqual(
+        Option.none(),
+      );
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("fails a refused project token without falling back to the machine's", () => {
+    const { layer, requests } = harness(
+      (request) =>
+        request.headers.authorization === "Bearer project-token"
+          ? new Response(null, { status: 401 })
+          : json({ ok: true }),
+      { saved: "machine-saved" },
+    );
+    return Effect.gen(function* () {
+      const api = yield* GitHubRest.GitHubRest;
+      const error = yield* Effect.flip(
+        api.rest({ host: "github.com", operation: "user", path: "user" }),
+      ).pipe(
+        Effect.provideService(ProjectCredential, {
+          projectId: "project-1",
+          tokenFor: () => Effect.succeedSome(Redacted.make("project-token")),
+        }),
+      );
+      expect(error).toMatchObject({ _tag: "GitHubApiAuthenticationError", credential: "project" });
+      expect(error.message).toContain("this project's own token");
+      expect(error.message).not.toContain("project-token");
+      expect(requests.map((request) => request.headers.authorization)).toEqual([
+        "Bearer project-token",
       ]);
     }).pipe(Effect.provide(layer));
   });

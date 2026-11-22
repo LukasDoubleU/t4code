@@ -17,6 +17,7 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
@@ -155,7 +156,9 @@ const capabilitiesFor = (
             Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
               list: () => Effect.succeed(providers.map((entry) => entry.instanceId)),
             }),
-            Layer.mock(ProjectService.ProjectService)({}),
+            Layer.mock(ProjectService.ProjectService)({
+              getById: () => Effect.succeed(Option.none()),
+            }),
             Layer.mock(SecretRequests.SecretRequests)({}),
             Layer.mock(RemoteDelegation.RemoteDelegation)({}),
             Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),

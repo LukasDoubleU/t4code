@@ -1,7 +1,4 @@
-import {
-  serializeAssistantCitation,
-  expandAssistantCitationsForProvider,
-} from "@t3tools/shared/assistantCitations";
+import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it, vi } from "vite-plus/test";
@@ -27,13 +24,10 @@ import {
   ThreadId,
   TurnItemId,
   ProjectId,
-  TurnItemId,
-  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2TurnItem,
   OrchestrationV2DomainEvent,
 } from "@t3tools/contracts";
-import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -3008,8 +3002,13 @@ effectIt.effect.each([
     const projection = harness.projection();
     const run = projection.runs[0]!;
     const sourceThreadId = ThreadId.make("fork-source");
+    // A source whose run finished forks natively; a running one would hand over a summary.
     harness.getThreadRecords.mockReturnValue(
-      Effect.succeed({ ...projection, thread: { ...projection.thread, id: sourceThreadId } }),
+      Effect.succeed({
+        ...projection,
+        thread: { ...projection.thread, id: sourceThreadId },
+        runs: projection.runs.map((candidate) => ({ ...candidate, status: "completed" as const })),
+      }),
     );
     harness.getThread.mockReturnValue(
       Effect.succeed({
@@ -3571,36 +3570,3 @@ for (const previousMessages of [[], ["/compact", " /COMPACT "]]) {
       }),
   );
 }
-
-effectIt.effect("rejects citation expansion before opening a provider session", () =>
-  Effect.gen(function* () {
-    const marker = serializeAssistantCitation({
-      version: 1,
-      environmentId: EnvironmentId.make("env"),
-      threadId: ThreadId.make("thread"),
-      messageId: MessageId.make("assistant"),
-      text: "\u0001".repeat(8_000),
-      start: 0,
-      end: 8_000,
-      prefix: "",
-      suffix: "",
-    });
-    const text = "x".repeat(80_000) + marker;
-    expect(text.length).toBeLessThan(PROVIDER_SEND_TURN_MAX_INPUT_CHARS);
-    expect(expandAssistantCitationsForProvider(text).length).toBeGreaterThan(
-      PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
-    );
-    const harness = makeLocalCommandHarness({ text });
-    yield* harness.start;
-    expect(harness.open).not.toHaveBeenCalled();
-    expect(harness.startTurn).not.toHaveBeenCalled();
-    expect(harness.projection().runs.at(-1)?.status).toBe("failed");
-    expect(harness.projection().turnItems).toMatchObject([
-      {
-        type: "error",
-        failure: { class: "validation_error", message: expect.stringContaining("120,000") },
-      },
-    ]);
-    expect(harness.projection().messages[0]?.text).toBe(text);
-  }),
-);

@@ -39,6 +39,7 @@ import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ModelManifest from "../provider/ModelManifest.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -228,6 +229,7 @@ const layerRuntime = (sessionUsed: number, chain = false) =>
             getEnvironmentId: Effect.succeed(environmentId),
           }),
         ),
+        ModelManifest.layerTest,
       ),
     ),
     Layer.provide(McpSessionRegistryTestkit.layer),

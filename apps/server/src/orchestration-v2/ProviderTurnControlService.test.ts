@@ -128,6 +128,8 @@ function makeProjection(input: {
 
 function layerProjectionStore(
   getProviderControlContext: ProjectionStore.ProjectionStoreV2["Service"]["getProviderControlContext"],
+  // A steer reads the thread's records for citations and reactions.
+  records?: OrchestrationV2ThreadProjection,
 ) {
   return Layer.succeed(
     ProjectionStore.ProjectionStoreV2,
@@ -176,7 +178,8 @@ function layerProjectionStore(
       getNextTurnItemOrdinal: () => Effect.die("unused ordinal read"),
       getTurnItem: () => Effect.die("unused turn item read"),
       getMessagesById: () => Effect.die("unused getMessagesById"),
-      getThreadRecords: () => Effect.die("unused record read"),
+      getThreadRecords: () =>
+        records === undefined ? Effect.die("unused record read") : Effect.succeed(records),
       getRuntimeRequest: () => Effect.die("unused getRuntimeRequest"),
       getRunningTurnContext: () => Effect.die("unused getRunningTurnContext"),
       getThreadProviderContext: () => Effect.die("unused getThreadProviderContext"),
@@ -406,27 +409,29 @@ it.effect("steers a running turn with its sender and the thread's MCP app model 
     const layerControl = ProviderTurnControlService.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
-          layerProjectionStore(() =>
-            Effect.succeed({
-              providerThread,
-              providerTurn: projection.providerTurns[0],
-              attempt: projection.attempts[0],
-              message: {
-                id: MessageId.make("message:steer-app-context"),
-                text: "What did the app report?",
-                attachments: [],
-                createdBy: "agent",
-                creationSource: "mcp",
-                senderThreadId: ThreadId.make("thread:steer-sender"),
-              } as unknown as NonNullable<
-                ProjectionStore.ProjectionProviderControlContext["message"]
-              >,
-              run: {
-                id: RunId.make("run:steer-app-context"),
-                status: "running",
-                activeAttemptId: attemptId,
-              } as OrchestrationV2Run,
-            }),
+          layerProjectionStore(
+            () =>
+              Effect.succeed({
+                providerThread,
+                providerTurn: projection.providerTurns[0],
+                attempt: projection.attempts[0],
+                message: {
+                  id: MessageId.make("message:steer-app-context"),
+                  text: "What did the app report?",
+                  attachments: [],
+                  createdBy: "agent",
+                  creationSource: "mcp",
+                  senderThreadId: ThreadId.make("thread:steer-sender"),
+                } as unknown as NonNullable<
+                  ProjectionStore.ProjectionProviderControlContext["message"]
+                >,
+                run: {
+                  id: RunId.make("run:steer-app-context"),
+                  status: "running",
+                  activeAttemptId: attemptId,
+                } as OrchestrationV2Run,
+              }),
+            projection,
           ),
           layerSessions(sessionId, runtime),
           Layer.mock(EventSink.EventSinkV2)({}),

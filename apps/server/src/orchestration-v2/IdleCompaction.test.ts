@@ -38,7 +38,12 @@ const providerThreadId = ProviderThreadId.make("provider-thread");
 const modelSelection = { instanceId, model: "claude-opus-5-5" };
 
 function records(
-  usage: { readonly usedTokens?: number; readonly cacheExpiresInMs?: number } = {},
+  usage: {
+    readonly usedTokens?: number;
+    readonly maxTokens?: number;
+    readonly autoCompactThreshold?: number;
+    readonly cacheExpiresInMs?: number;
+  } = {},
 ): { -readonly [Key in keyof IdleCompactionRecords]: IdleCompactionRecords[Key] } {
   const messageId = MessageId.make("message-1");
   const nodeId = NodeId.make("root-node");
@@ -134,6 +139,10 @@ function records(
         completedAt: at(),
         tokenUsage: {
           usedTokens: usage.usedTokens ?? 250_000,
+          ...(usage.maxTokens === undefined ? {} : { maxTokens: usage.maxTokens }),
+          ...(usage.autoCompactThreshold === undefined
+            ? {}
+            : { autoCompactThreshold: usage.autoCompactThreshold }),
           ...(usage.cacheExpiresInMs === undefined
             ? {}
             : { promptCacheExpiresAt: DateTime.formatIso(at(usage.cacheExpiresInMs)) }),
@@ -150,19 +159,25 @@ function records(
 describe("idleCompactionWindow", () => {
   it("skips small contexts, unknown expiry, other providers, switched threads, compactions, and side chats", () => {
     const cache = { cacheExpiresInMs: 60 * MINUTE_MS };
-    expect(idleCompactionWindow(records({ ...cache, usedTokens: 199_999 }), NOW_MS)).toBeNull();
-    expect(idleCompactionWindow(records(), NOW_MS)).toBeNull();
+    expect(
+      idleCompactionWindow(
+        records({ ...cache, usedTokens: 199_999 }),
+        NOW_MS,
+        "beforeCacheExpires",
+      ),
+    ).toBeNull();
+    expect(idleCompactionWindow(records(), NOW_MS, "beforeCacheExpires")).toBeNull();
     const codex = records(cache);
     codex.providerThreads = [
       { ...codex.providerThreads[0]!, driver: ProviderDriverKind.make("codex") },
     ];
-    expect(idleCompactionWindow(codex, NOW_MS)).toBeNull();
+    expect(idleCompactionWindow(codex, NOW_MS, "beforeCacheExpires")).toBeNull();
     const switched = records(cache);
     switched.thread = { ...switched.thread, providerInstanceId: ProviderInstanceId.make("codex") };
-    expect(idleCompactionWindow(switched, NOW_MS)).toBeNull();
+    expect(idleCompactionWindow(switched, NOW_MS, "beforeCacheExpires")).toBeNull();
     const compacted = records(cache);
     compacted.messages = [{ ...compacted.messages[0]!, text: "/compact" }];
-    expect(idleCompactionWindow(compacted, NOW_MS)).toBeNull();
+    expect(idleCompactionWindow(compacted, NOW_MS, "beforeCacheExpires")).toBeNull();
     const steered = records(cache);
     steered.runs = [
       ...steered.runs,
@@ -175,43 +190,102 @@ describe("idleCompactionWindow", () => {
         startedAt: null,
       },
     ];
-    expect(idleCompactionWindow(steered, NOW_MS)?.runId).toBe(runId);
+    expect(idleCompactionWindow(steered, NOW_MS, "beforeCacheExpires")?.runId).toBe(runId);
     // A turn Claude itself reported as cancelled did run, so it stays the latest.
     steered.runs = steered.runs.map((run) => ({ ...run, startedAt: at(-MINUTE_MS) }));
-    expect(idleCompactionWindow(steered, NOW_MS)).toBeNull();
+    expect(idleCompactionWindow(steered, NOW_MS, "beforeCacheExpires")).toBeNull();
     const archived = records(cache);
     archived.thread = { ...archived.thread, archivedAt: at() };
-    expect(idleCompactionWindow(archived, NOW_MS)).toBeNull();
+    expect(idleCompactionWindow(archived, NOW_MS, "beforeCacheExpires")).toBeNull();
     const sideChat = records(cache);
-    expect(idleCompactionWindow(sideChat, NOW_MS)).not.toBeNull();
+    expect(idleCompactionWindow(sideChat, NOW_MS, "beforeCacheExpires")).not.toBeNull();
     sideChat.thread = {
       ...sideChat.thread,
       lineage: { ...sideChat.thread.lineage, relationshipToParent: "fork", sideChat: true },
     };
-    expect(idleCompactionWindow(sideChat, NOW_MS)).toBeNull();
+    expect(idleCompactionWindow(sideChat, NOW_MS, "beforeCacheExpires")).toBeNull();
   });
+
+  it.each([
+    // 90 % of the 1M window: a minute after the turn, in either mode.
+    { mode: "onReturn", usage: { usedTokens: 900_000 }, start: MINUTE_MS },
+    { mode: "beforeCacheExpires", usage: { usedTokens: 900_000 }, start: MINUTE_MS },
+    { mode: "off", usage: { usedTokens: 900_000 }, start: null },
+    // A lower compaction threshold counts, even below the size cache-expiry compaction needs.
+    {
+      mode: "onReturn",
+      usage: { usedTokens: 106_000, autoCompactThreshold: 117_000 },
+      start: MINUTE_MS,
+    },
+    // Not near the limit: each mode as before.
+    { mode: "onReturn", usage: { usedTokens: 899_999 }, start: null },
+    { mode: "beforeCacheExpires", usage: { usedTokens: 899_999 }, start: 58 * MINUTE_MS },
+    // Held back near the limit: each mode as if it were not.
+    {
+      mode: "beforeCacheExpires",
+      usage: { usedTokens: 900_000 },
+      compactNearLimit: false,
+      start: 58 * MINUTE_MS,
+    },
+    { mode: "onReturn", usage: { usedTokens: 900_000 }, compactNearLimit: false, start: null },
+  ] as const)(
+    "compacts a thread near the limit soon after its turn: $mode/$usage.usedTokens/$compactNearLimit",
+    ({ mode, usage, start, ...test }) => {
+      const window = idleCompactionWindow(
+        records({ maxTokens: 1_000_000, cacheExpiresInMs: 60 * MINUTE_MS, ...usage }),
+        NOW_MS,
+        mode,
+        "compactNearLimit" in test ? test.compactNearLimit : true,
+      );
+      expect(window === null ? null : window.startMs - NOW_MS).toBe(start);
+      if (window !== null)
+        expect(window.reason).toBe(start === MINUTE_MS ? "nearLimit" : "beforeCacheExpires");
+    },
+  );
 });
 
 describe("IdleCompactionService", () => {
   it.effect.each([
-    { mode: "onReturn", reads: 0 },
-    { mode: "off", reads: 0 },
-    { mode: "beforeCacheExpires", reads: 1 },
-    { mode: "beforeCacheExpires", override: "off", reads: 0 },
-    { mode: "onReturn", override: "beforeCacheExpires", reads: 1 },
-    { mode: "beforeCacheExpires", projectDisabled: true, reads: 0 },
-    { mode: "beforeCacheExpires", enabled: false, reads: 0 },
-    { mode: "beforeCacheExpires", driver: "codex", instance: "codex", reads: 0 },
-    { mode: "beforeCacheExpires", driver: "codex", instance: "custom-codex", reads: 0 },
-    { mode: "beforeCacheExpires", driver: "claudeAgent", instance: "custom-claude", reads: 1 },
-    { mode: "beforeCacheExpires", unconfigured: true, reads: 1 },
+    { mode: "onReturn", reads: 1, dispatches: 0 },
+    { mode: "off", reads: 0, dispatches: 0 },
+    { mode: "beforeCacheExpires", reads: 1, dispatches: 1 },
+    { mode: "beforeCacheExpires", override: "off", reads: 0, dispatches: 0 },
+    { mode: "onReturn", override: "beforeCacheExpires", reads: 1, dispatches: 1 },
+    { mode: "beforeCacheExpires", projectDisabled: true, reads: 0, dispatches: 0 },
+    { mode: "beforeCacheExpires", enabled: false, reads: 0, dispatches: 0 },
+    { mode: "beforeCacheExpires", driver: "codex", instance: "codex", reads: 0, dispatches: 0 },
+    {
+      mode: "beforeCacheExpires",
+      driver: "codex",
+      instance: "custom-codex",
+      reads: 0,
+      dispatches: 0,
+    },
+    {
+      mode: "beforeCacheExpires",
+      driver: "claudeAgent",
+      instance: "custom-claude",
+      reads: 1,
+      dispatches: 1,
+    },
+    { mode: "beforeCacheExpires", unconfigured: true, reads: 1, dispatches: 1 },
+    { mode: "onReturn", nearLimit: true, reads: 1, dispatches: 1 },
+    { mode: "off", nearLimit: true, reads: 0, dispatches: 0 },
+    // Its memory reminder is due: the user's next turn carries it, not the compaction.
+    { mode: "onReturn", nearLimit: true, pinned: true, reads: 2, dispatches: 0 },
+    { mode: "onReturn", nearLimit: true, pinned: true, reminded: true, reads: 2, dispatches: 1 },
+    { mode: "onReturn", nearLimit: true, pinned: true, memory: false, reads: 1, dispatches: 1 },
   ] as const)(
-    "loads history only for eligible idle compaction: $mode/$override/$enabled/$projectDisabled/$instance/$unconfigured",
+    "compacts only eligible idle threads: $mode/$override/$enabled/$projectDisabled/$instance/$unconfigured/$nearLimit/$pinned/$reminded/$memory",
     (scenario) => {
       const test = {
         override: "default",
         enabled: true,
         projectDisabled: false,
+        nearLimit: false,
+        pinned: false,
+        reminded: false,
+        memory: true,
         ...scenario,
       } as const;
       return Effect.gen(function* () {
@@ -220,19 +294,41 @@ describe("IdleCompactionService", () => {
           "instance" in test ? test.instance : "claudeAgent",
         );
         const driver = ProviderDriverKind.make("driver" in test ? test.driver : "claudeAgent");
-        const base = records({ cacheExpiresInMs: 2 * MINUTE_MS });
+        const base = records({
+          cacheExpiresInMs: 2 * MINUTE_MS,
+          ...(test.nearLimit ? { maxTokens: 1_000_000, usedTokens: 950_000 } : {}),
+        });
+        const latestTurn = base.providerTurns[0]!;
         const data: OrchestrationV2ThreadProjection = {
           ...base,
           thread: {
             ...base.thread,
             providerInstanceId: selectedInstance,
             modelSelection: { ...base.thread.modelSelection, instanceId: selectedInstance },
+            ...(test.pinned ? { pinnedAt: at(-MINUTE_MS) } : {}),
           },
+          // A minute ago, so a compaction near the limit is due now.
           runs: base.runs.map((run) => ({
             ...run,
             providerInstanceId: selectedInstance,
             modelSelection: { ...run.modelSelection, instanceId: selectedInstance },
+            completedAt: at(-MINUTE_MS),
           })),
+          providerTurns: test.reminded
+            ? [
+                {
+                  ...latestTurn,
+                  id: ProviderTurnId.make("provider-turn-0"),
+                  ordinal: 0,
+                  tokenUsage: {
+                    ...latestTurn.tokenUsage!,
+                    usedTokens: 900_000,
+                    updatedAt: DateTime.formatIso(at(-2 * MINUTE_MS)),
+                  },
+                },
+                latestTurn,
+              ]
+            : base.providerTurns,
           providerThreads: base.providerThreads.map((thread) => ({
             ...thread,
             driver,
@@ -292,6 +388,7 @@ describe("IdleCompactionService", () => {
             getSettings: Effect.succeed({
               ...DEFAULT_SERVER_SETTINGS,
               idleCompaction: test.mode,
+              pinnedThreadsKeepMemory: test.memory,
               providerInstances:
                 "unconfigured" in test
                   ? {}
@@ -318,7 +415,7 @@ describe("IdleCompactionService", () => {
           yield* Deferred.await(done);
         }).pipe(Effect.provide(dependencies), Effect.withTracer(tracer));
         expect(historyReads).toBe(test.reads);
-        expect(dispatches).toBe(test.reads);
+        expect(dispatches).toBe(test.dispatches);
       });
     },
   );

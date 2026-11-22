@@ -2093,7 +2093,7 @@ it("renders automatic compaction as one live divider that finishes with its reas
   container.style.cssText = "height: 1200px; width: 900px; display: flex; flex-direction: column;";
   await using screen = await render(ui(false), { container });
   await expect
-    .element(screen.getByRole("separator", { name: "Compacting before the cache expires…" }))
+    .element(screen.getByRole("separator", { name: "Compacting while idle…" }))
     .toBeVisible();
   expect(container.textContent).not.toContain("/compact");
   expect(container.textContent).not.toContain("Thinking");
@@ -2103,12 +2103,12 @@ it("renders automatic compaction as one live divider that finishes with its reas
   await expect
     .element(
       screen.getByRole("separator", {
-        name: "Context automatically compacted before cache expiry 899K → 19K tokens",
+        name: "Context compacted while idle 899K → 19K tokens",
       }),
     )
     .toBeVisible();
   expect(container.querySelectorAll('[role="separator"]')).toHaveLength(1);
-  expect(container.textContent).not.toContain("Compacting before");
+  expect(container.textContent).not.toContain("Compacting while");
 });
 
 function TimelineChangedFilesCard() {

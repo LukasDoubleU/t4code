@@ -84,6 +84,15 @@ over 200,000 tokens. Each Claude provider's settings can override it:
 - **Never** skips idle compaction and Claude's resume prompt. **Auto-compact after**
   still applies, and you can still compact by hand.
 
+Claude compacts a thread when it reaches its limit, so the message that gets it
+there waits for the summary. Unless **Compact idle threads** is **Never**, a thread
+at about 90% of that limit compacts about a minute after its turn ends instead,
+while you write your next message, whatever its size. The limit is **Auto-compact
+after** when set, otherwise the model's context window. The compaction appears as a
+`/compact` turn sent by T3 Code, and a message you send within that minute goes
+first. A pinned thread that keeps a memory skips this while its reminder to save
+that memory is due, so the agent saves it in your next turn before compacting.
+
 ## Usage limits
 
 If your Claude subscription runs out of usage mid-turn, the thread shows which

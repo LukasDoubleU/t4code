@@ -1,7 +1,13 @@
-import { isListedThreadLineage, type OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import {
+  isListedThreadLineage,
+  type IdleCompactionMode,
+  type OrchestrationV2ThreadProjection,
+} from "@t3tools/contracts";
 import { COMPACTION_SUGGESTION_MIN_TOKENS } from "@t3tools/shared/claudeCompaction";
 import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as DateTime from "effect/DateTime";
+
+import { contextNearLimit } from "../memory/ThreadMemory.ts";
 
 // Claude Code's idleCompaction defaults to 200K and won't go below 100K. Below
 // that a cold re-read is cheap, so compacting mostly loses context for little
@@ -10,6 +16,12 @@ const MIN_CONTEXT_TOKENS = COMPACTION_SUGGESTION_MIN_TOKENS;
 // Start this long before the cache expires: enough for the session to resume
 // and send the compaction while the cache is still warm.
 const LEAD_MS = 2 * 60_000;
+// One more turn from here usually passes Claude's threshold, so that turn would compact anyway;
+// compacting now moves the wait to while the user drafts. Above the memory reminder's 85%, so
+// that reminder usually reaches the agent a turn earlier.
+const NEAR_LIMIT_SHARE = 0.9;
+// Lets a quick follow-up go out first and still finishes while the user drafts a longer one.
+const NEAR_LIMIT_DELAY_MS = 60_000;
 
 export type IdleCompactionRecords = Pick<
   OrchestrationV2ThreadProjection,
@@ -24,10 +36,10 @@ export type IdleCompactionRecords = Pick<
 >;
 
 /**
- * When an idle Claude thread should compact, or null when it should not. The
- * window ends when the prompt cache of Claude's last request expires (1h on
- * subscriptions, 5m on API keys); compacting after that pays a full uncached
- * read.
+ * When an idle Claude thread should compact, or null when it should not: soon after its turn when
+ * close to Claude's threshold (unless "off"), else under "beforeCacheExpires" shortly before the
+ * prompt cache of Claude's last request expires (1h on subscriptions, 5m on API keys), as
+ * compacting after that pays a full uncached read.
  */
 export function idleCompactionWindow(
   {
@@ -41,11 +53,15 @@ export function idleCompactionWindow(
     contextTransfers,
   }: IdleCompactionRecords,
   nowMs: number,
+  mode: IdleCompactionMode,
+  /** False while something must reach the agent before a compaction near the limit. */
+  compactNearLimit = true,
 ): {
   readonly runId: (typeof runs)[number]["id"];
   readonly startMs: number;
-  readonly endMs: number;
+  readonly reason: "nearLimit" | "beforeCacheExpires";
 } | null {
+  if (mode === "off") return null;
   if (thread.deletedAt !== null || thread.archivedAt !== null) return null;
   if (thread.settledAt !== null || thread.settledOverride === "settled") return null;
   if (thread.snoozedUntil != null && DateTime.toEpochMillis(thread.snoozedUntil) > nowMs)
@@ -96,11 +112,21 @@ export function idleCompactionWindow(
     .filter((turn) => turn.providerThreadId === providerThread.id && turn.tokenUsage !== undefined)
     .map((turn) => turn.tokenUsage!)
     .toSorted((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
-  if ((usages[0]?.usedTokens ?? 0) < MIN_CONTEXT_TOKENS) return null;
+  const usage = usages[0];
+  if (usage === undefined) return null;
+  // No minimum size: this close to its threshold, the next turn compacts whatever the size.
+  if (compactNearLimit && contextNearLimit(usage, NEAR_LIMIT_SHARE)) {
+    return {
+      runId: latestRun.id,
+      startMs: DateTime.toEpochMillis(latestRun.completedAt) + NEAR_LIMIT_DELAY_MS,
+      reason: "nearLimit",
+    };
+  }
+  if (mode !== "beforeCacheExpires" || usage.usedTokens < MIN_CONTEXT_TOKENS) return null;
   // A request served fully from cache creates no cache entry and reports no
   // TTL, but it still refreshes the cache. Treat it as unknown and skip.
-  const expiresAt = usages[0]?.promptCacheExpiresAt;
+  const expiresAt = usage.promptCacheExpiresAt;
   const endMs = expiresAt === undefined ? Number.NaN : Date.parse(expiresAt);
   if (!Number.isFinite(endMs) || nowMs >= endMs) return null;
-  return { runId: latestRun.id, startMs: endMs - LEAD_MS, endMs };
+  return { runId: latestRun.id, startMs: endMs - LEAD_MS, reason: "beforeCacheExpires" };
 }

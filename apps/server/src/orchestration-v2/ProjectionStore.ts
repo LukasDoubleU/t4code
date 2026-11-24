@@ -856,6 +856,13 @@ export interface ProjectionStoreV2Shape {
       readonly exclude?: ReadonlyArray<string>;
     },
   ) => Effect.Effect<ReadonlyArray<ThreadId>, ProjectionStoreV2Error>;
+  /** Listed threads whose latest run completed since `since`, the most recent first. */
+  readonly getIdleCompactionCandidates: (
+    since: DateTime.Utc,
+  ) => Effect.Effect<
+    ReadonlyArray<{ readonly threadId: ThreadId; readonly runId: RunId }>,
+    ProjectionStoreV2Error
+  >;
   readonly getUnreadableThreadIds: () => Effect.Effect<
     ReadonlyArray<ThreadId>,
     ProjectionStoreV2Error
@@ -5325,6 +5332,35 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           ORDER BY updated_at ASC, thread_id ASC
         `;
         return rows.map((row) => ThreadId.make(row.thread_id));
+      },
+      Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
+    );
+
+    const getIdleCompactionCandidates = Effect.fn("ProjectionStore.getIdleCompactionCandidates")(
+      function* (since: DateTime.Utc) {
+        const rows = yield* sql<{ readonly thread_id: string; readonly run_id: string }>`
+          SELECT t.thread_id, r.run_id
+          FROM orchestration_v2_projection_threads t
+          INNER JOIN orchestration_v2_projection_runs r ON r.run_id = (
+            SELECT latest.run_id FROM orchestration_v2_projection_runs latest
+            WHERE latest.thread_id = t.thread_id
+              -- A removed or steered queued message leaves a cancelled run that never started.
+              AND NOT (
+                latest.status = 'cancelled'
+                AND json_extract(latest.payload_json, '$.startedAt') IS NULL
+              )
+            ORDER BY latest.ordinal DESC
+            LIMIT 1
+          )
+          WHERE t.deleted_at IS NULL AND t.archived_at IS NULL
+            AND r.status = 'completed'
+            AND julianday(r.completed_at) >= julianday(${DateTime.formatIso(since)})
+          ORDER BY r.completed_at DESC, t.thread_id ASC
+        `;
+        return rows.map((row) => ({
+          threadId: ThreadId.make(row.thread_id),
+          runId: RunId.make(row.run_id),
+        }));
       },
       Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
     );
@@ -9902,6 +9938,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getLimitRecoveryCandidates: readOnReader(getLimitRecoveryCandidates),
       getLimitRecoveryWakeAt: readOnReader(getLimitRecoveryWakeAt),
       getRecoveryThreadIds: readOnReader(getRecoveryThreadIds),
+      getIdleCompactionCandidates: readOnReader(getIdleCompactionCandidates),
       getUnreadableThreadIds: readOnReader(getUnreadableThreadIds),
       getThreadSnapshot: readOnReader(getThreadSnapshot),
       getThreadSnapshotWindow: readOnReader(getThreadSnapshotWindow),

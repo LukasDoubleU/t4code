@@ -196,6 +196,7 @@ function layerProjectionStore(
       canStartQueuedRun: () => Effect.die("not used"),
       getHeldQueuedRuns: () => Effect.die("not used"),
       getRecoveryThreadIds: () => Effect.die("unused getRecoveryThreadIds"),
+      getIdleCompactionCandidates: () => Effect.die("unused getIdleCompactionCandidates"),
       getUnreadableThreadIds: () => Effect.die("unused getUnreadableThreadIds"),
       getThreadSnapshot: () => Effect.die("unused getThreadSnapshot"),
       getThreadSnapshotWindow: () => Effect.die("unused getThreadSnapshotWindow"),

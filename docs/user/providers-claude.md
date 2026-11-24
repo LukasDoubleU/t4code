@@ -79,9 +79,12 @@ over 200,000 tokens. Each Claude provider's settings can override it:
   prompt cache expires, while the history is still cached, so your next message
   does not wait for it. This is the default.
   The compaction appears in the thread as a `/compact` turn sent by T3 Code.
-  If the window is missed, such as when you enable this mode after the cache has
-  expired or the server restarts before compaction runs, it falls back to
-  **When you return**. Switch the chip to **Keep** to keep the full history for that message.
+  If the computer was asleep or T3 Code was not running when the window came, it
+  compacts the thread once it notices, one thread at a time, if the last turn ended
+  within the past day. A message you send first skips that and compacts as under
+  **When you return**, which is also the fallback for any other missed window, such
+  as when you enable this mode after the cache has expired. Switch the chip to
+  **Keep** to keep the full history for that message.
 - **Never** skips idle compaction and Claude's resume prompt. **Auto-compact after**
   still applies, and you can still compact by hand.
 

@@ -3,6 +3,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   EventId,
   MessageId,
+  type OrchestrationV2DomainEvent,
   type OrchestrationV2ThreadProjection,
   NodeId,
   ProjectId,
@@ -13,10 +14,12 @@ import {
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as Tracer from "effect/Tracer";
 import * as TestClock from "effect/testing/TestClock";
@@ -235,11 +238,57 @@ describe("idleCompactionWindow", () => {
         records({ maxTokens: 1_000_000, cacheExpiresInMs: 60 * MINUTE_MS, ...usage }),
         NOW_MS,
         mode,
-        "compactNearLimit" in test ? test.compactNearLimit : true,
+        { compactNearLimit: "compactNearLimit" in test ? test.compactNearLimit : true },
       );
       expect(window === null ? null : window.startMs - NOW_MS).toBe(start);
       if (window !== null)
         expect(window.reason).toBe(start === MINUTE_MS ? "nearLimit" : "beforeCacheExpires");
+    },
+  );
+
+  it.each([
+    // The cache expired an hour after the turn; the server checks at `idle` after the turn.
+    { idle: 61 * MINUTE_MS, reason: "missedSlot" },
+    { idle: 24 * 60 * MINUTE_MS, reason: "missedSlot" },
+    { idle: 24 * 60 * MINUTE_MS + 1, reason: null },
+    { idle: 61 * MINUTE_MS, makeUp: false, reason: null },
+    // Within the slot nothing was missed.
+    { idle: 59 * MINUTE_MS, reason: "beforeCacheExpires" },
+    { idle: 61 * MINUTE_MS, mode: "onReturn", reason: null },
+    { idle: 61 * MINUTE_MS, mode: "off", reason: null },
+    { idle: 61 * MINUTE_MS, usedTokens: 199_999, reason: null },
+    { idle: 61 * MINUTE_MS, change: "compacted", reason: null },
+    { idle: 61 * MINUTE_MS, change: "snoozed", reason: null },
+    { idle: 61 * MINUTE_MS, change: "settled", reason: null },
+    { idle: 61 * MINUTE_MS, change: "archived", reason: null },
+    { idle: 61 * MINUTE_MS, change: "running", reason: null },
+  ] as const)(
+    "makes up a slot the server missed: $idle/$mode/$makeUp/$usedTokens/$change",
+    ({ idle, reason, ...test }) => {
+      const data = records({
+        cacheExpiresInMs: 60 * MINUTE_MS,
+        ...("usedTokens" in test ? { usedTokens: test.usedTokens } : {}),
+      });
+      const change = "change" in test ? test.change : undefined;
+      if (change === "compacted") data.messages = [{ ...data.messages[0]!, text: "/compact" }];
+      if (change === "snoozed")
+        data.thread = { ...data.thread, snoozedUntil: at(idle + 60 * MINUTE_MS) };
+      if (change === "settled") data.thread = { ...data.thread, settledAt: at(MINUTE_MS) };
+      if (change === "archived") data.thread = { ...data.thread, archivedAt: at(MINUTE_MS) };
+      // The user sent at wake: their turn is running.
+      if (change === "running")
+        data.runs = [
+          ...data.runs,
+          { ...data.runs[0]!, id: RunId.make("run-2"), ordinal: 2, status: "running" },
+        ];
+      const window = idleCompactionWindow(
+        data,
+        NOW_MS + idle,
+        "mode" in test ? test.mode : "beforeCacheExpires",
+        { makeUp: "makeUp" in test ? test.makeUp : true },
+      );
+      expect(window?.reason ?? null).toBe(reason);
+      if (window !== null) expect(window.startMs).toBe(NOW_MS + 58 * MINUTE_MS);
     },
   );
 });
@@ -378,6 +427,7 @@ describe("IdleCompactionService", () => {
           }),
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getThread: () => Effect.succeed(data.thread),
+            getIdleCompactionCandidates: () => Effect.succeed([]),
             getThreadRecords: () =>
               Effect.sync(() => {
                 historyReads++;
@@ -484,6 +534,7 @@ describe("IdleCompactionService", () => {
         }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getThread: () => Effect.succeed(data.thread),
+          getIdleCompactionCandidates: () => Effect.succeed([]),
           getThreadRecords: (_threadId, _keys, options) =>
             Effect.succeed({
               ...data,
@@ -509,5 +560,197 @@ describe("IdleCompactionService", () => {
       }).pipe(Effect.provide(dependencies));
       expect(dispatched).toEqual(["server:idle-compact:idle-thread:run-2"]);
     }),
+  );
+
+  const HOUR_MS = 60 * MINUTE_MS;
+  // The turn ended at NOW_MS and its cache expires an hour later.
+  const idleThread = (id: ThreadId): OrchestrationV2ThreadProjection => {
+    const base = records({ cacheExpiresInMs: HOUR_MS });
+    return {
+      ...base,
+      thread: { ...base.thread, id, lineage: { ...base.thread.lineage, rootThreadId: id } },
+      attempts: [],
+      nodes: [],
+      subagents: [],
+      providerSessions: [],
+      plans: [],
+      checkpointScopes: [],
+      checkpoints: [],
+      contextHandoffs: [],
+      visibleTurnItems: [],
+      updatedAt: at(),
+    };
+  };
+  const runUpdated = (
+    thread: OrchestrationV2ThreadProjection,
+    run: OrchestrationV2ThreadProjection["runs"][number],
+  ): OrchestrationV2DomainEvent => ({
+    id: EventId.make(`updated-${thread.thread.id}-${run.id}`),
+    type: "run.updated",
+    threadId: thread.thread.id,
+    runId: run.id,
+    occurredAt: at(),
+    payload: run,
+  });
+  const compactionEnded = (thread: OrchestrationV2ThreadProjection) =>
+    runUpdated(thread, {
+      ...thread.runs[0]!,
+      id: RunId.make("compaction-run"),
+      ordinal: 2,
+      userMessageId: MessageId.make(`idle-compact:${thread.thread.id}:${runId}`),
+      // Not "completed", which would replace the waiting fiber anyway.
+      status: "failed",
+    });
+
+  /** The service over `threads`, with a wall clock that runs `clock.skewMs` ahead of its timers. */
+  const makeUpHarness = Effect.fn(function* (options: {
+    readonly threads: Map<ThreadId, OrchestrationV2ThreadProjection>;
+    readonly candidates: ReadonlyArray<ThreadId>;
+    readonly onDispatch?: (threadId: ThreadId) => void;
+  }) {
+    const testClock = yield* TestClock.testClockWith(Effect.succeed);
+    const clock = { skewMs: 0 };
+    const wallClock: Clock.Clock = {
+      ...testClock,
+      currentTimeMillisUnsafe: () => testClock.currentTimeMillisUnsafe() + clock.skewMs,
+      currentTimeMillis: Effect.sync(() => testClock.currentTimeMillisUnsafe() + clock.skewMs),
+    };
+    const events = yield* Queue.unbounded<OrchestrationV2DomainEvent>();
+    const dispatched = yield* Queue.unbounded<ThreadId>();
+    const reads = yield* Queue.unbounded<ThreadId>();
+    const finished = yield* Queue.unbounded<void>();
+    const tracer = Tracer.make({
+      span(spanOptions) {
+        const span = new Tracer.NativeSpan(spanOptions);
+        const end = span.end.bind(span);
+        span.end = (...args) => {
+          end(...args);
+          if (span.name === "IdleCompactionService.compactWhenDue")
+            Queue.offerUnsafe(finished, undefined);
+        };
+        return span;
+      },
+    });
+    const thread = (id: ThreadId) => options.threads.get(id)!;
+    const dependencies = Layer.mergeAll(
+      Layer.mock(Orchestrator.OrchestratorV2)({
+        streamDomainEvents: Stream.fromQueue(events),
+        dispatch: (command) =>
+          Effect.sync(() => {
+            if (command.type === "message.dispatch") {
+              expect(command.idleCompaction).toBe("beforeCacheExpires");
+              options.onDispatch?.(command.threadId);
+              Queue.offerUnsafe(dispatched, command.threadId);
+            }
+            return { sequence: 1, storedEvents: [] };
+          }),
+      }),
+      Layer.mock(ProjectionStore.ProjectionStoreV2)({
+        getThread: (id) => Effect.sync(() => thread(id).thread),
+        getIdleCompactionCandidates: () =>
+          Effect.succeed(options.candidates.map((id) => ({ threadId: id, runId }))),
+        getThreadRecords: (id) =>
+          Effect.sync(() => {
+            Queue.offerUnsafe(reads, id);
+            return thread(id);
+          }),
+      }),
+      Layer.mock(ServerSettings.ServerSettingsService)({
+        getSettings: Effect.succeed({
+          ...DEFAULT_SERVER_SETTINGS,
+          idleCompaction: "beforeCacheExpires",
+        }),
+      }),
+    );
+    const start = Effect.gen(function* () {
+      const service = yield* IdleCompactionService.make;
+      yield* service.start();
+    }).pipe(
+      Effect.provide(dependencies),
+      Effect.provideService(Clock.Clock, wallClock),
+      Effect.withTracer(tracer),
+    );
+    return { start, testClock, clock, events, dispatched, reads, finished };
+  });
+
+  it.effect.each([
+    // Timers stall while the machine sleeps; the wall clock jumps by the sleep.
+    { via: "sleep", slept: 11 * HOUR_MS, wait: MINUTE_MS, dispatches: 1 },
+    { via: "sleep", slept: 25 * HOUR_MS, wait: MINUTE_MS, dispatches: 0 },
+    // A server that restarts half an hour after the turn keeps the slot.
+    { via: "restart", slept: 0, wait: 28 * MINUTE_MS, dispatches: 1 },
+  ] as const)(
+    "compacts when a sleep or restart cut its timer short: $via/$slept",
+    ({ via, slept, wait, dispatches }) =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(via === "restart" ? NOW_MS + 30 * MINUTE_MS : NOW_MS);
+        const data = idleThread(threadId);
+        const harness = yield* makeUpHarness({
+          threads: new Map([[threadId, data]]),
+          candidates: via === "restart" ? [threadId] : [],
+        });
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            yield* harness.start;
+            if (via === "sleep")
+              yield* Queue.offer(harness.events, runUpdated(data, data.runs[0]!));
+            yield* Queue.take(harness.reads);
+            harness.clock.skewMs = slept;
+            yield* harness.testClock.adjust(wait);
+            if (dispatches === 1) {
+              expect(yield* Queue.take(harness.dispatched)).toBe(threadId);
+            } else {
+              yield* Queue.take(harness.finished);
+              expect(yield* Queue.size(harness.dispatched)).toBe(0);
+            }
+          }),
+        );
+      }),
+  );
+
+  it.effect.each([{ userSends: false }, { userSends: true }])(
+    "makes up slots missed while stopped one thread at a time: userSends $userSends",
+    ({ userSends }) =>
+      Effect.gen(function* () {
+        // Started three hours after the turns, two hours after their caches expired.
+        yield* TestClock.setTime(NOW_MS + 3 * HOUR_MS);
+        const ids = [ThreadId.make("idle-a"), ThreadId.make("idle-b")];
+        const threads = new Map(ids.map((id) => [id, idleThread(id)]));
+        const log: Array<string> = [];
+        const harness = yield* makeUpHarness({
+          threads,
+          candidates: ids,
+          onDispatch: (dispatchedId) => {
+            log.push("dispatch");
+            // The user sends to the other thread while its make-up waits its turn.
+            if (!userSends) return;
+            const other = ids.find((id) => id !== dispatchedId)!;
+            const data = threads.get(other)!;
+            threads.set(other, {
+              ...data,
+              runs: [
+                ...data.runs,
+                { ...data.runs[0]!, id: RunId.make("run-2"), ordinal: 2, status: "running" },
+              ],
+            });
+          },
+        });
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            yield* harness.start;
+            const first = yield* Queue.take(harness.dispatched);
+            log.push("ended");
+            yield* Queue.offer(harness.events, compactionEnded(threads.get(first)!));
+            if (!userSends) {
+              const second = yield* Queue.take(harness.dispatched);
+              expect(second).not.toBe(first);
+              yield* Queue.offer(harness.events, compactionEnded(threads.get(second)!));
+            }
+            yield* Queue.take(harness.finished);
+            yield* Queue.take(harness.finished);
+          }),
+        );
+        expect(log).toEqual(userSends ? ["dispatch", "ended"] : ["dispatch", "ended", "dispatch"]);
+      }),
   );
 });

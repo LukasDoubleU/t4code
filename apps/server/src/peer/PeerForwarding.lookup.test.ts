@@ -104,6 +104,7 @@ const environmentThreads = (
     Layer.mock(ThreadManagement.ThreadManagementService)({
       getThreadShell: shellOf,
       getProjectThreadRecords: (input) => projectionOf(input.threadId),
+      getRunCount: () => Effect.succeed(0),
       // Only ever asked for a thread that exists: the caller, or a target already found.
       getThreadRecords: (threadId) => projectionOf(threadId).pipe(Effect.orDie),
       getTimelinePage: () => Effect.succeed({ items: [], totalItems: 0, hasMore: false } as never),

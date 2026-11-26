@@ -1275,6 +1275,7 @@ it("readThread shows citations the way the agent received them", async () => {
             return Effect.succeed(projection);
           },
           getProjectThreadRecords: () => Effect.succeed(projection),
+          getRunCount: () => Effect.succeed(projection.runs.length),
           getTimelinePage: () =>
             Effect.succeed({
               items: projection.visibleTurnItems,
@@ -1359,6 +1360,7 @@ it("readThread lists the user's reactions on an assistant reply and its passages
           getThreadShell: () => Effect.succeed(shell),
           getThreadRecords: () => Effect.succeed(projection),
           getProjectThreadRecords: () => Effect.succeed(projection),
+          getRunCount: () => Effect.succeed(projection.runs.length),
           getTimelinePage: () =>
             Effect.succeed({
               items: projection.visibleTurnItems,

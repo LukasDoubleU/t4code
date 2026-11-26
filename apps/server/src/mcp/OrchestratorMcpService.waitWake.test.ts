@@ -16,6 +16,7 @@ import {
   ProviderThreadId,
   ProviderTurnId,
   ThreadId,
+  withMessageSenderNote,
 } from "@t3tools/contracts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
@@ -385,7 +386,13 @@ describe("t3_thread_wait wakes on a message for the waiting thread", () => {
           },
         });
         // The waiting turn gets the whole message as a steer...
-        expect(yield* Queue.take(provider.steers)).toEqual({ threadId: waiter, text: answer });
+        expect(yield* Queue.take(provider.steers)).toEqual({
+          threadId: waiter,
+          text: withMessageSenderNote(
+            { createdBy: "agent", creationSource: "mcp", senderThreadId: answerer },
+            answer,
+          ),
+        });
         // ...and no queued copy is left to start a turn later.
         const projection = yield* orchestrator.getThreadProjection(waiter);
         expect(queuedRuns(projection)).toEqual([]);
@@ -423,7 +430,13 @@ describe("t3_thread_wait wakes on a message for the waiting thread", () => {
             delivery: "steered",
           },
         });
-        expect(yield* Queue.take(provider.steers)).toEqual({ threadId: waiter, text: answer });
+        expect(yield* Queue.take(provider.steers)).toEqual({
+          threadId: waiter,
+          text: withMessageSenderNote(
+            { createdBy: "agent", creationSource: "mcp", senderThreadId: answerer },
+            answer,
+          ),
+        });
         expect(queuedRuns(yield* orchestrator.getThreadProjection(waiter))).toEqual([]);
       }),
     ),

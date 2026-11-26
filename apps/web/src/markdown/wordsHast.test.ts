@@ -243,6 +243,14 @@ describe("wordsHast", () => {
     );
   });
 
+  it("shows emoticons in prose as emoji only when asked, leaving code and links as written", () => {
+    const markdown = "Done :D see `:D` and [:D](https://example.com)";
+    expect(wordsHtml(markdown, { emoticons: true })).toBe(
+      '<p dir="ltr">Done <span data-markdown-emoticon="" data-markdown-copy=":D">😄</span> see <code data-inline-code="" dir="ltr">:D</code> and <a href="https://example.com">:D</a></p>',
+    );
+    expect(wordsHtml(markdown)).not.toContain("😄");
+  });
+
   it("flattens a preview to one line of text and math, within its length", () => {
     const preview = { fallback: "Thinking", maxLength: 24 };
     const options = { math: true, extensions: { preview } };

@@ -126,6 +126,7 @@ const foldProviderInstanceEnabledFlags = (settings: ServerSettings): ServerSetti
 };
 
 // Agent feedback reports to T3 Code's team, so fork builds keep it off, whatever the file says.
+// Applied where settings are read, so every feedback path (MCP tool, card answer, CLI) sees Off.
 const withForkAgentFeedback = isForkReleaseVersion(packageJson.version)
   ? (settings: ServerSettings): ServerSettings => ({ ...settings, agentFeedback: { mode: "off" } })
   : (settings: ServerSettings): ServerSettings => settings;
@@ -135,7 +136,6 @@ const normalizeServerSettings = (
 ): Effect.Effect<ServerSettings, ServerSettingsError> =>
   encodeServerSettings(settings).pipe(
     Effect.flatMap(decodeServerSettings),
-    Effect.map(withForkAgentFeedback),
     Effect.map(foldProviderInstanceEnabledFlags),
     Effect.map((next) => withIdleCompaction(next, globalIdleCompaction(next))),
     Effect.map((next) => ({ ...next, ...deriveLegacyProjectOverrides(next) })),
@@ -416,8 +416,10 @@ export const readServerSettingsFromDisk = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const { settings: managed } = yield* ManagedPolicy.ManagedPolicy;
   const raw = yield* fs.readFileString(settingsPath).pipe(Effect.option);
-  return managed.applyLocks(
-    Option.isNone(raw) ? managed.defaults : decodeSettingsFile(raw.value, managed).settings,
+  return withForkAgentFeedback(
+    managed.applyLocks(
+      Option.isNone(raw) ? managed.defaults : decodeSettingsFile(raw.value, managed).settings,
+    ),
   );
 }).pipe(Effect.withSpan("ServerSettings.readServerSettingsFromDisk"));
 const LegacyProviderSettingsJson = fromLenientJson(
@@ -767,9 +769,11 @@ const make = Effect.gen(function* () {
   } = yield* ManagedPolicy.ManagedPolicy;
   // Locks are laid over every settings value that leaves this service, never persisted.
   const toEffective = (settings: ServerSettings) =>
-    resolveTextGenerationProvider(
-      managedProviders.applyLimits(managed.applyLocks(settings)),
-      managedProviders.isDriverAllowed,
+    withForkAgentFeedback(
+      resolveTextGenerationProvider(
+        managedProviders.applyLimits(managed.applyLocks(settings)),
+        managedProviders.isDriverAllowed,
+      ),
     );
   const writeSemaphore = yield* Semaphore.make(1);
   const cacheKey = "settings" as const;

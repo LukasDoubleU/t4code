@@ -434,10 +434,7 @@ it.effect("sql: settlement anchors on the user's and other threads' messages, no
     const [candidate] = yield* store.getSettlementCandidates(threadId);
     assert.isDefined(candidate);
     assert.equal(DateTime.formatIso(candidate.latestUserMessageAt!), DateTime.formatIso(now));
-    assert.equal(
-      DateTime.formatIso(candidate.latestResumingMessageAt!),
-      DateTime.formatIso(sent),
-    );
+    assert.equal(DateTime.formatIso(candidate.latestResumingMessageAt!), DateTime.formatIso(sent));
     const shellThread = (yield* store.getShellSnapshot()).threads.find(
       (thread) => thread.id === threadId,
     );

@@ -219,8 +219,7 @@ export function useThreadActionMenu(input: {
       projectFilter: null,
       isPinned,
       canStartTopic:
-        readEnvironmentSupportsThreadTopics(threadRef.environmentId) &&
-        isUserPinnedThread(thread),
+        readEnvironmentSupportsThreadTopics(threadRef.environmentId) && isUserPinnedThread(thread),
       hasOwnIcon: thread.icon != null,
       needsYou: thread.attention != null,
       hasMemory: memoryPath !== null,

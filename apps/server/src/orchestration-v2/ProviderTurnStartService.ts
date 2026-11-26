@@ -1774,7 +1774,10 @@ export const layer: Layer.Layer<
               handoff.strategy === "manual_context",
           );
         const resumed = yield* Effect.result(
-          uncertainDelivery || nativeSessionLacksKeptTurns || rejectedHistory || carry.type === "fallback"
+          uncertainDelivery ||
+            nativeSessionLacksKeptTurns ||
+            rejectedHistory ||
+            carry.type === "fallback"
             ? Effect.fail(
                 new ProviderAdapter.ProviderAdapterTurnStartError({
                   driver: session.driver,
@@ -1857,9 +1860,9 @@ export const layer: Layer.Layer<
                 ? "native_session_lacks_kept_turns"
                 : rejectedHistory
                   ? "rejected_native_history"
-                : resumed._tag === "Success"
-                  ? "handoff_budget_exhausted"
-                  : "resume_failed",
+                  : resumed._tag === "Success"
+                    ? "handoff_budget_exhausted"
+                    : "resume_failed",
           errorTag: resumed._tag === "Failure" ? resumed.failure._tag : "ContextHandoffBudgetError",
         });
         const replacement = yield* loadFromProvider(

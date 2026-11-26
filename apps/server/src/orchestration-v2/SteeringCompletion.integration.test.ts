@@ -47,7 +47,6 @@ import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
-import { userFacingDispatchErrorMessage } from "./UserFacingErrors.ts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
@@ -2821,7 +2820,7 @@ it.effect("keeps a held commentary draft before the steer when turn end flushes 
 );
 
 it.effect.each(["auto", "deferred", "promote-edited"] as const)(
-  "rejects expanded steering input before commit: %s",
+  "commits steering input whose quotes stay within the limit once expanded: %s",
   (delivery) =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -2830,7 +2829,6 @@ it.effect.each(["auto", "deferred", "promote-edited"] as const)(
         yield* Effect.gen(function* () {
           const orchestrator = yield* Orchestrator.OrchestratorV2;
           const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
-          const outbox = yield* EffectOutbox.EffectOutboxV2;
           const sink = yield* EventSink.EventSinkV2;
           const threadId = yield* startFirstTurn;
           const first = started[0]!;
@@ -2864,10 +2862,9 @@ it.effect.each(["auto", "deferred", "promote-edited"] as const)(
             })),
           };
           assert.isBelow(text.length, PROVIDER_SEND_TURN_MAX_INPUT_CHARS);
-          assert.isAbove(
-            expandAssistantCitationsForProvider(text).length,
-            PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
-          );
+          // T4 Code expands a quote in place as readable text, never longer than its stored
+          // marker, so a message within the limit stays within it and the steer commits.
+          assert.isAtMost(expandAssistantCitationsForProvider(text).length, text.length);
           assert.isAbove(
             projectComposerContextForProvider({
               text: largeContextText,
@@ -2928,20 +2925,14 @@ it.effect.each(["auto", "deferred", "promote-edited"] as const)(
               targetRunId: first.runId,
             };
           }
-          const before = yield* orchestrator.getThreadProjection(threadId);
-          const sequence = yield* orchestrator.getThreadEventSequence(threadId);
-          const error = yield* orchestrator.dispatch(command).pipe(Effect.flip);
-          assert.instanceOf(error, Orchestrator.OrchestratorCommandRejectedError);
-          assert.equal(
-            userFacingDispatchErrorMessage(error),
-            "Message exceeds 120,000 characters after expanding quotes. Shorten it and try again.",
-          );
-          assert.deepEqual(yield* outbox.listByCommandId(commandId), []);
-          assert.deepEqual(yield* sink.readByCommandId({ commandId }).pipe(Stream.runCollect), []);
+          yield* orchestrator.dispatch(command);
+          assert.isNotEmpty(yield* sink.readByCommandId({ commandId }).pipe(Stream.runCollect));
           yield* worker.drain();
-          assert.equal(yield* orchestrator.getThreadEventSequence(threadId), sequence);
-          assert.deepEqual(yield* orchestrator.getThreadProjection(threadId), before);
-          assert.deepEqual(steered, []);
+          // The turn reads the quote in place; a deferred steer waits for its turn to be ready.
+          assert.deepEqual(
+            steered,
+            delivery === "deferred" ? [] : [expandAssistantCitationsForProvider(text)],
+          );
           assert.deepEqual(interrupted, []);
           assert.lengthOf(started, 1);
           if (delivery === "auto") {
@@ -2959,7 +2950,7 @@ it.effect.each(["auto", "deferred", "promote-edited"] as const)(
               creationSource: "mobile",
             });
             yield* worker.drain();
-            assert.lengthOf(steered, 1);
+            assert.lengthOf(steered, 2);
           }
         }).pipe(Effect.provide(layer));
       }),

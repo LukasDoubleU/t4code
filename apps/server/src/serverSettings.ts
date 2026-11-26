@@ -46,6 +46,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { resolveSymlinkTarget } from "@t3tools/shared/symlink";
 import * as ServerConfig from "./config.ts";
+import { isForkReleaseVersion } from "@t3tools/shared/cliRelease";
+import packageJson from "../package.json" with { type: "json" };
 import { type DeepPartial, deepMerge } from "@t3tools/shared/Struct";
 import { fromJsonStringPretty, fromLenientJson } from "@t3tools/shared/schemaJson";
 import {
@@ -123,11 +125,17 @@ const foldProviderInstanceEnabledFlags = (settings: ServerSettings): ServerSetti
   };
 };
 
+// Agent feedback reports to T3 Code's team, so fork builds keep it off, whatever the file says.
+const withForkAgentFeedback = isForkReleaseVersion(packageJson.version)
+  ? (settings: ServerSettings): ServerSettings => ({ ...settings, agentFeedback: { mode: "off" } })
+  : (settings: ServerSettings): ServerSettings => settings;
+
 const normalizeServerSettings = (
   settings: ServerSettings,
 ): Effect.Effect<ServerSettings, ServerSettingsError> =>
   encodeServerSettings(settings).pipe(
     Effect.flatMap(decodeServerSettings),
+    Effect.map(withForkAgentFeedback),
     Effect.map(foldProviderInstanceEnabledFlags),
     Effect.map((next) => withIdleCompaction(next, globalIdleCompaction(next))),
     Effect.map((next) => ({ ...next, ...deriveLegacyProjectOverrides(next) })),

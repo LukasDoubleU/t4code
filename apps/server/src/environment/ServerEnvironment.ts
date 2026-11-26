@@ -13,6 +13,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import { isForkReleaseVersion } from "@t3tools/shared/cliRelease";
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { resolveServerInstallation } from "../cli/invocation.ts";
@@ -314,7 +315,8 @@ export const make = Effect.gen(function* () {
       mcpHostedApproval: true,
       shellThreadFamilies: true,
       shellOlderSettled: true,
-      agentFeedback: true,
+      // Fork builds keep agent feedback, which reports to T3 Code's team, off and hidden.
+      agentFeedback: !isForkReleaseVersion(packageJson.version),
     },
   };
 

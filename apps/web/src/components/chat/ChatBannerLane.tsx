@@ -12,8 +12,7 @@ import {
   ProviderStatusBanner,
 } from "./ProviderStatusBanner";
 import { ThreadCatchUpCard } from "./ThreadCatchUp";
-import { ThreadErrorBanner } from "./ThreadErrorBanner";
-import { dismissThreadErrorBannerForSession } from "./ThreadErrorBanner.logic";
+import { dismissThreadErrorBannerForSession, ThreadErrorBanner } from "./ThreadErrorBanner";
 
 /**
  * The banners pinned above the timeline. The dismiss handlers are built here from plain

@@ -13,6 +13,7 @@ import {
   ProviderTurnId,
   RunId,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
@@ -291,6 +292,37 @@ describe("idleCompactionWindow", () => {
       if (window !== null) expect(window.startMs).toBe(NOW_MS + 58 * MINUTE_MS);
     },
   );
+
+  it("still compacts while a delegated child thread runs on its own", () => {
+    const delegating = records({ cacheExpiresInMs: 60 * MINUTE_MS });
+    delegating.turnItems = [
+      {
+        id: TurnItemId.make("delegate-item"),
+        threadId,
+        runId,
+        nodeId: NodeId.make("delegate-node"),
+        providerThreadId,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 1,
+        status: "running",
+        title: "Implement the feature",
+        startedAt: at(-MINUTE_MS),
+        completedAt: null,
+        updatedAt: at(-MINUTE_MS),
+        type: "subagent",
+        subagentId: NodeId.make("delegate-node"),
+        origin: "app_owned",
+        driver: ProviderDriverKind.make("codex"),
+        providerInstanceId: ProviderInstanceId.make("codex"),
+        childThreadId: ThreadId.make("delegate-child"),
+        prompt: "Implement the feature",
+        result: null,
+      },
+    ];
+    expect(idleCompactionWindow(delegating, NOW_MS, "beforeCacheExpires")?.runId).toBe(runId);
+  });
 });
 
 describe("IdleCompactionService", () => {

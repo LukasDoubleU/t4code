@@ -1,18 +1,21 @@
-import type {
-  NodeId,
-  OrchestrationV2ProviderFailure,
-  OrchestrationV2ProviderFailureClass,
-  OrchestrationV2ProviderQuota,
-  OrchestrationV2ProviderRetry,
-  OrchestrationV2TurnItem,
-  ProviderDriverKind,
-  ProviderThreadId,
-  ProviderTurnId,
-  RunId,
-  ThreadId,
+import {
+  GoogleAccountVerificationUrl,
+  type NodeId,
+  type OrchestrationV2ProviderFailure,
+  type OrchestrationV2ProviderFailureClass,
+  type OrchestrationV2ProviderQuota,
+  type OrchestrationV2ProviderRetry,
+  type OrchestrationV2TurnItem,
+  type ProviderDriverKind,
+  type ProviderThreadId,
+  type ProviderTurnId,
+  type RunId,
+  type ThreadId,
+  type TurnItemId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Cause from "effect/Cause";
+import * as Option from "effect/Option";
 
 import * as IdAllocator from "./IdAllocator.ts";
 import type { ProviderAdapterFailureReason } from "./ProviderAdapter.ts";
@@ -141,6 +144,8 @@ function curatedCauseMessages(cause: unknown): {
         case "ClaudeConversationNotFoundError":
         case "CursorModelUnavailableError":
         case "CodexGoalObjectiveTooLongError":
+        case "CodexAppServerUnresponsiveError":
+        case "CodexAppServerRetiredError":
         case "ProviderSetupError":
         case "ProviderAdapterThreadInUseError":
         case "ProviderCompactionUnsupportedError":
@@ -300,6 +305,8 @@ function boundedText(value: string, maxLength: number): string {
   return `${redacted.slice(0, end)}…`;
 }
 
+const decodeVerificationUrl = Schema.decodeUnknownOption(GoogleAccountVerificationUrl);
+
 export function makeProviderFailure(input: {
   readonly cause?: unknown;
   readonly message?: string | undefined;
@@ -309,6 +316,7 @@ export function makeProviderFailure(input: {
   readonly resetAt?: string | null;
   /** Only from a structured signal of the adapter's own model call; see the contract. */
   readonly quota?: OrchestrationV2ProviderQuota | undefined;
+  readonly verificationUrl?: unknown;
 }): OrchestrationV2ProviderFailure {
   const curated = curatedCauseMessages(input.cause);
   const requestTooLarge =
@@ -321,6 +329,7 @@ export function makeProviderFailure(input: {
   const rawCode = input.code ?? stringField(input.cause, "code") ?? null;
   const code =
     rawCode === null ? null : boundedText(rawCode, MAX_PROVIDER_FAILURE_CODE_LENGTH) || null;
+  const verificationUrl = Option.getOrUndefined(decodeVerificationUrl(input.verificationUrl));
 
   return {
     class: input.class ?? "unknown",
@@ -333,10 +342,13 @@ export function makeProviderFailure(input: {
       ? { resetAt: DateTime.formatIso(DateTime.makeUnsafe(input.resetAt)) }
       : {}),
     ...(input.quota === undefined ? {} : { quota: input.quota }),
+    ...(verificationUrl === undefined ? {} : { verificationUrl }),
   };
 }
 
 export function makeProviderFailureTurnItem(input: {
+  // Defaults to the turn's single failure row.
+  readonly id?: TurnItemId;
   readonly driver: ProviderDriverKind;
   readonly threadId: ThreadId;
   readonly runId: RunId | null;
@@ -350,10 +362,12 @@ export function makeProviderFailureTurnItem(input: {
   readonly occurredAt: DateTime.Utc;
 }): Extract<OrchestrationV2TurnItem, { readonly type: "error" }> {
   return {
-    id: IdAllocator.derive.turnItemFromProviderItem({
-      driver: input.driver,
-      nativeItemId: `terminal-failure:${input.providerTurnId}`,
-    }),
+    id:
+      input.id ??
+      IdAllocator.derive.turnItemFromProviderItem({
+        driver: input.driver,
+        nativeItemId: `terminal-failure:${input.providerTurnId}`,
+      }),
     threadId: input.threadId,
     runId: input.runId,
     nodeId: input.nodeId,
@@ -381,6 +395,7 @@ export function makeProviderFailureTurnItem(input: {
 export const PROVIDER_RETRY_BUDGET_MS = 10 * 60 * 1000;
 
 export function makeProviderRetryTurnItem(input: {
+  readonly id?: TurnItemId;
   readonly driver: ProviderDriverKind;
   readonly threadId: ThreadId;
   readonly runId: RunId | null;
@@ -407,10 +422,12 @@ export function makeProviderRetryTurnItem(input: {
     title = "Provider retry stopped";
   }
   return {
-    id: IdAllocator.derive.turnItemFromProviderItem({
-      driver: input.driver,
-      nativeItemId: `terminal-failure:${input.providerTurnId}`,
-    }),
+    id:
+      input.id ??
+      IdAllocator.derive.turnItemFromProviderItem({
+        driver: input.driver,
+        nativeItemId: `terminal-failure:${input.providerTurnId}`,
+      }),
     threadId: input.threadId,
     runId: input.runId,
     nodeId: input.nodeId,

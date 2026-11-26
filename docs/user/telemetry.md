@@ -16,6 +16,9 @@ which is off unless you turn it on.
 
 ## Agent feedback
 
+T4 Code builds keep agent feedback off and don't show its setting, because it reports to the T3
+team. The rest of this section describes T3 Code.
+
 Agent feedback lets agents tell the T3 team about T3 Code: a T3 tool or `t3` command that did not
 do what they expected, a confusing instruction, or a missing capability. Choose a mode in
 **Agent feedback** in **Settings > Labs**:

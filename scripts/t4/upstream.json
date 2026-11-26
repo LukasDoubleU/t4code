@@ -1,14 +1,9 @@
 {
   "upstream": "pingdotgg/t3code",
   "issue": 13,
-  "base": "v0.1.11",
+  "base": "v0.1.12",
   "carried": [
     { "name": "Tray", "issue": 2, "pulls": { "19176": "closed" } },
-    { "name": "Last-message sort", "issue": 8, "pulls": { "22032": "closed" } },
-    {
-      "name": "Antigravity fixes from main",
-      "issue": 161,
-      "pulls": { "39822": "merged", "40154": "merged", "40764": "merged" }
-    }
+    { "name": "Last-message sort", "issue": 8, "pulls": { "22032": "closed" } }
   ]
 }

@@ -4,7 +4,7 @@
 
 T4 Code is a personal fork of [T3 Code](https://github.com/pingdotgg/t3code), the open-source GUI for Claude Code, Codex and other coding agents. It is built for running many agents across several machines and subscriptions: threads that reach across machines, an app that keeps running in the tray, a sidebar made for long-lived threads, and a hint which account to use next.
 
-It is based on upstream `v0.1.11` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
+It is based on upstream `v0.1.12` and follows upstream releases. Releases have Windows builds and a headless server for Linux.
 
 > [!NOTE]
 > T4 Code is not affiliated with T3 Tools or the T3 Code team. Please don't report its problems upstream.
@@ -63,7 +63,7 @@ It is based on upstream `v0.1.11` and follows upstream releases. Releases have W
 
 From a clone, `pwsh -File scripts/t4/install-t4.ps1` does the same in one step: it checks the download against `SHA256SUMS`, quits the app, backs up your data and installs. Each release also has the `t3` command-line tool as `t3-<version>-win32-x64.zip`.
 
-Versions read `0.1.12-t4.N`: the upstream patch after the base, plus the fork's build number.
+Versions read `0.1.13-t4.N`: the upstream patch after the base, plus the fork's build number.
 
 ### Linux server
 
@@ -83,15 +83,12 @@ Remove-Item -Recurse 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\
 
 T4 Code merges each upstream release rather than rebasing, and drops a change once upstream ships it. Until then it carries these upstream pull requests:
 
-| Change                                                          | Upstream |
-| --------------------------------------------------------------- | -------- |
-| Tray                                                            | `#19176` |
-| Sort threads by last message                                    | `#22032` |
-| Antigravity pre-approves T3 tools in Auto and Auto-accept edits | `#39822` |
-| Antigravity keeps Auto in the mode picker after a restart       | `#40154` |
-| Resume sends pending context to providers without native resume | `#40764` |
+| Change                       | Upstream |
+| ---------------------------- | -------- |
+| Tray                         | `#19176` |
+| Sort threads by last message | `#22032` |
 
-Linked environments (`#16653` and its stack), project folders (`#21039`) and the fixes T4 Code picked from upstream's `main` shipped in `v0.1.4`, so T4 Code now uses upstream's code for them.
+Linked environments (`#16653` and its stack), project folders (`#21039`) and the fixes T4 Code picked from upstream's `main` shipped in `v0.1.4`, and the Antigravity and resume fixes it carried from `main` (`#39822`, `#40154`, `#40764`) shipped in `v0.1.12`, so T4 Code now uses upstream's code for them.
 
 Everything else is a fork patch, tracked in this repository's issues. A daily workflow comments on the upkeep issue (#13) when upstream publishes a release or a carried pull request changes state.
 
@@ -113,7 +110,7 @@ The docs in [docs/](./docs) are upstream's, with the fork's features added.
 
 ## Build from source
 
-Install [Vite+](https://viteplus.dev/guide/) for the `vp` command, then run `vp i` and `vp run dev`. Start reading at [docs/internals/overview.md](./docs/internals/overview.md). Releases are built by `.github/workflows/t4-release.yml` from a `t4-v*` tag.
+Install [Vite+](https://viteplus.dev/guide/) for the `vp` command, then run `vp i` and `vp run dev`. Start reading at [docs/internals/01_architecture.md](./docs/internals/01_architecture.md). Releases are built by `.github/workflows/t4-release.yml` from a `t4-v*` tag.
 
 This fork follows its owner's needs and doesn't take contributions. For T3 Code itself, see upstream.
 

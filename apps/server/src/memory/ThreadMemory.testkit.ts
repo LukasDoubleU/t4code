@@ -18,7 +18,6 @@ import * as Stream from "effect/Stream";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as ServerConfig from "../config.ts";
-import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -26,7 +25,6 @@ import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
-import * as ProjectService from "../project/ProjectService.ts";
 import * as ModelManifest from "../provider/ModelManifest.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -34,6 +32,7 @@ import * as SourceControlProviderRegistry from "../sourceControl/SourceControlPr
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as ThreadMemory from "./ThreadMemory.ts";
+import * as ProviderTurnStartTestkit from "../orchestration-v2/ProviderTurnStartService.testkit.ts";
 
 // Memory tests run a real orchestrator over an in-memory database; the T3
 // home is a fresh temporary directory, never the real one.
@@ -97,13 +96,8 @@ const layerRuntime = Layer.mergeAll(
       subscribeChanges: Effect.never,
     }),
   ),
-  Layer.provide(
-    Layer.mock(GitWorkflow.GitWorkflowService)({
-      pruneWorktrees: () => Effect.void,
-      createWorktree: () => Effect.succeed({} as never),
-    }),
-  ),
-  Layer.provide(Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone })),
+  // Git, project lookup, setup scripts and task folders, as upstream's turn-start tests stub them.
+  Layer.provide(ProviderTurnStartTestkit.layer),
   Layer.provide(layerPlatform),
 );
 

@@ -35,10 +35,8 @@ import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ProviderFallback from "../fallback/ProviderFallback.ts";
 import * as ProviderFallbackStore from "../fallback/ProviderFallbackStore.ts";
-import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
-import * as ProjectService from "../project/ProjectService.ts";
 import * as ModelManifest from "../provider/ModelManifest.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -53,6 +51,7 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as RuntimeLayer from "./runtimeLayer.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
+import * as ProviderTurnStartTestkit from "./ProviderTurnStartService.testkit.ts";
 
 // The test clock starts at the epoch.
 const HOUR = 3_600_000;
@@ -277,13 +276,8 @@ const layerRuntime = (sessionUsed: number, chain = false) =>
         subscribeChanges: Effect.never,
       }),
     ),
-    Layer.provide(
-      Layer.mock(GitWorkflow.GitWorkflowService)({
-        pruneWorktrees: () => Effect.void,
-        createWorktree: () => Effect.succeed({} as never),
-      }),
-    ),
-    Layer.provide(Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone })),
+    // Git, project lookup, setup scripts and task folders, as upstream's turn-start tests stub them.
+    Layer.provide(ProviderTurnStartTestkit.layer),
     Layer.provide(layerPlatformTest),
   );
 

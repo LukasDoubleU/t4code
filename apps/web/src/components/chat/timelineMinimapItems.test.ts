@@ -209,10 +209,17 @@ describe("resolveTimelineMinimapPreview", () => {
     const pad = "a".repeat(1_499 - linkStart.length - linkEnd.length);
     const preview = resolveTimelineMinimapPreview({
       id: "turn-1",
-      rowIndex: 0,
-      userText: `${linkStart}${pad}${linkEnd}🎉 the release build passed`,
-      assistantText: null,
+      firstItemIndex: 0,
+      items: [
+        {
+          id: "turn-1",
+          rowIndex: 0,
+          userText: `${linkStart}${pad}${linkEnd}🎉 the release build passed`,
+          assistantText: null,
+          userAuthored: true,
+        },
+      ],
     });
-    expect(preview?.userText).toBe("Build log");
+    expect(preview?.kind === "turn" ? preview.userText : null).toBe("Build log");
   });
 });

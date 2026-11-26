@@ -25,12 +25,38 @@ describe("resolveSubagentRowPresentation", () => {
     expect(resolveSubagentRowPresentation(remote, false).canOpenThread).toBe(false);
     expect(resolveSubagentRowPresentation(remote, true).canOpenThread).toBe(true);
     const here = "environment-here" as never;
-    expect(subagentThreadTarget(remote, here, () => false)).toBeNull();
-    expect(subagentThreadTarget(remote, here, (id) => id === "environment-box")).toEqual({
+    // Without its own connection, the task opens through the environment that links to it.
+    expect(
+      subagentThreadTarget(
+        remote,
+        here,
+        () => undefined,
+        () => true,
+      ),
+    ).toEqual({
+      environmentId: "environment-box",
+      threadId: "thread-on-box",
+      linked: { viaEnvironmentId: here, label: "Box" },
+    });
+    expect(
+      subagentThreadTarget(
+        remote,
+        here,
+        (id) => (id === "environment-box" ? { connected: true } : undefined),
+        () => false,
+      ),
+    ).toEqual({
       environmentId: "environment-box",
       threadId: "thread-on-box",
     });
-    expect(subagentThreadTarget(base, here, () => false)).toEqual({
+    expect(
+      subagentThreadTarget(
+        base,
+        here,
+        () => undefined,
+        () => false,
+      ),
+    ).toEqual({
       environmentId: here,
       threadId: "thread-child",
     });

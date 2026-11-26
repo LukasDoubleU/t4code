@@ -14,6 +14,7 @@ describe("matchComposerEnvironmentItems", () => {
     expect(
       matchComposerEnvironmentItems({
         environments,
+        linkedEnvironments: new Map(),
         environmentId: EnvironmentId.make("env-here"),
         query: "  vps ",
       }),
@@ -30,6 +31,7 @@ describe("matchComposerEnvironmentItems", () => {
     expect(
       matchComposerEnvironmentItems({
         environments,
+        linkedEnvironments: new Map(),
         environmentId: EnvironmentId.make("env-here"),
         query: "lap",
       }),
@@ -37,6 +39,7 @@ describe("matchComposerEnvironmentItems", () => {
     expect(
       matchComposerEnvironmentItems({
         environments,
+        linkedEnvironments: new Map(),
         environmentId: EnvironmentId.make("env-here"),
         query: "",
       }),

@@ -352,7 +352,7 @@ it.effect(
             ...settings,
             thread: {
               ...expected,
-              latestUserOrThreadMessageAt: candidate.latestUserOrThreadMessageAt,
+              latestResumingMessageAt: candidate.latestResumingMessageAt,
             },
           }),
         );
@@ -435,8 +435,16 @@ it.effect("sql: settlement anchors on the user's and other threads' messages, no
     assert.isDefined(candidate);
     assert.equal(DateTime.formatIso(candidate.latestUserMessageAt!), DateTime.formatIso(now));
     assert.equal(
-      DateTime.formatIso(candidate.latestUserOrThreadMessageAt!),
+      DateTime.formatIso(candidate.latestResumingMessageAt!),
       DateTime.formatIso(sent),
+    );
+    const shellThread = (yield* store.getShellSnapshot()).threads.find(
+      (thread) => thread.id === threadId,
+    );
+    // The scheduled run's message carries the user as its author.
+    assert.equal(
+      DateTime.formatIso(shellThread!.latestUserAuthoredMessageAt!),
+      DateTime.formatIso(minutesAgo(20)),
     );
   }).pipe(Effect.provide(layerSql)),
 );
@@ -538,7 +546,7 @@ it.effect("sql: lists only active threads with pull request links, oldest first"
     const store = yield* ProjectionStore.ProjectionStoreV2;
     yield* createThread("no-links");
     yield* createThread("empty-links", { pullRequests: [] });
-    yield* createThread("archived-link", {
+    const archived = yield* createThread("archived-link", {
       archivedAt: old,
       pullRequests: [pullRequestLink(1)],
     });
@@ -563,6 +571,12 @@ it.effect("sql: lists only active threads with pull request links, oldest first"
     assert.deepEqual(
       (yield* store.getThreadsWithPullRequests(open)).map((thread) => thread.id),
       [open],
+    );
+    assert.deepEqual(
+      (yield* store.getThreadsWithPullRequests(undefined, { includeArchived: true })).map(
+        (thread) => thread.id,
+      ),
+      [settled, archived, open],
     );
   }).pipe(Effect.provide(layerSql)),
 );

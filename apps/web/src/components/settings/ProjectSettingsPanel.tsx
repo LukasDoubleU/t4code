@@ -55,6 +55,8 @@ import {
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
 import { ProjectGitHubTokenSettings } from "./ProjectGitHubTokenSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
+import { ProjectRepositoriesSettings } from "./ProjectRepositoriesSettings";
+import { ProjectWorktreeLayoutSettings } from "./ProjectWorktreeLayoutSettings";
 import {
   defaultProjectIcon,
   hasDefaultProjectIcon,
@@ -317,9 +319,10 @@ function ProjectDetail({
     setIsOrganizing(false);
   };
 
-  const renameGroup = async (nextTitle: string, wasEdited: boolean) => {
-    const title = nextTitle.trim();
+  const renameGroup = async (input: HTMLInputElement, wasEdited: boolean) => {
+    const title = input.value.trim();
     if (!title) {
+      input.value = group.displayName;
       toastManager.add({ type: "warning", title: gt("Project title cannot be empty") });
       return;
     }
@@ -587,7 +590,7 @@ function ProjectDetail({
                 onBlur={(event) => {
                   const wasEdited = projectNameEditedRef.current;
                   projectNameEditedRef.current = false;
-                  void renameGroup(event.currentTarget.value, wasEdited);
+                  void renameGroup(event.currentTarget, wasEdited);
                 }}
                 onKeyDown={(event) => {
                   if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -694,6 +697,8 @@ function ProjectDetail({
         <ProjectDefaultsSettings category="project" />
         <ProjectActionsSettings />
         <ProjectGitHubTokenSettings members={group.memberProjects} />
+        <ProjectRepositoriesSettings members={group.memberProjects} />
+        <ProjectWorktreeLayoutSettings members={group.memberProjects} />
         {checkoutChoices}
         <SettingsSection title={gt("Danger")}>
           <SettingsRow

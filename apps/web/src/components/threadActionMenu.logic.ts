@@ -109,6 +109,8 @@ export function buildDraftActionMenuItems(
 
 export interface ThreadActionMenuState {
   readonly canOperate: boolean;
+  /** Settle, snooze and their undo stay available until the host denies the operate scope. */
+  readonly canTriage?: boolean;
   readonly canFind?: boolean;
   /** False where no inline title editor is rendered, such as sidebar search results. */
   readonly canRename?: boolean;
@@ -144,6 +146,8 @@ export interface ThreadActionMenuState {
   readonly isRegeneratingTitle: boolean;
   /** Archive rejects attached providers, so disable it while running. */
   readonly isRunning: boolean;
+  /** The server marks unread against the latest run's completion, so in-flight runs cannot be. */
+  readonly hasCompletedRun: boolean;
   readonly supports: {
     readonly settlement: boolean;
     readonly autoSettleOptOut: boolean;
@@ -184,6 +188,16 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "copy-thread",
     "copy-thread-id",
   ].includes(action);
+}
+
+export function isThreadTriageAction(action: string): boolean {
+  return (
+    action === "settle" ||
+    action === "unsettle" ||
+    action === "snooze" ||
+    action === "unsnooze" ||
+    action.startsWith("snooze:")
+  );
 }
 
 /**
@@ -449,7 +463,9 @@ export function buildThreadActionMenuItems(
             },
           ]
         : []),
-    { id: "mark-unread", label: resolve(msg("Mark unread")), icon: "mail-open" },
+    ...(state.hasCompletedRun && !state.isRunning
+      ? [{ id: "mark-unread" as const, label: resolve(msg("Mark unread")), icon: "mail-open" }]
+      : []),
     { id: "copy-thread-id", label: resolve(msg("Copy thread ID")), icon: "hash" },
     {
       id: "more",
@@ -459,21 +475,29 @@ export function buildThreadActionMenuItems(
       children: more,
     },
   ];
-  return state.canOperate ? items : items.map(disableOperations);
+  return state.canOperate
+    ? items
+    : items.map((item) => disableOperations(item, state.canTriage === true));
 }
 
 function disableOperations(
   item: ContextMenuItem<ThreadActionMenuId>,
+  canTriage: boolean,
 ): ContextMenuItem<ThreadActionMenuId> {
-  if (!threadActionRequiresOperate(item.id)) {
-    return item.children ? { ...item, children: item.children.map(disableOperations) } : item;
+  if (!threadActionRequiresOperate(item.id) || (canTriage && isThreadTriageAction(item.id))) {
+    return item.children
+      ? { ...item, children: item.children.map((child) => disableOperations(child, canTriage)) }
+      : item;
   }
   return {
     ...item,
     disabled: true,
     ...(item.children
       ? {
-          children: item.children.map((child) => ({ ...disableOperations(child), disabled: true })),
+          children: item.children.map((child) => ({
+            ...disableOperations(child, canTriage),
+            disabled: true,
+          })),
         }
       : {}),
   };

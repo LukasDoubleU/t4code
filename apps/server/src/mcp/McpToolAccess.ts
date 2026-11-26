@@ -33,6 +33,7 @@ import {
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import { resolveInteractionMode, resolveRuntimeMode } from "./delegatedTaskModes.ts";
 import {
+  assertBroadestAccess,
   assertFullAccess,
   assertLiveCaller,
   assertTargetWithinLimits,
@@ -190,6 +191,24 @@ export const writes = <P, A, E, R>(
       ),
     () => orchestratingCaller,
   );
+
+/**
+ * Drives work that runs for this environment's owner in modes its definition picks, such as a
+ * workflow run. `what` names it in a refusal, after "can" or "cannot".
+ */
+export const writesOwnerWork = <P, A, E, R>(
+  what: string,
+  handle: (params: P) => Effect.Effect<A, E, R>,
+) => {
+  const check = orchestratingCaller.pipe(
+    Effect.tap((caller) => assertNotLinked(caller, what)),
+    Effect.tap((caller) => assertBroadestAccess(caller, what)),
+  );
+  return declare(
+    (params: P) => check.pipe(Effect.flatMap(() => handle(params))),
+    () => check,
+  );
+};
 
 /** Requires handler capability checks, not thread control; linked work is refused the same way. */
 export const writesWithCapability = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
@@ -415,6 +434,11 @@ const linksUnavailable = new OrchestratorMcpFailure({
   message: "This environment cannot reach linked environments.",
 });
 
+const THREAD_ONLY = new Set<unknown>([
+  McpInvocationContext.hiddenFromOutsideClients,
+  McpInvocationContext.hiddenWithoutBackgroundWait,
+]);
+
 /**
  * Tools that look for a thread id this environment does not have in the
  * linked ones, so an id pasted without its environment still works.
@@ -449,8 +473,7 @@ const routed = Effect.fn("McpToolAccess.routed")(function* <Tools extends Record
     const remote = remoteCheckOf(declaration);
     if (
       remote === undefined &&
-      Context.getOrUndefined(tool.annotations, McpSchema.EnabledWhen) !==
-        McpInvocationContext.hiddenFromOutsideClients
+      !THREAD_ONLY.has(Context.getOrUndefined(tool.annotations, McpSchema.EnabledWhen))
     )
       return yield* Effect.die(
         `${name} acts as its calling thread, so outside clients must not be offered it.`,

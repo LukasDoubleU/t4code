@@ -24,6 +24,9 @@ import {
   PeerLinkClientPairingInput,
   PeerLinkLinkPairingInput,
   PeerLinkClientPairingResult,
+  PeerLinkKeybindingsCopyResult,
+  PeerLinkKeybindingsInput,
+  PeerLinkKeybindingsPreview,
   PeerLinkCreateInput,
   PeerLinkError,
   PeerLinkName,
@@ -616,6 +619,8 @@ export const WS_METHODS = {
   peerLinksThreadItem: "peerLinks.threadItem",
   peerLinksPairClient: "peerLinks.pairClient",
   peerLinksPairLink: "peerLinks.pairLink",
+  peerLinksPreviewKeybindings: "peerLinks.previewKeybindings",
+  peerLinksCopyKeybindings: "peerLinks.copyKeybindings",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
   serverDiscoverSourceControl: "server.discoverSourceControl",
@@ -1016,6 +1021,20 @@ const WsPeerLinksPairClientRpc = Rpc.make(WS_METHODS.peerLinksPairClient, {
   payload: PeerLinkClientPairingInput,
   success: PeerLinkClientPairingResult,
   error: Schema.Union([PeerLinkError, EnvironmentAuthorizationError]),
+});
+
+/** What copying a linked environment's keybindings here would change. */
+const WsPeerLinksPreviewKeybindingsRpc = Rpc.make(WS_METHODS.peerLinksPreviewKeybindings, {
+  payload: PeerLinkKeybindingsInput,
+  success: PeerLinkKeybindingsPreview,
+  error: Schema.Union([PeerLinkError, KeybindingsConfigError, EnvironmentAuthorizationError]),
+});
+
+/** Replaces this environment's keybindings with a linked environment's, once. */
+const WsPeerLinksCopyKeybindingsRpc = Rpc.make(WS_METHODS.peerLinksCopyKeybindings, {
+  payload: PeerLinkKeybindingsInput,
+  success: PeerLinkKeybindingsCopyResult,
+  error: Schema.Union([PeerLinkError, KeybindingsConfigError, EnvironmentAuthorizationError]),
 });
 
 const WsPeerLinksPairLinkRpc = Rpc.make(WS_METHODS.peerLinksPairLink, {
@@ -2573,6 +2592,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsPeerLinksThreadItemRpc,
   WsPeerLinksPairClientRpc,
   WsPeerLinksPairLinkRpc,
+  WsPeerLinksPreviewKeybindingsRpc,
+  WsPeerLinksCopyKeybindingsRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerCheckSecretSourceRpc,
   WsServerSearchAcpRegistryRpc,

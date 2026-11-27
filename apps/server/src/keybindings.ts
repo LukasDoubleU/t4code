@@ -176,6 +176,52 @@ const decodeRawKeybindingsEntriesExit = Schema.decodeUnknownExit(RawKeybindingsE
 const encodeRawKeybindingsEntriesPrettyJson = Schema.encodeEffect(RawKeybindingsEntriesPrettyJson);
 const isSameResolvedKeybindingRule = Schema.toEquivalence(ResolvedKeybindingRule);
 
+/**
+ * The rules in `entries` that this build reads, as a copy from another environment would write
+ * them. Rules for commands this build does not know, and any it cannot read, are counted instead.
+ */
+function copyableKeybindingRules(entries: ReadonlyArray<unknown>): {
+  readonly rules: ReadonlyArray<KeybindingRule>;
+  readonly skipped: number;
+} {
+  const rules: KeybindingRule[] = [];
+  for (const entry of entries) {
+    const decoded = decodeKeybindingRuleExit(entry);
+    if (
+      decoded._tag === "Success" &&
+      decodeResolvedKeybindingFromConfigExit(decoded.value)._tag === "Success"
+    ) {
+      rules.push(decoded.value);
+    }
+  }
+  const kept = rules.slice(-MAX_KEYBINDINGS_COUNT);
+  return { rules: kept, skipped: entries.length - kept.length };
+}
+
+/** Rules found in only one of the two lists, compared as Settings compares them. */
+function countDifferingKeybindingRules(
+  left: ReadonlyArray<KeybindingRule>,
+  right: ReadonlyArray<KeybindingRule>,
+): number {
+  const leftIds = new Set(left.map(keybindingRuleIdentity));
+  const rightIds = new Set(right.map(keybindingRuleIdentity));
+  let differing = 0;
+  for (const id of leftIds) if (!rightIds.has(id)) differing += 1;
+  for (const id of rightIds) if (!leftIds.has(id)) differing += 1;
+  return differing;
+}
+
+export interface KeybindingsReplacePreview {
+  readonly differing: number;
+  readonly copyable: number;
+  readonly skipped: number;
+}
+
+export interface KeybindingsReplaceResult extends KeybindingsReplacePreview {
+  readonly backupPath: string | null;
+  readonly state: KeybindingsConfigState;
+}
+
 export interface KeybindingsConfigState {
   readonly keybindings: ResolvedKeybindingsConfig;
   readonly issues: readonly ServerConfigIssue[];
@@ -248,6 +294,22 @@ export class Keybindings extends Context.Service<
     readonly removeKeybindingRule: (
       input: ServerRemoveKeybindingInput,
     ) => Effect.Effect<KeybindingsConfigState, KeybindingsConfigError>;
+
+    /** The file's entries as stored, unknown commands included, for an environment copying them. */
+    readonly readFileEntries: Effect.Effect<ReadonlyArray<unknown>, KeybindingsConfigError>;
+
+    /** What `replaceWithEntries` would change. */
+    readonly previewReplace: (
+      entries: ReadonlyArray<unknown>,
+    ) => Effect.Effect<KeybindingsReplacePreview, KeybindingsConfigError>;
+
+    /**
+     * Replaces the file with the rules of `entries` this build reads. The previous file is kept
+     * beside it as `<name>.bak`; nothing is written when no rule differs.
+     */
+    readonly replaceWithEntries: (
+      entries: ReadonlyArray<unknown>,
+    ) => Effect.Effect<KeybindingsReplaceResult, KeybindingsConfigError>;
   }
 >()("t3/keybindings") {}
 
@@ -651,6 +713,52 @@ const make = Effect.gen(function* () {
     yield* Deferred.succeed(startedDeferred, undefined).pipe(Effect.orDie);
   });
 
+  const backupPath = `${keybindingsConfigPath}.bak`;
+
+  const previewReplace = Effect.fn("keybindings.previewReplace")(function* (
+    entries: ReadonlyArray<unknown>,
+  ) {
+    const current = (yield* loadWritableCustomKeybindingsConfig()).flatMap(({ rule }) =>
+      rule ? [rule] : [],
+    );
+    const incoming = copyableKeybindingRules(entries);
+    return {
+      differing: countDifferingKeybindingRules(current, incoming.rules),
+      copyable: incoming.rules.length,
+      skipped: incoming.skipped,
+      rules: incoming.rules,
+    };
+  });
+
+  const replaceWithEntries = (entries: ReadonlyArray<unknown>) =>
+    upsertSemaphore.withPermits(1)(
+      Effect.gen(function* () {
+        const { rules, ...preview } = yield* previewReplace(entries);
+        if (preview.differing === 0) {
+          return { ...preview, backupPath: null, state: yield* loadConfigStateFromCacheOrDisk };
+        }
+        let keptAt: string | null = null;
+        if (yield* readConfigExists) {
+          const previous = yield* readRawConfig;
+          yield* writeFileStringAtomically({ filePath: backupPath, contents: previous }).pipe(
+            Effect.provideService(FileSystem.FileSystem, fs),
+            Effect.provideService(Path.Path, path),
+            Effect.mapError(
+              (cause) =>
+                new KeybindingsConfigError({
+                  configPath: keybindingsConfigPath,
+                  detail: "failed to keep a backup of the keybindings config",
+                  cause,
+                }),
+            ),
+          );
+          keptAt = backupPath;
+        }
+        yield* writeConfigAtomically(rules);
+        return { ...preview, backupPath: keptAt, state: yield* reloadAndEmit };
+      }),
+    );
+
   return {
     start,
     ready: Deferred.await(startedDeferred),
@@ -742,6 +850,12 @@ const make = Effect.gen(function* () {
           return yield* reloadAndEmit;
         }),
       ),
+    readFileEntries: loadWritableCustomKeybindingsConfig().pipe(
+      Effect.map((entries) => entries.map(({ value }) => value)),
+    ),
+    previewReplace: (entries) =>
+      previewReplace(entries).pipe(Effect.map(({ rules: _rules, ...preview }) => preview)),
+    replaceWithEntries,
   } satisfies Keybindings["Service"];
 });
 

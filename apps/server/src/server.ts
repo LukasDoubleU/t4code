@@ -105,6 +105,7 @@ import * as PeerForwarding from "./peer/PeerForwarding.ts";
 import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
 import * as PeerClientPairing from "./peer/PeerClientPairing.ts";
 import * as PeerClientPairingHttp from "./peer/http.ts";
+import * as PeerKeybindings from "./peer/PeerKeybindings.ts";
 import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
 import * as PeerLinks from "./peer/PeerLinks.ts";
 import * as PeerMcpClient from "./peer/PeerMcpClient.ts";
@@ -923,7 +924,11 @@ const layerMakeRoutes = Layer.mergeAll(
     HttpApiBuilder.layer(EnvironmentHttpApi).pipe(
       Layer.provide(AuthHttp.layer),
       Layer.provide(McpOAuthHttp.layer.pipe(Layer.provide(McpOAuth.layer))),
-      Layer.provide(PeerClientPairingHttp.layer.pipe(Layer.provide(PeerClientPairing.layerIssuer))),
+      Layer.provide(
+        PeerClientPairingHttp.layer.pipe(
+          Layer.provide(Layer.merge(PeerClientPairing.layerIssuer, PeerKeybindings.layerSource)),
+        ),
+      ),
       Layer.provide(CloudHttp.layer),
       Layer.provide(OrchestrationHttp.layer),
       Layer.provide(PullRequestHttp.layer),
@@ -977,10 +982,12 @@ const layerMakeRoutes = Layer.mergeAll(
   Layer.provide(PreviewBrowser.layer),
   // Links to other environments, shared by clients (WebSocket) and agents (/mcp).
   Layer.provide(
-    Layer.mergeAll(PeerForwarding.layer, PeerThreadRelay.layer, PeerClientPairing.layer).pipe(
-      Layer.provideMerge(PeerMcpClient.layer),
-      Layer.provideMerge(PeerLinks.layer),
-    ),
+    Layer.mergeAll(
+      PeerForwarding.layer,
+      PeerThreadRelay.layer,
+      PeerClientPairing.layer,
+      PeerKeybindings.layer,
+    ).pipe(Layer.provideMerge(PeerMcpClient.layer), Layer.provideMerge(PeerLinks.layer)),
   ),
   Layer.provide(
     SpeechService.layer.pipe(

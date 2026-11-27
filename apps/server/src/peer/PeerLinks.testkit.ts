@@ -34,6 +34,8 @@ import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as PeerHttp from "./http.ts";
 import * as PeerClientPairing from "./PeerClientPairing.ts";
+import * as PeerKeybindings from "./PeerKeybindings.ts";
+import * as Keybindings from "../keybindings.ts";
 import * as PeerLinks from "./PeerLinks.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PeerMcpClient from "./PeerMcpClient.ts";
@@ -137,7 +139,16 @@ export const servePeer = <E, R, E2 = never, R2 = never>(
             ),
           ),
         ),
-        Layer.provide(PeerHttp.layer.pipe(Layer.provide(PeerClientPairing.layerIssuer))),
+        Layer.provide(
+          PeerHttp.layer.pipe(
+            Layer.provide(
+              Layer.merge(
+                PeerClientPairing.layerIssuer,
+                PeerKeybindings.layerSource.pipe(Layer.provide(Keybindings.layer)),
+              ),
+            ),
+          ),
+        ),
         Layer.provide(ServerHttp.layerServerEnvironmentHttpApi),
         Layer.provide(AuthHttp.layerAuthenticatedAuth),
       ),
@@ -171,6 +182,9 @@ export const servePeer = <E, R, E2 = never, R2 = never>(
     return {
       url,
       auth,
+      /** Where its keybindings file is. */
+      keybindingsConfigPath: Context.get(authContext, ServerConfig.ServerConfig)
+        .keybindingsConfigPath,
       /** Its settings, as for turning its Linked environments beta off. */
       settings: Context.get(authContext, ServerSettings.ServerSettingsService),
       descriptor,

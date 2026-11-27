@@ -155,6 +155,17 @@ export function createPeerLinkEnvironmentAtoms<R, E>(
       label: "environment-data:peer-links:pair-link",
       tag: WS_METHODS.peerLinksPairLink,
     }),
+    /** What copying a linked environment's keybindings would change; asked when one is picked. */
+    previewKeybindings: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:peer-links:preview-keybindings",
+      tag: WS_METHODS.peerLinksPreviewKeybindings,
+    }),
+    // Open clients see the new keybindings through the server config stream, as after an edit.
+    copyKeybindings: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:peer-links:copy-keybindings",
+      tag: WS_METHODS.peerLinksCopyKeybindings,
+      concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
+    }),
     // An agent's link card. One answer per card at a time.
     answerRequest: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:peer-links:answer-request",

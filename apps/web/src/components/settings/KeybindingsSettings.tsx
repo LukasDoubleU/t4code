@@ -47,6 +47,7 @@ import { useOpenInPreferredEditor } from "../../editorPreferences";
 import { formatShortcutLabel } from "../../keybindings";
 import { cn } from "../../lib/utils";
 import { serverEnvironment } from "../../state/server";
+import { CopyKeybindingsFromLink } from "./CopyKeybindingsFromLink";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { useClientSettings } from "../../hooks/useSettings";
 import { Badge } from "../ui/badge";
@@ -1526,6 +1527,12 @@ export function KeybindingsSettingsPanel() {
     connectedEnvironments.length > 0 &&
     connectedEnvironments.every((target) => writableIds.has(target.environmentId));
   const keybindingsConfigPath = primaryEnvironment?.serverConfig?.keybindingsConfigPath ?? null;
+  // A copy replaces one machine's file, so it is offered when Settings shows only that one.
+  const copyTarget =
+    connectedEnvironments.length === 1 &&
+    primaryEnvironment?.serverConfig?.environment.capabilities.linkKeybindings === true
+      ? primaryEnvironment.environmentId
+      : null;
   const availableEditors = primaryEnvironment?.serverConfig?.availableEditors ?? [];
   const upsertKeybinding = useAtomCommand(serverEnvironment.upsertKeybinding, {
     reportFailure: false,
@@ -1705,6 +1712,9 @@ export function KeybindingsSettingsPanel() {
             <PlusIcon aria-hidden className="size-4" />
             <T>Add keybinding</T>
           </Button>
+          {copyTarget !== null ? (
+            <CopyKeybindingsFromLink environmentId={copyTarget} disabled={!canWriteSettings} />
+          ) : null}
           <Tooltip>
             <TooltipTrigger
               render={

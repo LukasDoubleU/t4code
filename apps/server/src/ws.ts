@@ -8,6 +8,7 @@ import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequ
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 import * as PeerClientPairing from "./peer/PeerClientPairing.ts";
+import * as PeerKeybindings from "./peer/PeerKeybindings.ts";
 import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
 import * as PeerLinks from "./peer/PeerLinks.ts";
 import * as PeerThreadRelay from "./peer/PeerThreadRelay.ts";
@@ -1604,6 +1605,7 @@ export const layerWsRpc = (
       const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
       const peerThreadRelay = yield* PeerThreadRelay.PeerThreadRelay;
       const peerClientPairing = yield* PeerClientPairing.PeerClientPairing;
+      const peerKeybindings = yield* PeerKeybindings.PeerKeybindings;
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFolders = yield* WorkspaceFolders.WorkspaceFolders;
@@ -2866,6 +2868,8 @@ export const layerWsRpc = (
           peerClientPairing.request(input, currentSession),
         [WS_METHODS.peerLinksPairLink]: (input) =>
           peerClientPairing.requestForLink(input, currentSession),
+        [WS_METHODS.peerLinksPreviewKeybindings]: (input) => peerKeybindings.preview(input),
+        [WS_METHODS.peerLinksCopyKeybindings]: (input) => peerKeybindings.copy(input),
         [WS_METHODS.peerLinksAnswerRequest]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(peerLinkRequests.answer(input)),
@@ -3852,6 +3856,7 @@ export const layer = Layer.unwrap(
     const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
     const peerThreadRelay = yield* PeerThreadRelay.PeerThreadRelay;
     const peerClientPairing = yield* PeerClientPairing.PeerClientPairing;
+    const peerKeybindings = yield* PeerKeybindings.PeerKeybindings;
     const sql = yield* SqlClient.SqlClient;
     return HttpRouter.add(
       "GET",
@@ -3960,6 +3965,7 @@ export const layer = Layer.unwrap(
               Layer.provide(Layer.succeed(PeerLinkRequests.PeerLinkRequests, peerLinkRequests)),
               Layer.provide(Layer.succeed(PeerThreadRelay.PeerThreadRelay, peerThreadRelay)),
               Layer.provide(Layer.succeed(PeerClientPairing.PeerClientPairing, peerClientPairing)),
+              Layer.provide(Layer.succeed(PeerKeybindings.PeerKeybindings, peerKeybindings)),
               Layer.provide(
                 SourceControlDiscovery.layer.pipe(
                   Layer.provide(

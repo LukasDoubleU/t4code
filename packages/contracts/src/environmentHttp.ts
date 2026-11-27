@@ -71,7 +71,11 @@ import {
   EnvironmentSpeechStatus,
   EnvironmentSpeechTranscriptionResult,
 } from "./speech.ts";
-import { PeerLinkClientPairingCredential, PeerLinkClientPairingRequest } from "./peerLink.ts";
+import {
+  PeerLinkClientPairingCredential,
+  PeerLinkClientPairingRequest,
+  PeerLinkKeybindingsSnapshot,
+} from "./peerLink.ts";
 import { SecretReference } from "./secretReference.ts";
 import {
   OrchestrationV2ShellHttpSnapshot,
@@ -1087,6 +1091,15 @@ class EnvironmentPeerLinkHttpApi extends HttpApiGroup.make("peerLink").add(
     headers: OptionalBearerHeaders,
     payload: PeerLinkClientPairingRequest,
     success: PeerLinkClientPairingCredential,
+    error: [
+      EnvironmentHttpUnauthorizedError,
+      EnvironmentHttpForbiddenError,
+      EnvironmentHttpInternalServerError,
+    ],
+  }),
+  HttpApiEndpoint.get("keybindings", "/api/peer-link/keybindings", {
+    headers: OptionalBearerHeaders,
+    success: PeerLinkKeybindingsSnapshot,
     error: [
       EnvironmentHttpUnauthorizedError,
       EnvironmentHttpForbiddenError,

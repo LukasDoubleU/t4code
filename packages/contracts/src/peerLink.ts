@@ -286,3 +286,36 @@ export class PeerLinkRequestError extends Schema.TaggedError<PeerLinkRequestErro
     return PEER_LINK_REQUEST_FAILURE_MESSAGES[this.reason];
   }
 }
+
+/** What a linked environment answers when asked for its keybindings: its file's entries, as stored. */
+export const PeerLinkKeybindingsSnapshot = Schema.Struct({
+  entries: Schema.Array(Schema.Unknown),
+});
+export type PeerLinkKeybindingsSnapshot = typeof PeerLinkKeybindingsSnapshot.Type;
+
+/** A linked environment whose keybindings this one would copy. */
+export const PeerLinkKeybindingsInput = Schema.Struct({ environmentId: EnvironmentId });
+export type PeerLinkKeybindingsInput = typeof PeerLinkKeybindingsInput.Type;
+
+/** What copying a linked environment's keybindings here would change. */
+export const PeerLinkKeybindingsPreview = Schema.Struct({
+  environmentId: EnvironmentId,
+  label: Schema.String,
+  /** Rules that are in only one of the two files. */
+  differing: Schema.Number,
+  /** Rules the copy would write. */
+  copyable: Schema.Number,
+  /** Rules for commands this build does not know, or that it cannot read: not written. */
+  skipped: Schema.Number,
+});
+export type PeerLinkKeybindingsPreview = typeof PeerLinkKeybindingsPreview.Type;
+
+export const PeerLinkKeybindingsCopyResult = Schema.Struct({
+  environmentId: EnvironmentId,
+  label: Schema.String,
+  copied: Schema.Number,
+  skipped: Schema.Number,
+  /** Where this environment's previous keybindings were kept, when it had any. */
+  backupPath: Schema.NullOr(Schema.String),
+});
+export type PeerLinkKeybindingsCopyResult = typeof PeerLinkKeybindingsCopyResult.Type;
